@@ -85,7 +85,10 @@ export async function loadAll(): Promise<void> {
   const progress: Record<ID, RunProgress> = {}
   for (const p of active) if (p.phase !== 'done') progress[p.runId] = p
   set({ info, settings, progress })
-  await Promise.all([refreshRoutines(), refreshRuns(), refreshDrives().catch(() => undefined)])
+  // Unidades de disco vêm depois: no Windows a enumeração usa PowerShell e pode levar segundos —
+  // não seguramos a interface inteira por elas (só rótulos/ícones de destino dependem disso).
+  void refreshDrives().catch(() => undefined)
+  await Promise.all([refreshRoutines(), refreshRuns()])
   set({ ready: true })
 }
 

@@ -31,7 +31,9 @@ import { MenuContent, MenuItem, MenuLabel, MenuRoot, MenuTrigger } from '@render
 import { ProgressBar } from '@renderer/components/ui/ProgressBar'
 import { RelativeTime } from '@renderer/components/ui/RelativeTime'
 import { StatusPill } from '@renderer/components/ui/StatusPill'
-import { Tooltip } from '@renderer/components/ui/Tooltip'
+import { Skeleton } from '@renderer/components/ui/Skeleton'
+import { PathText } from '@renderer/components/ui/PathText'
+import { Tooltip, TruncatedText } from '@renderer/components/ui/Tooltip'
 import { runNow } from '@renderer/lib/actions'
 import { bc } from '@renderer/lib/bc'
 import { cn } from '@renderer/lib/cn'
@@ -42,6 +44,7 @@ import {
   formatEta,
   formatNumber,
   formatPercent,
+  formatSize,
   formatTime,
   formatWhen,
   pathRoot,
@@ -207,7 +210,18 @@ function StatusHero({ routines }: { routines: Routine[] }) {
           className="group mt-3 flex max-w-[460px] items-center gap-3 rounded-md text-left"
           aria-label="Ver progresso"
         >
-          <ProgressBar value={running.phase === 'queued' ? 0 : pct} className="flex-1" label="Progresso" />
+          <ProgressBar
+            value={running.phase === 'queued' ? 0 : pct}
+            className="flex-1"
+            label={`Progresso do backup de ${running.routineName}`}
+            valueText={
+              running.phase === 'queued'
+                ? 'Na fila'
+                : pct === undefined
+                  ? 'Preparando'
+                  : `${formatPercent(pct)} · ${formatEta(running.etaMs)}`
+            }
+          />
           <span className="shrink-0 text-small font-medium text-fg tnum">
             {running.phase === 'queued' ? (
               'Na fila'
@@ -452,7 +466,8 @@ function UpcomingCard({ routines }: { routines: Routine[] }) {
           {items.map(({ routine, at }) => (
             <li
               key={`${routine.id}-${at.getTime()}`}
-              className="group flex h-12 items-center gap-3 rounded-md px-3 transition-colors duration-[120ms] hover:bg-surface-hover"
+              onClick={() => navigate(ROUTES.routine(routine.id))}
+              className="group flex h-12 items-center gap-3 rounded-md px-3 transition-colors duration-[120ms] hover:bg-surface-hover has-[[data-row-main]:focus-visible]:outline-2 has-[[data-row-main]:focus-visible]:outline-offset-2 has-[[data-row-main]:focus-visible]:outline-ring"
             >
               <Tooltip label={formatWhen(at, now)}>
                 <div className="flex w-[76px] shrink-0 flex-col leading-tight">
@@ -464,19 +479,23 @@ function UpcomingCard({ routines }: { routines: Routine[] }) {
               </Tooltip>
               <button
                 type="button"
-                className="flex min-w-0 flex-1 flex-col text-left"
-                onClick={() => navigate(ROUTES.routine(routine.id))}
+                data-row-main
+                aria-label={`${routine.name}, ${formatWhen(at, now)} — editar rotina`}
+                className="flex min-w-0 flex-1 flex-col text-left focus-visible:outline-none"
               >
-                <span className="truncate text-small font-medium text-fg">{routine.name}</span>
-                <span className="truncate text-caption text-fg-subtle">
+                <TruncatedText className="text-small font-medium text-fg">{routine.name}</TruncatedText>
+                <TruncatedText className="text-caption text-fg-subtle">
                   {describeSchedule(routine.schedule)}
-                </span>
+                </TruncatedText>
               </button>
               <IconButton
                 icon={Play}
                 label="Executar agora"
                 className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
-                onClick={() => void runNow(routine)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void runNow(routine)
+                }}
               />
             </li>
           ))}
@@ -497,7 +516,8 @@ interface DestRow {
   network: boolean
 }
 
-function useDiskSpaces(paths: string[]): Record<string, DiskSpace | null> {
+/** Espaço por raiz: `undefined` enquanto consulta, `null` se indisponível. */
+function useDiskSpaces(paths: string[]): Record<string, DiskSpace | null | undefined> {
   const [spaces, setSpaces] = useState<Record<string, DiskSpace | null>>({})
   const key = paths.join('|')
   useEffect(() => {
@@ -548,8 +568,9 @@ function DestinationsCard({ routines }: { routines: Routine[] }) {
             const drive = drives.find(
               (d) => d.path.toUpperCase().replace(/\\$/, '') === row.root.toUpperCase().replace(/\\$/, '')
             )
-            const space =
-              spaces[row.root] ?? (drive ? { path: drive.path, total: drive.total, free: drive.free } : null)
+            const fallback = drive ? { path: drive.path, total: drive.total, free: drive.free } : undefined
+            const queried = spaces[row.root]
+            const space = queried ?? fallback ?? (queried === null ? null : undefined)
             const Icon: LucideIcon = row.network ? Server : drive?.removable ? Usb : HardDrive
             const usedPct = space && space.total ? ((space.total - space.free) / space.total) * 100 : 0
             const tone = usageTone(usedPct)
@@ -557,13 +578,17 @@ function DestinationsCard({ routines }: { routines: Routine[] }) {
             return (
               <li key={row.root} className="flex items-start gap-3 rounded-md px-3 py-2.5">
                 <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-surface-hover text-fg-muted">
-                  <Icon className="size-4" strokeWidth={1.75} />
+                  <Icon className="size-4" strokeWidth={1.75} aria-hidden />
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <div className="flex items-baseline justify-between gap-3">
-                    <div className="flex min-w-0 items-baseline gap-2">
-                      <span className="truncate text-small font-medium text-fg">{name}</span>
-                      <span className="shrink-0 font-mono text-mono text-fg-subtle">{row.root}</span>
+                    <div className="flex min-w-0 flex-1 items-baseline gap-2">
+                      <TruncatedText className="max-w-[60%] shrink-0 text-small font-medium text-fg">
+                        {name}
+                      </TruncatedText>
+                      {name !== row.root && (
+                        <PathText path={row.root} className="min-w-0 flex-1 text-fg-subtle" />
+                      )}
                     </div>
                     <Tooltip label={row.routines.join(', ')}>
                       <span className="shrink-0 text-caption text-fg-subtle">
@@ -572,20 +597,22 @@ function DestinationsCard({ routines }: { routines: Routine[] }) {
                     </Tooltip>
                   </div>
                   {space ? (
-                    <div className="flex items-center gap-2">
-                      <DiskUsageBar total={space.total} free={space.free} className="flex-1" />
-                      {tone === 'danger' && (
-                        <Tooltip label="Pouco espaço livre: o próximo backup pode falhar.">
-                          <TriangleAlert
-                            className="-mt-5 size-4 shrink-0 text-danger"
-                            strokeWidth={1.75}
-                            aria-label="Pouco espaço"
-                          />
-                        </Tooltip>
-                      )}
+                    <Tooltip
+                      label={tone === 'danger' ? 'Pouco espaço livre: o próximo backup pode falhar.' : null}
+                      align="end"
+                    >
+                      <div>
+                        <DiskUsageBar total={space.total} free={space.free} />
+                      </div>
+                    </Tooltip>
+                  ) : space === undefined ? (
+                    <div className="flex flex-col gap-1.5" aria-label="Consultando espaço livre…">
+                      <Skeleton className="h-1.5 rounded-xs" />
+                      <Skeleton className="h-3 w-40" />
                     </div>
                   ) : (
-                    <span className="text-caption text-warning">
+                    <span className="flex items-center gap-1.5 text-caption text-warning">
+                      <TriangleAlert className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
                       Indisponível agora — conecte o disco ou verifique a rede.
                     </span>
                   )}
@@ -602,6 +629,10 @@ function DestinationsCard({ routines }: { routines: Routine[] }) {
 /* ------------------------------------------------------------------ */
 /* Últimas execuções                                                   */
 /* ------------------------------------------------------------------ */
+
+/** Anel de foco na linha quando o botão principal dela recebe foco pelo teclado. */
+const ROW_FOCUS =
+  'has-[[data-row-main]:focus-visible]:outline-2 has-[[data-row-main]:focus-visible]:outline-offset-2 has-[[data-row-main]:focus-visible]:outline-ring'
 
 function RecentRunsCard() {
   const runs = useApp((s) => s.runs)
@@ -623,40 +654,52 @@ function RecentRunsCard() {
       ) : (
         <div className="px-2 pb-2" role="table" aria-label="Últimas execuções">
           {recent.map((r) => (
-            <button
+            // Linha inteira clicável com o mouse; para teclado/leitor de tela a ação é o botão do nome.
+            <div
               key={r.id}
-              type="button"
               role="row"
               onClick={() => openRunDetail(r.id)}
-              className="grid h-11 w-full grid-cols-[112px_minmax(0,1fr)_128px_72px_104px_72px] items-center gap-3 rounded-md px-3 text-left text-small transition-colors duration-[120ms] hover:bg-surface-hover"
+              className={cn(
+                'grid h-11 w-full grid-cols-[112px_minmax(0,1fr)_156px_76px_112px_76px] items-center gap-3 rounded-md px-3 text-left text-small transition-colors duration-[120ms] hover:bg-surface-hover',
+                ROW_FOCUS
+              )}
             >
               <span role="cell">
                 <StatusPill meta={RUN_STATUS[r.status]} />
               </span>
-              <span role="cell" className="truncate font-medium text-fg">
-                {r.routineName}
+              <span role="cell" className="min-w-0">
+                <button
+                  type="button"
+                  data-row-main
+                  aria-label={`Ver detalhes: ${r.routineName}`}
+                  className="block w-full min-w-0 text-left font-medium text-fg focus-visible:outline-none"
+                >
+                  <TruncatedText>{r.routineName}</TruncatedText>
+                </button>
               </span>
               <span role="cell" className="truncate text-fg-muted">
                 <RelativeTime iso={r.startedAt} />
               </span>
               {r.status === 'failed' ? (
-                <span role="cell" className="col-span-3 truncate text-right text-danger">
-                  {r.errorMessage?.split(':')[0] ?? 'Falhou'}
+                <span role="cell" className="col-span-3 min-w-0 text-right text-danger">
+                  <TruncatedText label={r.errorMessage} align="end">
+                    {r.errorMessage?.split(':')[0] ?? 'Falhou'}
+                  </TruncatedText>
                 </span>
               ) : (
                 <>
                   <span role="cell" className="text-right text-fg-muted tnum">
                     {r.durationMs !== undefined ? formatDuration(r.durationMs) : '—'}
                   </span>
-                  <span role="cell" className="text-right text-fg-muted tnum">
+                  <span role="cell" className="truncate text-right text-fg-muted tnum">
                     {plural(r.filesCopied, 'arquivo', 'arquivos')}
                   </span>
                   <span role="cell" className="text-right font-medium text-fg tnum">
-                    {formatBytes(r.bytesCopied)}
+                    {formatSize(r.bytesCopied)}
                   </span>
                 </>
               )}
-            </button>
+            </div>
           ))}
         </div>
       )}

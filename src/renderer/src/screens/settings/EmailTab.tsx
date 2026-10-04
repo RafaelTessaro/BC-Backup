@@ -41,7 +41,9 @@ export function EmailTab() {
   // A senha salva vale só para o mesmo servidor/porta/usuário (o main a descarta se mudarem).
   const norm = (v: string): string => v.trim().toLowerCase()
   const accountChanged =
-    norm(draft.host) !== norm(saved.host) || draft.port !== saved.port || norm(draft.user) !== norm(saved.user)
+    norm(draft.host) !== norm(saved.host) ||
+    draft.port !== saved.port ||
+    norm(draft.user) !== norm(saved.user)
   const keepsSavedPassword = saved.hasPassword && !accountChanged
   const needsPassword = saved.hasPassword && accountChanged && !draft.password && !!draft.user.trim()
   const preset = SMTP_PRESETS.find((p) => p.id === draft.preset)
@@ -227,7 +229,6 @@ export function EmailTab() {
                     value={draft.password ?? ''}
                     placeholder={keepsSavedPassword ? '(senha salva)' : 'Senha ou senha de app'}
                     className="pr-9"
-                    invalid={needsPassword && dirty}
                     // apagar tudo volta a "manter a senha salva" (string vazia apagaria a senha)
                     onChange={(e) => set('password', e.target.value === '' ? undefined : e.target.value)}
                   />

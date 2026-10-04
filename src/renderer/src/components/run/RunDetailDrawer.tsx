@@ -21,8 +21,9 @@ import { Checkbox } from '@renderer/components/ui/Checkbox'
 import { Drawer } from '@renderer/components/ui/Drawer'
 import { Input } from '@renderer/components/ui/Input'
 import { PathText } from '@renderer/components/ui/PathText'
+import { Skeleton } from '@renderer/components/ui/Skeleton'
 import { StatusPill } from '@renderer/components/ui/StatusPill'
-import { Tooltip } from '@renderer/components/ui/Tooltip'
+import { Tooltip, TruncatedText } from '@renderer/components/ui/Tooltip'
 import { runNow } from '@renderer/lib/actions'
 import { bc, errorMessage } from '@renderer/lib/bc'
 import { cn } from '@renderer/lib/cn'
@@ -255,6 +256,8 @@ function LogView({ log, fileStamp }: { log: LogEntry[]; fileStamp: string }) {
       <div
         className="mx-5 mb-5 min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-surface py-2 font-mono text-mono"
         data-selectable
+        role="region"
+        aria-label={`Log · ${plural(lines.length, 'linha', 'linhas')}`}
       >
         {lines.length === 0 ? (
           <p className="px-3 py-2 font-sans text-small text-fg-subtle">
@@ -272,13 +275,42 @@ function LogView({ log, fileStamp }: { log: LogEntry[]; fileStamp: string }) {
                   l.level === 'warn' && 'bg-warning-soft/50'
                 )}
               >
-                <span className="text-fg-subtle tnum">{logTime(l.t)}</span>
+                <span className={cn('tnum', l.level === 'info' ? 'text-fg-subtle' : 'text-fg-muted')}>
+                  {logTime(l.t)}
+                </span>
                 <span className={cn('font-medium', lv.cls)}>{lv.label}</span>
                 <span className="break-words whitespace-pre-wrap text-fg">{l.message}</span>
               </div>
             )
           })
         )}
+      </div>
+    </div>
+  )
+}
+
+/** Mesma geometria do Resumo enquanto o registro carrega (sem salto ao chegar). */
+function DetailSkeleton() {
+  return (
+    <div className="flex flex-col gap-6 px-5 py-5" aria-hidden>
+      <div className="flex gap-5 border-b border-border pb-3">
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="h-4 w-10" />
+      </div>
+      <div className="grid grid-cols-3 gap-x-6 gap-y-4 rounded-lg bg-surface-sunken p-4 dark:bg-surface">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="flex flex-col gap-1.5">
+            <Skeleton className="h-3 w-14" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-3 w-16" />
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <Skeleton className="h-3.5 w-40" />
+          <Skeleton className="h-3 w-72" />
+        </div>
       </div>
     </div>
   )
@@ -308,7 +340,9 @@ export function RunDetailDrawer() {
     }
   }, [runId])
 
-  const r = loaded && loaded.id === runId ? loaded.record : null
+  const current = loaded && loaded.id === runId ? loaded : null
+  const r = current?.record ?? null
+  const notFound = current !== null && current.record === null
   const routine = r ? routines.find((x) => x.id === r.routineId) : undefined
   const output = r?.destinations.find((d) => d.outputPath)?.outputPath
   const firstDest = r?.destinations[0]
@@ -325,11 +359,17 @@ export function RunDetailDrawer() {
       title={
         r ? (
           <>
-            <span className="truncate">{r.routineName}</span>
+            <TruncatedText>{r.routineName}</TruncatedText>
             <StatusPill meta={RUN_STATUS[r.status]} />
           </>
+        ) : notFound ? (
+          <span className="text-fg-muted">Execução não encontrada</span>
         ) : (
-          <span className="text-fg-subtle">Carregando…</span>
+          <>
+            <span className="sr-only">Carregando execução…</span>
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-[22px] w-24 rounded-full" />
+          </>
         )
       }
       subtitle={
@@ -372,6 +412,13 @@ export function RunDetailDrawer() {
         ) : undefined
       }
     >
+      {!r && !notFound && <DetailSkeleton />}
+      {notFound && (
+        <p className="px-5 py-6 text-small text-fg-muted">
+          Este registro não existe mais — o histórico pode ter sido limpo ou ficado mais antigo que o período
+          guardado.
+        </p>
+      )}
       {r && (
         <Tabs.Root value={tab} onValueChange={setTab} className="flex h-full flex-col">
           <Tabs.List
@@ -395,10 +442,11 @@ export function RunDetailDrawer() {
               </Tabs.Trigger>
             ))}
           </Tabs.List>
-          <Tabs.Content value="resumo" className="focus-visible:outline-none">
+          {/* tabIndex -1: os painéis já têm conteúdo focável; evita uma parada de Tab sem indicador */}
+          <Tabs.Content value="resumo" tabIndex={-1} className="focus-visible:outline-none">
             <Summary r={r} />
           </Tabs.Content>
-          <Tabs.Content value="log" className="min-h-0 flex-1 focus-visible:outline-none">
+          <Tabs.Content value="log" tabIndex={-1} className="min-h-0 flex-1 focus-visible:outline-none">
             <LogView
               log={r.log}
               fileStamp={`${r.routineName.replace(/[\\/:*?"<>|]+/g, '-')}-${backupStamp(new Date(r.startedAt))}`}

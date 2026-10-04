@@ -13,6 +13,19 @@ export function formatPercent(value: number): string {
   return pf.format(Math.max(0, Math.min(100, value)) / 100)
 }
 
+/**
+ * Tamanho para colunas numéricas: casas decimais constantes ("9,0 GB", "31,4 GB", "120 GB"),
+ * para os números alinharem à direita sem "pular".
+ */
+export function formatSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
+  const v = bytes / 1024 ** i
+  const digits = i === 0 || v >= 100 ? 0 : 1
+  return `${v.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits })} ${units[i]}`
+}
+
 export function plural(n: number, one: string, many: string): string {
   return `${formatNumber(n)} ${n === 1 ? one : many}`
 }

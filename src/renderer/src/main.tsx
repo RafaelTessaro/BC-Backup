@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './app.css'
+import { trackInputModality } from './lib/modality'
 import { applyInitialTheme } from './lib/theme'
 import { App } from './App'
 
@@ -11,6 +12,7 @@ async function boot(): Promise<void> {
     installMockApi()
   }
   applyInitialTheme()
+  trackInputModality()
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />

@@ -18,6 +18,7 @@ import { Drawer } from '@renderer/components/ui/Drawer'
 import { PathText } from '@renderer/components/ui/PathText'
 import { ProgressBar } from '@renderer/components/ui/ProgressBar'
 import { StatusPill } from '@renderer/components/ui/StatusPill'
+import { TruncatedText } from '@renderer/components/ui/Tooltip'
 import { cancelRun } from '@renderer/lib/actions'
 import { cn } from '@renderer/lib/cn'
 import { formatEta, formatNumber, formatPercent, plural } from '@renderer/lib/format'
@@ -28,13 +29,30 @@ import { closeLiveRun, openRunDetail, progressFor, useApp } from '@renderer/lib/
 
 const ORDER: RunPhase[] = ['queued', 'scanning', 'copying', 'verifying', 'pruning', 'notifying', 'done']
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Stat({
+  label,
+  value,
+  sub,
+  pending
+}: {
+  label: string
+  value: string
+  sub?: string
+  /** Ainda sem dado (preparando): traço discreto no lugar de "0 / 0". */
+  pending?: boolean
+}) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="text-caption font-medium text-fg-subtle">{label}</span>
       <span className="truncate text-body font-medium text-fg tnum">
-        {value}
-        {sub && <span className="font-normal text-fg-subtle"> {sub}</span>}
+        {pending ? (
+          <span className="font-normal text-fg-subtle">—</span>
+        ) : (
+          <>
+            {value}
+            {sub && <span className="font-normal text-fg-subtle"> {sub}</span>}
+          </>
+        )}
       </span>
     </div>
   )
@@ -144,7 +162,18 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
                 : PHASE_LABEL[p.phase]}
           </span>
         </div>
-        <ProgressBar value={queued ? 0 : preparing ? undefined : pct} size="md" label="Progresso do backup" />
+        <ProgressBar
+          value={queued ? 0 : preparing ? undefined : pct}
+          size="md"
+          label={`Progresso do backup de ${p.routineName}`}
+          valueText={
+            queued
+              ? 'Na fila'
+              : preparing || pct === undefined
+                ? 'Preparando'
+                : `${formatPercent(pct)}${p.phase === 'copying' && p.etaMs !== undefined ? ` · ${formatEta(p.etaMs)} restantes` : ''}`
+          }
+        />
         <p className="text-small text-fg-muted tnum">
           {queued
             ? 'Aguardando a execução atual terminar. Só um backup roda por vez.'
@@ -162,13 +191,15 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
             label={dest ? 'Arquivos · neste destino' : 'Arquivos'}
             value={formatNumber(p.filesDone)}
             sub={`/ ${formatNumber(p.filesTotal)}`}
+            pending={preparing && p.filesTotal === 0}
           />
           <Stat
             label={dest ? 'Dados · neste destino' : 'Dados'}
             value={formatBytes(p.bytesDone)}
             sub={`/ ${formatBytes(p.bytesTotal)}`}
+            pending={preparing && p.bytesTotal === 0}
           />
-          <Stat label="Velocidade" value={p.speed > 0 ? formatSpeed(p.speed) : '—'} />
+          <Stat label="Velocidade" value={formatSpeed(p.speed)} pending={!(p.speed > 0)} />
           <Stat label="Tempo decorrido" value={formatDuration(Math.max(0, elapsed))} />
         </section>
       )}
@@ -297,14 +328,25 @@ export function LiveRunDrawer() {
       ? RUN_STATUS[finished.status]
       : null
 
+  const announcement = progress
+    ? progress.phase === 'queued'
+      ? `${name}: na fila`
+      : `${name}: ${PHASE_LABEL[progress.phase].replace('…', '')}`
+    : finished
+      ? `${name}: ${RUN_STATUS[finished.status].label}`
+      : ''
+
   return (
     <>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {routineId !== null ? announcement : ''}
+      </div>
       <Drawer
         open={routineId !== null}
         onOpenChange={(open) => !open && closeLiveRun()}
         title={
           <>
-            <span className="truncate">{name}</span>
+            <TruncatedText>{name}</TruncatedText>
             {status && <StatusPill meta={status} />}
           </>
         }

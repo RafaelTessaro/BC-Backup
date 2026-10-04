@@ -3,6 +3,7 @@ import { Toaster } from 'sonner'
 import { ROUTES } from '@shared/routes'
 import { LiveRunDrawer } from './components/run/LiveRunDrawer'
 import { RunDetailDrawer } from './components/run/RunDetailDrawer'
+import { BootSkeleton } from './components/shell/BootSkeleton'
 import { ErrorBoundary } from './components/shell/ErrorBoundary'
 import { NavigationGuard } from './components/shell/NavigationGuard'
 import { Sidebar } from './components/shell/Sidebar'
@@ -80,12 +81,25 @@ export function App() {
 
   return (
     <TooltipProvider delayDuration={400} skipDelayDuration={250}>
+      <button
+        type="button"
+        onClick={() => mainRef.current?.focus()}
+        className="no-drag fixed top-2 left-2 z-[70] -translate-y-16 rounded-md bg-surface-raised px-3 py-1.5 text-small font-medium text-fg shadow-pop focus-visible:translate-y-0"
+      >
+        Pular para o conteúdo
+      </button>
       <div className="flex h-full bg-bg text-fg">
         <Sidebar collapsed={collapsed} platform={platform} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Titlebar platform={platform} />
-          <main ref={mainRef} id="conteudo" className="@container relative min-h-0 flex-1 overflow-y-auto">
-            {ready && (
+          <main
+            ref={mainRef}
+            id="conteudo"
+            tabIndex={-1}
+            aria-busy={!ready || undefined}
+            className="@container relative min-h-0 flex-1 overflow-y-auto focus-visible:outline-none"
+          >
+            {ready ? (
               <div
                 key={route.name === 'settings' ? section : path}
                 className="flex min-h-full flex-col animate-fade-in"
@@ -94,6 +108,8 @@ export function App() {
                   <Screen />
                 </ErrorBoundary>
               </div>
+            ) : (
+              <BootSkeleton route={route} />
             )}
           </main>
         </div>
@@ -107,6 +123,8 @@ export function App() {
         offset={16}
         gap={8}
         toastOptions={{ unstyled: true }}
+        containerAriaLabel="Notificações"
+        hotkey={['altKey', 'KeyT']}
       />
     </TooltipProvider>
   )

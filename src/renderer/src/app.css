@@ -397,6 +397,13 @@
   );
 }
 
+/* Com o mouse, foco movido por script (Radix) não ganha anel; com teclado, sempre (ver lib/modality.ts).
+   Fora de @layer para vencer os utilitários de anel das linhas clicáveis. */
+html[data-input='pointer'] :focus-visible:not(input, textarea, [contenteditable='true']),
+html[data-input='pointer'] :has([data-row-main]:focus-visible) {
+  outline-color: transparent;
+}
+
 .titlebar :is(button, input, a, [role='button']) {
   -webkit-app-region: no-drag;
 }

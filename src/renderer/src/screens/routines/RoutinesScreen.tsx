@@ -13,7 +13,7 @@ import {
   Square,
   Trash2
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import type { Routine, RunProgress } from '@shared/types'
 import { formatBytes } from '@shared/format'
 import { ROUTES } from '@shared/routes'
@@ -29,7 +29,7 @@ import { ProgressBar } from '@renderer/components/ui/ProgressBar'
 import { RelativeTime } from '@renderer/components/ui/RelativeTime'
 import { Segmented } from '@renderer/components/ui/Segmented'
 import { StatusPill } from '@renderer/components/ui/StatusPill'
-import { Tooltip } from '@renderer/components/ui/Tooltip'
+import { Tooltip, TruncatedText } from '@renderer/components/ui/Tooltip'
 import {
   cancelRun,
   duplicateRoutine,
@@ -71,18 +71,24 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
   const paused = !routine.enabled
   const pct = progress ? overallPercent(progress) : undefined
   const dest = progress ? destinationLabel(progress) : null
+  const descId = useId()
+  const edit = (): void => navigate(ROUTES.routine(routine.id))
+  const summary = (
+    <>
+      <span className={cn(!paused && 'text-fg-muted')}>{describeSchedule(routine.schedule)}</span>
+      {' · '}
+      {sourcesSummary(routine)} → <span className="font-mono text-mono">{destinationsSummary(routine)}</span>
+      {routine.retention.enabled && ` · ${plural(routine.retention.days, 'dia', 'dias')}`}
+    </>
+  )
 
   return (
     <li className="group relative">
+      {/* Linha inteira clicável com o mouse; para teclado/leitor de tela a ação é o botão do nome
+          (sem botões aninhados dentro de outro botão). */}
       <div
-        role="button"
-        tabIndex={0}
-        onClick={() => navigate(ROUTES.routine(routine.id))}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && e.target === e.currentTarget) navigate(ROUTES.routine(routine.id))
-        }}
-        aria-label={`Editar ${routine.name}`}
-        className="flex min-h-[72px] items-center gap-4 px-5 py-3 transition-colors duration-[120ms] hover:bg-surface-hover/60 focus-visible:outline-offset-[-2px]"
+        onClick={edit}
+        className="flex min-h-[72px] items-center gap-4 px-5 py-3 transition-colors duration-[120ms] group-first:rounded-t-[11px] group-last:rounded-b-[11px] hover:bg-surface-hover/60 has-[[data-row-main]:focus-visible]:outline-2 has-[[data-row-main]:focus-visible]:outline-offset-[-2px] has-[[data-row-main]:focus-visible]:outline-ring"
       >
         <span
           className={cn(
@@ -95,23 +101,26 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2">
-            <span
+            <button
+              type="button"
+              data-row-main
+              aria-label={`Editar ${routine.name}`}
+              aria-describedby={descId}
               className={cn(
-                'truncate text-body font-semibold tracking-[-0.005em]',
+                'min-w-0 text-left text-body font-semibold tracking-[-0.005em] focus-visible:outline-none',
                 paused ? 'text-fg-muted' : 'text-fg'
               )}
             >
-              {routine.name}
-            </span>
+              <TruncatedText>{routine.name}</TruncatedText>
+            </button>
             <StatusPill meta={ROUTINE_STATUS[state]} />
           </div>
-          <p className="truncate text-small text-fg-subtle">
-            <span className={cn(!paused && 'text-fg-muted')}>{describeSchedule(routine.schedule)}</span>
-            {' · '}
-            {sourcesSummary(routine)} →{' '}
-            <span className="font-mono text-mono">{destinationsSummary(routine)}</span>
-            {routine.retention.enabled && ` · ${plural(routine.retention.days, 'dia', 'dias')}`}
-          </p>
+          <TruncatedText className="text-small text-fg-subtle" label={summary}>
+            <span id={descId}>
+              <span className="sr-only">{ROUTINE_STATUS[state].label}. </span>
+              {summary}
+            </span>
+          </TruncatedText>
         </div>
 
         {progress ? (
@@ -121,8 +130,8 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
               e.stopPropagation()
               openLiveRun(routine.id)
             }}
-            className="flex w-[220px] shrink-0 flex-col gap-1.5 rounded-md px-2 py-1 text-left transition-colors duration-[120ms] hover:bg-surface-raised"
-            aria-label="Ver progresso"
+            className="-mr-2 flex w-[228px] shrink-0 flex-col gap-1.5 rounded-md px-2 py-1 text-left transition-colors duration-[120ms] hover:bg-surface-raised"
+            aria-label={`Ver progresso de ${routine.name}`}
           >
             <span className="flex items-baseline justify-between text-caption tnum">
               <span className="font-medium text-accent-text">
@@ -139,7 +148,17 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
                 </span>
               )}
             </span>
-            <ProgressBar value={progress.phase === 'queued' ? 0 : pct} label="Progresso" />
+            <ProgressBar
+              value={progress.phase === 'queued' ? 0 : pct}
+              label={`Progresso de ${routine.name}`}
+              valueText={
+                progress.phase === 'queued'
+                  ? 'Na fila'
+                  : pct === undefined
+                    ? 'Preparando'
+                    : `${formatPercent(pct)} · ${formatBytes(progress.bytesDone)} de ${formatBytes(progress.bytesTotal)}`
+              }
+            />
           </button>
         ) : (
           <div className="hidden w-[180px] shrink-0 flex-col items-end gap-0.5 text-right @[52rem]:flex">

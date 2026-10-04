@@ -1,6 +1,7 @@
 import { useRef, useState, type FocusEvent, type ReactNode } from 'react'
 import { Tooltip as T } from 'radix-ui'
 import { cn } from '@renderer/lib/cn'
+import { inputModality } from '@renderer/lib/modality'
 
 export const TooltipProvider = T.Provider
 
@@ -25,6 +26,7 @@ const CONTENT =
  * botão-ícone depois de fechar um menu/drawer com o mouse não faz o Tooltip pipocar.
  */
 function onlyKeyboardFocus(e: FocusEvent<HTMLElement>): void {
+  if (inputModality() === 'pointer') return e.preventDefault()
   try {
     if (!e.currentTarget.matches(':focus-visible')) e.preventDefault()
   } catch {

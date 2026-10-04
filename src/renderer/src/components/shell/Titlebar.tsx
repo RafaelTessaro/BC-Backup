@@ -1,6 +1,7 @@
 import { ChevronRight, Clock, LoaderCircle } from 'lucide-react'
 import { Fragment } from 'react'
 import { ROUTES, type ParsedRoute } from '@shared/routes'
+import { Tooltip } from '@renderer/components/ui/Tooltip'
 import { cn } from '@renderer/lib/cn'
 import { formatPercent } from '@renderer/lib/format'
 import { isQueued, overallPercent, primaryRun } from '@renderer/lib/progress'
@@ -31,10 +32,15 @@ function crumbsFor(route: ParsedRoute, routineName?: string): Crumb[] {
   }
 }
 
-/** Reserva à direita para os botões nativos (titleBarOverlay) no Windows/Linux. */
-function overlayReserve(platform: string): string | undefined {
+/**
+ * Reserva à direita para os botões nativos (titleBarOverlay) no Windows/Linux, descontando a
+ * margem que o contêiner centralizado (max-w 1080) já tem — assim o breadcrumb continua
+ * alinhado com o título da página em qualquer largura e nada fica sob ─ ▢ ✕.
+ */
+function overlayPadding(platform: string): string | undefined {
   if (platform !== 'win32' && platform !== 'linux') return undefined
-  return 'calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 140px)))'
+  const reserve = 'calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 144px)))'
+  return `max(2rem, calc(${reserve} + 12px - max(0px, (100% - 1080px) / 2)))`
 }
 
 export function Titlebar({ platform }: { platform: string }) {
@@ -50,11 +56,11 @@ export function Titlebar({ platform }: { platform: string }) {
   const queuedOnly = active.length > 0 && active.every(isQueued)
 
   return (
-    <div
-      className="titlebar drag flex h-10 shrink-0 items-center"
-      style={{ paddingRight: overlayReserve(platform) }}
-    >
-      <div className="mx-auto flex w-full max-w-[1080px] min-w-0 items-center gap-3 px-8">
+    <div className="titlebar drag flex h-10 shrink-0 items-center">
+      <div
+        className="mx-auto flex w-full max-w-[1080px] min-w-0 items-center gap-3 px-8"
+        style={{ paddingRight: overlayPadding(platform) }}
+      >
         <nav aria-label="Você está em" className="flex min-w-0 items-center gap-1 text-small">
           {crumbs.map((c, i) => {
             const last = i === crumbs.length - 1
@@ -89,27 +95,35 @@ export function Titlebar({ platform }: { platform: string }) {
         </nav>
         <div className="flex-1" />
         {first && (
-          <button
-            type="button"
-            onClick={() => openLiveRun(first.routineId)}
-            className="no-drag flex h-6 max-w-[280px] min-w-0 items-center gap-1.5 rounded-full bg-accent-soft pr-2.5 pl-2 text-caption font-medium text-accent-text transition-[filter] duration-[120ms] hover:brightness-[0.97] dark:hover:brightness-125"
-          >
-            {queuedOnly ? (
-              <Clock className="size-3 shrink-0" strokeWidth={2} aria-hidden />
-            ) : (
-              <LoaderCircle className="size-3 shrink-0 animate-spin-slow" strokeWidth={2} aria-hidden />
-            )}
-            <span className="truncate">
-              {active.length > 1
-                ? `${first.routineName} + ${active.length - 1} na fila`
-                : queuedOnly
-                  ? `${first.routineName} · na fila`
-                  : first.routineName}
-            </span>
-            {active.length === 1 && pct !== undefined && (
-              <span className="tnum opacity-80">{formatPercent(pct)}</span>
-            )}
-          </button>
+          <Tooltip label={`${first.routineName} — ver progresso`} side="bottom" align="end">
+            <button
+              type="button"
+              onClick={() => openLiveRun(first.routineId)}
+              aria-label={`Ver progresso: ${first.routineName}${
+                queuedOnly ? ', na fila' : pct !== undefined ? `, ${formatPercent(pct)}` : ''
+              }${active.length > 1 ? ` (+${active.length - 1} na fila)` : ''}`}
+              className="no-drag flex h-6 max-w-[300px] min-w-0 items-center gap-1.5 rounded-full bg-accent-soft pr-2.5 pl-2 text-caption font-medium text-accent-text transition-[filter] duration-[120ms] hover:brightness-[0.97] dark:hover:brightness-125"
+            >
+              {queuedOnly ? (
+                <Clock className="size-3 shrink-0" strokeWidth={2} aria-hidden />
+              ) : (
+                <LoaderCircle className="size-3 shrink-0 animate-spin-slow" strokeWidth={2} aria-hidden />
+              )}
+              <span className="truncate">
+                {active.length > 1
+                  ? `${first.routineName} + ${active.length - 1} na fila`
+                  : queuedOnly
+                    ? `${first.routineName} · na fila`
+                    : first.routineName}
+              </span>
+              {active.length === 1 && pct !== undefined && (
+                <span className="flex shrink-0 items-center gap-1.5 tnum">
+                  <span className="h-3 w-px bg-current opacity-25" aria-hidden />
+                  {formatPercent(pct)}
+                </span>
+              )}
+            </button>
+          </Tooltip>
         )}
       </div>
     </div>

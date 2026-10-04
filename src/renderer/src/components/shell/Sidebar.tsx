@@ -7,7 +7,7 @@ import { Shortcut, TOOLTIP_KBD } from '@renderer/components/ui/Kbd'
 import { Tooltip } from '@renderer/components/ui/Tooltip'
 import { cn } from '@renderer/lib/cn'
 import { useNow } from '@renderer/lib/clock'
-import { formatWhen } from '@renderer/lib/format'
+import { formatWhen, plural } from '@renderer/lib/format'
 import { navigate, useRoute } from '@renderer/lib/router'
 import { useApp } from '@renderer/lib/store'
 
@@ -18,15 +18,17 @@ interface NavItemProps {
   collapsed: boolean
   onClick: () => void
   badge?: ReactNode
+  /** Texto do contador para leitores de tela ("2 falhas não vistas"). */
+  badgeLabel?: string
 }
 
-function NavItem({ icon: Icon, label, active, collapsed, onClick, badge }: NavItemProps) {
+function NavItem({ icon: Icon, label, active, collapsed, onClick, badge, badgeLabel }: NavItemProps) {
   const button = (
     <button
       type="button"
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
-      aria-label={collapsed ? label : undefined}
+      aria-label={badgeLabel ? `${label}, ${badgeLabel}` : collapsed ? label : undefined}
       className={cn(
         'group relative flex h-8 w-full items-center rounded-md text-small font-medium transition-colors duration-[120ms]',
         collapsed ? 'justify-center' : 'gap-2.5 px-2.5',
@@ -52,7 +54,7 @@ function NavItem({ icon: Icon, label, active, collapsed, onClick, badge }: NavIt
     </button>
   )
   return collapsed ? (
-    <Tooltip label={label} side="right">
+    <Tooltip label={badgeLabel ? `${label} · ${badgeLabel}` : label} side="right">
       {button}
     </Tooltip>
   ) : (
@@ -153,6 +155,9 @@ export function Sidebar({ collapsed, platform }: { collapsed: boolean; platform:
           active={route.name === 'routines' || route.name === 'routine-new' || route.name === 'routine-edit'}
           onClick={() => navigate(ROUTES.routines)}
           badge={routines.length > 0 && !collapsed ? <Badge>{routines.length}</Badge> : undefined}
+          badgeLabel={
+            routines.length > 0 && !collapsed ? plural(routines.length, 'rotina', 'rotinas') : undefined
+          }
         />
         <NavItem
           icon={History}
@@ -162,15 +167,15 @@ export function Sidebar({ collapsed, platform }: { collapsed: boolean; platform:
           onClick={() => navigate(ROUTES.history)}
           badge={
             unseenFailures > 0 ? (
-              <Tooltip
-                label={`${unseenFailures} ${unseenFailures === 1 ? 'falha não vista' : 'falhas não vistas'}`}
-                side="right"
-              >
+              <Tooltip label={plural(unseenFailures, 'falha não vista', 'falhas não vistas')} side="right">
                 <span>
                   <Badge tone="danger">{unseenFailures}</Badge>
                 </span>
               </Tooltip>
             ) : undefined
+          }
+          badgeLabel={
+            unseenFailures > 0 ? plural(unseenFailures, 'falha não vista', 'falhas não vistas') : undefined
           }
         />
       </nav>
@@ -189,7 +194,7 @@ export function Sidebar({ collapsed, platform }: { collapsed: boolean; platform:
               'flex h-8 items-center text-caption font-medium text-fg-subtle',
               collapsed ? 'justify-center' : 'gap-2.5 px-2.5'
             )}
-            aria-label={collapsed ? schedulerLabel : undefined}
+            role="status"
           >
             <span className="relative flex size-4 items-center justify-center" aria-hidden>
               <span
@@ -199,7 +204,7 @@ export function Sidebar({ collapsed, platform }: { collapsed: boolean; platform:
                 )}
               />
             </span>
-            {!collapsed && <span className="truncate">{schedulerLabel}</span>}
+            <span className={collapsed ? 'sr-only' : 'truncate'}>{schedulerLabel}</span>
           </div>
         </Tooltip>
         <NavItem

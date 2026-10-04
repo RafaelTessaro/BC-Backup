@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@renderer/lib/cn'
 import { middleTruncate } from '@renderer/lib/format'
 import { Tooltip } from './Tooltip'
@@ -30,21 +30,24 @@ interface PathTextProps {
   mono?: boolean
   /** Tooltip com o caminho completo (padrão: só quando truncado). */
   tooltip?: 'auto' | 'always' | 'never'
+  /** Conteúdo logo após o caminho (ex.: "+1"), descontado da largura disponível. */
+  suffix?: ReactNode
 }
 
 /**
  * Caminho com truncamento no meio ("C:\Clientes\…\NF-e 2026") que se ajusta à largura
  * disponível, com Tooltip do caminho completo. Use dentro de um contêiner com largura definida.
  */
-export function PathText({ path, className, mono = true, tooltip = 'auto' }: PathTextProps) {
+export function PathText({ path, className, mono = true, tooltip = 'auto', suffix }: PathTextProps) {
   const ref = useRef<HTMLSpanElement>(null)
+  const suffixRef = useRef<HTMLSpanElement>(null)
   const [max, setMax] = useState<number>(path.length)
 
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     const measure = (): void => {
-      const width = el.clientWidth
+      const width = el.clientWidth - (suffixRef.current?.offsetWidth ?? 0)
       if (width <= 0) return
       const cs = getComputedStyle(el)
       // `font` (atalho) volta vazio quando há font-variant/feature personalizados — monte à mão.
@@ -72,6 +75,11 @@ export function PathText({ path, className, mono = true, tooltip = 'auto' }: Pat
         )}
       >
         {text}
+        {suffix && (
+          <span ref={suffixRef} className="pl-1 font-sans">
+            {suffix}
+          </span>
+        )}
       </span>
     </Tooltip>
   )

@@ -45,7 +45,12 @@ export function ProgressBar({
     >
       {indeterminate ? (
         <div
-          className={cn('absolute inset-y-0 left-0 w-[30%] rounded-xs animate-indeterminate', FILL[tone])}
+          className={cn(
+            'absolute inset-y-0 left-0 w-[30%] rounded-xs animate-indeterminate',
+            // movimento reduzido: sem deslizar — faixa inteira suave (não parece "30% concluído")
+            'motion-reduce:w-full motion-reduce:animate-none motion-reduce:opacity-35',
+            FILL[tone]
+          )}
         />
       ) : (
         <div

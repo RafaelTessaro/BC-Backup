@@ -7,6 +7,7 @@
 //   ?theme=light|dark|system         → preferência de tema inicial (padrão: system)
 //   ?platform=win32|darwin|linux     → simula a plataforma em app.info()
 //   ?frozen=1                        → progresso simulado não avança (screenshots estáveis)
+//   ?slow=1                          → leituras demoram ~1,5 s (ver esqueletos de carregamento)
 
 import type {
   BcApi,
@@ -80,7 +81,13 @@ const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 const iso = (d: Date | number): string => new Date(d).toISOString()
 const uid = (prefix: string): string => `${prefix}-${Math.random().toString(36).slice(2, 10)}`
 
-function readFlags(): { scenario: Scenario; theme: AppSettings['theme']; platform: string; frozen: boolean } {
+function readFlags(): {
+  scenario: Scenario
+  theme: AppSettings['theme']
+  platform: string
+  frozen: boolean
+  slow: boolean
+} {
   const p = new URLSearchParams(typeof location !== 'undefined' ? location.search : '')
   let scenario = (p.get('scenario') as Scenario | null) ?? 'running'
   if (p.get('empty') === '1') scenario = 'empty'
@@ -90,7 +97,8 @@ function readFlags(): { scenario: Scenario; theme: AppSettings['theme']; platfor
     scenario,
     theme: theme === 'light' || theme === 'dark' ? theme : 'system',
     platform: p.get('platform') ?? 'browser',
-    frozen: p.get('frozen') === '1'
+    frozen: p.get('frozen') === '1',
+    slow: p.get('slow') === '1'
   }
 }
 
@@ -616,7 +624,9 @@ function accountChanged(
   next: Pick<SmtpInput, 'host' | 'port' | 'user'>
 ): boolean {
   const norm = (v: string): string => v.trim().toLowerCase()
-  return norm(saved.host) !== norm(next.host) || saved.port !== next.port || norm(saved.user) !== norm(next.user)
+  return (
+    norm(saved.host) !== norm(next.host) || saved.port !== next.port || norm(saved.user) !== norm(next.user)
+  )
 }
 
 export function createMockApi(): BcApi {
@@ -949,6 +959,9 @@ export function createMockApi(): BcApi {
     hostname: 'RECEPCAO-01'
   }
 
+  /** Latência simulada das leituras (?slow=1). */
+  const lag = (): Promise<void> => (flags.slow ? delay(1500) : Promise.resolve())
+
   const api: BcApi = {
     app: {
       info: async () => clone(info),
@@ -959,7 +972,10 @@ export function createMockApi(): BcApi {
       setResolvedTheme: async () => {}
     },
     routines: {
-      list: async () => routines.map(withLastRun),
+      list: async () => {
+        await lag()
+        return routines.map(withLastRun)
+      },
       get: async (id) => {
         const r = routines.find((x) => x.id === id)
         return r ? withLastRun(r) : null
@@ -1043,6 +1059,7 @@ export function createMockApi(): BcApi {
         return list.map(summaryOf).map(clone)
       },
       get: async (id) => {
+        await lag()
         const r = runs.find((x) => x.id === id)
         return r ? clone(r) : null
       },
@@ -1103,10 +1120,11 @@ export function createMockApi(): BcApi {
     },
     system: {
       drives: async () => {
-        await delay(120)
+        await delay(flags.slow ? 3000 : 120)
         return clone(DRIVES)
       },
       diskSpace: async (path): Promise<DiskSpace | null> => {
+        await lag()
         const d = driveFor(path)
         return d ? { path: d.path, total: d.total, free: d.free } : null
       },

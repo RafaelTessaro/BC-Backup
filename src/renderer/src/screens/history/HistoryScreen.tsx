@@ -12,10 +12,10 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { RunSummary } from '@shared/types'
-import { formatBytes, formatDuration } from '@shared/format'
+import { formatDuration } from '@shared/format'
 import { ROUTES } from '@shared/routes'
 import { Page, PageHeader } from '@renderer/components/shell/Page'
-import { Button } from '@renderer/components/ui/Button'
+import { Button, IconButton } from '@renderer/components/ui/Button'
 import { Card } from '@renderer/components/ui/Card'
 import { ConfirmDialog } from '@renderer/components/ui/Dialog'
 import { EmptyState } from '@renderer/components/ui/EmptyState'
@@ -23,11 +23,20 @@ import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from '@renderer/componen
 import { Segmented } from '@renderer/components/ui/Segmented'
 import { Select } from '@renderer/components/ui/Select'
 import { StatusPill } from '@renderer/components/ui/StatusPill'
-import { Tooltip } from '@renderer/components/ui/Tooltip'
+import { PathText } from '@renderer/components/ui/PathText'
+import { Tooltip, TruncatedText } from '@renderer/components/ui/Tooltip'
 import { bc, errorMessage } from '@renderer/lib/bc'
 import { cn } from '@renderer/lib/cn'
 import { useNow } from '@renderer/lib/clock'
-import { dayKey, formatDayHeading, formatFull, formatNumber, formatTime, plural } from '@renderer/lib/format'
+import {
+  dayKey,
+  formatDayHeading,
+  formatFull,
+  formatNumber,
+  formatSize,
+  formatTime,
+  plural
+} from '@renderer/lib/format'
 import { navigate } from '@renderer/lib/router'
 import { RUN_STATUS, TRIGGER_LABEL } from '@renderer/lib/status'
 import { openRunDetail, refreshRuns, useApp } from '@renderer/lib/store'
@@ -89,12 +98,13 @@ function RunRow({ r, dest }: { r: RunSummary; dest?: string }) {
   const meta = RUN_STATUS[r.status]
   const failed = r.status === 'failed'
   return (
-    <button
-      type="button"
+    // Linha inteira clicável com o mouse; para teclado/leitor de tela a ação é o botão do nome.
+    <div
       role="row"
       onClick={() => openRunDetail(r.id)}
       className={cn(
         'grid h-11 w-full items-center gap-3 rounded-md px-3 text-left text-small transition-colors duration-[120ms] hover:bg-surface-hover',
+        'has-[[data-row-main]:focus-visible]:outline-2 has-[[data-row-main]:focus-visible]:outline-offset-2 has-[[data-row-main]:focus-visible]:outline-ring',
         COLS
       )}
     >
@@ -102,7 +112,14 @@ function RunRow({ r, dest }: { r: RunSummary; dest?: string }) {
         <StatusPill meta={meta} />
       </span>
       <span role="cell" className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate font-medium text-fg">{r.routineName}</span>
+        <button
+          type="button"
+          data-row-main
+          aria-label={`Ver detalhes: ${r.routineName}, ${meta.label}, ${formatFull(r.startedAt)}`}
+          className="min-w-0 text-left font-medium text-fg focus-visible:outline-none"
+        >
+          <TruncatedText>{r.routineName}</TruncatedText>
+        </button>
         {r.trigger !== 'schedule' && (
           <Tooltip label={TRIGGER_LABEL[r.trigger]}>
             <span className="text-fg-subtle">
@@ -118,7 +135,13 @@ function RunRow({ r, dest }: { r: RunSummary; dest?: string }) {
       <Tooltip label={formatFull(r.startedAt)}>
         <span role="cell" className="text-fg-muted tnum">
           {formatTime(r.startedAt)}
-          {r.finishedAt && <span className="text-fg-subtle"> → {formatTime(r.finishedAt)}</span>}
+          {r.finishedAt && (
+            <span className="text-fg-subtle">
+              {' '}
+              <span aria-hidden>→</span>
+              <span className="sr-only">até</span> {formatTime(r.finishedAt)}
+            </span>
+          )}
         </span>
       </Tooltip>
       {failed ? (
@@ -136,15 +159,23 @@ function RunRow({ r, dest }: { r: RunSummary; dest?: string }) {
             {formatNumber(r.filesCopied)}
           </span>
           <span role="cell" className="text-right font-medium text-fg tnum">
-            {formatBytes(r.bytesCopied)}
+            {formatSize(r.bytesCopied)}
           </span>
         </>
       )}
-      <span role="cell" className="truncate pl-2 font-mono text-mono text-fg-subtle">
-        {dest}
-        {r.destinationCount > 1 && <span className="font-sans text-caption"> +{r.destinationCount - 1}</span>}
+      <span role="cell" className="min-w-0 pl-2 text-fg-subtle">
+        {dest && (
+          <PathText
+            path={dest}
+            suffix={
+              r.destinationCount > 1 ? (
+                <span className="text-caption tnum">+{r.destinationCount - 1}</span>
+              ) : undefined
+            }
+          />
+        )}
       </span>
-    </button>
+    </div>
   )
 }
 
@@ -228,9 +259,7 @@ export function HistoryScreen() {
             </Button>
             <MenuRoot>
               <MenuTrigger asChild>
-                <Button className="w-8 px-0" aria-label="Mais ações">
-                  <Ellipsis className="size-4" strokeWidth={1.75} />
-                </Button>
+                <IconButton icon={Ellipsis} label="Mais ações" variant="secondary" size="md" />
               </MenuTrigger>
               <MenuContent>
                 <MenuItem icon={Trash2} danger onSelect={() => setConfirmClear(true)}>
