@@ -9,13 +9,17 @@ export interface Launched {
   errors: string[]
 }
 
-/** Abre o app (out/) com uma pasta de dados isolada. */
-export async function launch(extraArgs: string[] = [], userData?: string): Promise<Launched> {
+/** Abre o app (out/) com uma pasta de dados isolada (`userData` reaproveita a de uma abertura anterior). */
+export async function launch(
+  extraArgs: string[] = [],
+  userData?: string,
+  env: Record<string, string> = {}
+): Promise<Launched> {
   const dir = userData ?? mkdtempSync(join(tmpdir(), 'bcb-e2e-'))
   const app = await electron.launch({
     args: ['.', ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []), ...extraArgs],
     // BC_E2E=1 expõe o gancho __bcTrayToggle (simula o clique no ícone da bandeja).
-    env: { ...process.env, BC_USER_DATA_DIR: dir, NODE_ENV: 'production', BC_E2E: '1' }
+    env: { ...process.env, BC_USER_DATA_DIR: dir, NODE_ENV: 'production', BC_E2E: '1', ...env }
   })
   const errors: string[] = []
   app.on('window', (page) => watchErrors(page, errors))
