@@ -2,6 +2,7 @@ import {
   CircleCheck,
   CircleX,
   Copy,
+  Download,
   FolderOpen,
   Mail,
   Play,
@@ -13,7 +14,7 @@ import {
 import { Tabs } from 'radix-ui'
 import { useEffect, useMemo, useState } from 'react'
 import type { DestinationResult, LogEntry, RunRecord } from '@shared/types'
-import { formatBytes, formatDuration } from '@shared/format'
+import { backupStamp, formatBytes, formatDuration } from '@shared/format'
 import { Button, IconButton } from '@renderer/components/ui/Button'
 import { Callout } from '@renderer/components/ui/Callout'
 import { Checkbox } from '@renderer/components/ui/Checkbox'
@@ -46,10 +47,16 @@ const DEST_ICON: Record<string, { icon: LucideIcon; cls: string }> = {
 
 const EMAIL_TEXT: Record<string, string> = {
   sent: 'Enviado',
-  queued: 'Na fila para reenvio',
+  queued: 'Na fila — nova tentativa a cada 15 min',
   failed: 'Não foi possível enviar',
   skipped: 'Não enviado (regra da rotina)',
-  not_configured: 'Notificação desligada'
+  not_configured: 'Não configurado'
+}
+
+const EMAIL_HINT: Record<string, string> = {
+  queued: 'Sem conexão com o servidor agora. O BC Backup tenta de novo por até 24 h.',
+  skipped: 'A rotina só avisa em alguns resultados, ou a execução foi cancelada.',
+  not_configured: 'Notificação desligada, sem destinatários ou servidor de e-mail não configurado.'
 }
 
 function logTime(iso: string): string {
@@ -165,21 +172,29 @@ function Summary({ r }: { r: RunRecord }) {
       <section className="flex items-center gap-3 rounded-lg border border-border px-4 py-3">
         <Mail className="size-4 shrink-0 text-fg-subtle" strokeWidth={1.75} />
         <span className="flex-1 text-small text-fg-muted">E-mail</span>
-        <span
-          className={cn(
-            'text-small font-medium',
-            r.email === 'sent' ? 'text-success' : r.email === 'failed' ? 'text-danger' : 'text-fg-muted'
-          )}
-        >
-          {EMAIL_TEXT[r.email ?? 'not_configured']}
-        </span>
+        <Tooltip label={EMAIL_HINT[r.email ?? 'not_configured']}>
+          <span
+            className={cn(
+              'text-small font-medium',
+              r.email === 'sent'
+                ? 'text-success'
+                : r.email === 'failed'
+                  ? 'text-danger'
+                  : r.email === 'queued'
+                    ? 'text-warning'
+                    : 'text-fg-muted'
+            )}
+          >
+            {EMAIL_TEXT[r.email ?? 'not_configured']}
+          </span>
+        </Tooltip>
       </section>
       {r.emailError && <p className="-mt-4 text-caption text-danger">{r.emailError}</p>}
     </div>
   )
 }
 
-function LogView({ log }: { log: LogEntry[] }) {
+function LogView({ log, fileStamp }: { log: LogEntry[]; fileStamp: string }) {
   const [onlyIssues, setOnlyIssues] = useState(false)
   const [query, setQuery] = useState('')
   const lines = useMemo(() => {
@@ -188,6 +203,15 @@ function LogView({ log }: { log: LogEntry[] }) {
       (l) => (!onlyIssues || l.level !== 'info') && (!q || l.message.toLowerCase().includes(q))
     )
   }, [log, onlyIssues, query])
+
+  const save = (): void => {
+    const url = URL.createObjectURL(new Blob([logText(log)], { type: 'text/plain;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `bc-backup-log-${fileStamp}.txt`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
 
   const copy = async (): Promise<void> => {
     try {
@@ -210,7 +234,10 @@ function LogView({ log }: { log: LogEntry[] }) {
           aria-label="Buscar no log"
         />
         <Checkbox checked={onlyIssues} onCheckedChange={setOnlyIssues} label="Só erros e avisos" />
-        <IconButton icon={Copy} label="Copiar log" variant="secondary" size="md" onClick={() => void copy()} />
+        <div className="flex items-center gap-1">
+          <IconButton icon={Copy} label="Copiar log" variant="secondary" size="md" onClick={() => void copy()} />
+          <IconButton icon={Download} label="Salvar como .txt" variant="secondary" size="md" onClick={save} />
+        </div>
       </div>
       <div
         className="mx-5 mb-5 min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-surface py-2 font-mono text-mono"
@@ -357,7 +384,7 @@ export function RunDetailDrawer() {
             <Summary r={r} />
           </Tabs.Content>
           <Tabs.Content value="log" className="min-h-0 flex-1 focus-visible:outline-none">
-            <LogView log={r.log} />
+            <LogView log={r.log} fileStamp={`${r.routineName.replace(/[\\/:*?"<>|]+/g, '-')}-${backupStamp(new Date(r.startedAt))}`} />
           </Tabs.Content>
         </Tabs.Root>
       )}

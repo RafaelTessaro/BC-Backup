@@ -54,7 +54,7 @@ export function WeekdayPicker({
               className={cn(
                 'flex size-8 items-center justify-center rounded-sm border text-small font-medium transition-[background-color,border-color,color] duration-[120ms]',
                 'border-border-strong bg-surface-raised text-fg-muted shadow-xs hover:text-fg',
-                'data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-foreground'
+                'aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-accent-foreground aria-pressed:hover:text-accent-foreground'
               )}
             >
               {letter}

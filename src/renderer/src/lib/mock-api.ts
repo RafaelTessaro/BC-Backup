@@ -72,6 +72,9 @@ function hash(s: string): number {
 }
 
 const clone = <T>(v: T): T => structuredClone(v)
+/** Erros chegam do IPC com este prefixo — o renderer precisa limpá-lo (ver errorMessage). */
+const ipcError = (channel: string, message: string): Error =>
+  new Error(`Error invoking remote method '${channel}': Error: ${message}`)
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const iso = (d: Date | number): string => new Date(d).toISOString()
 const uid = (prefix: string): string => `${prefix}-${Math.random().toString(36).slice(2, 10)}`
@@ -355,7 +358,7 @@ function profile(r: Routine): { bytes: number; files: number; speed: number } {
   return { bytes, files, speed: (net ? 38 : 92) * MB }
 }
 
-function buildRecord(spec: GenSpec, rnd: () => number): RunRecord {
+function buildRecord(spec: GenSpec, rnd: () => number, smtpReady = true): RunRecord {
   const { routine, start, trigger, status } = spec
   const prof = profile(routine)
   const id = `run-${routine.id}-${start.getTime().toString(36)}`
@@ -388,8 +391,6 @@ function buildRecord(spec: GenSpec, rnd: () => number): RunRecord {
   const destinations: DestinationResult[] = []
   let warnings = 0
   let errors = 0
-  let filesCopied = 0
-  let bytesCopied = 0
   const stamp = backupStamp(start)
 
   dests.forEach((d, i) => {
@@ -456,8 +457,6 @@ function buildRecord(spec: GenSpec, rnd: () => number): RunRecord {
       )
       push('info', `Retenção: 1 backup antigo removido (${backupStamp(old)})`, 900)
     }
-    filesCopied += Math.max(0, destFiles)
-    bytesCopied += destBytes
     destinations.push({
       destinationId: d.id,
       path: d.path,
@@ -472,10 +471,13 @@ function buildRecord(spec: GenSpec, rnd: () => number): RunRecord {
     })
   })
 
+  // Mesma semântica do main: not_configured = notificação desligada / sem destinatários / SMTP ausente;
+  // skipped = resultado não selecionado para envio ou execução cancelada.
   let email: RunSummary['email'] = 'not_configured'
-  if (routine.notification.enabled) {
-    const n = routine.notification
-    const wants = status === 'success' ? n.onSuccess : status === 'warning' ? n.onWarning : status === 'failed' ? n.onFailure : false
+  const n = routine.notification
+  if (n.enabled && n.recipients.length > 0 && smtpReady) {
+    const wants =
+      status === 'success' ? n.onSuccess : status === 'warning' ? n.onWarning : status === 'failed' ? n.onFailure : false
     if (wants) {
       email = 'sent'
       push('info', `E-mail enviado para ${n.recipients.join(', ')}`, 1300)
@@ -503,10 +505,11 @@ function buildRecord(spec: GenSpec, rnd: () => number): RunRecord {
     finishedAt: iso(t),
     durationMs,
     filesTotal,
-    filesCopied: Math.round(filesCopied / Math.max(1, dests.length - (status === 'failed' ? 1 : 0))),
+    // totais do melhor destino (detalhe por destino em `destinations`)
+    filesCopied: Math.max(0, ...destinations.map((d) => d.filesCopied)),
     filesSkipped: destinations.reduce((a, d) => a + d.skipped.length, 0),
     bytesTotal,
-    bytesCopied: Math.round(bytesCopied / Math.max(1, dests.length - (status === 'failed' ? 1 : 0))),
+    bytesCopied: Math.max(0, ...destinations.map((d) => d.bytesCopied)),
     warnings,
     errors,
     destinationCount: dests.length,
@@ -535,7 +538,7 @@ function seedRuns(routines: Routine[], scenario: Scenario, now: Date): RunRecord
         let errorMessage: string | undefined
         let failedDestination: number | undefined
         const roll = rnd()
-        if (r.id === 'r-contab' && roll < 0.3) status = 'warning'
+        if (r.id === 'r-contab' && roll < 0.14) status = 'warning'
         else if (r.id === 'r-nfe' && back === 9) {
           status = 'failed'
           errorMessage = 'Destino indisponível: \\\\SERVIDOR\\backup não respondeu. Verifique se o servidor está ligado.'
@@ -545,7 +548,7 @@ function seedRuns(routines: Routine[], scenario: Scenario, now: Date): RunRecord
           errorMessage = 'Sem espaço em F:\\ (faltam 12 GB).'
           failedDestination = 0
         } else if (r.id === 'r-dir' && back === 8) status = 'cancelled'
-        else if (roll > 0.94) status = 'warning'
+        else if (roll > 0.975) status = 'warning'
         specs.push({
           routine: r,
           start,
@@ -650,19 +653,21 @@ export function createMockApi(): BcApi {
     const runId = uid('run')
     const ratio = opts?.startRatio ?? 0
     const isSeeded = ratio > 0
+    // fila global: só uma execução por vez (como o agendador do main)
+    const busy = [...active.values()].some((a) => a.progress.phase !== 'queued')
     // execuções iniciadas na interface são aceleradas para a demonstração
     const speed = isSeeded ? 84 * MB : Math.max(prof.bytes / 14, 40 * MB)
     const progress: RunProgress = {
       runId,
       routineId: routine.id,
       routineName: routine.name,
-      phase: isSeeded ? 'copying' : 'scanning',
+      phase: isSeeded ? 'copying' : busy ? 'queued' : 'scanning',
       filesTotal: isSeeded ? prof.files : 0,
       filesDone: Math.round(prof.files * ratio),
       bytesTotal: isSeeded ? prof.bytes : 0,
       bytesDone: Math.round(prof.bytes * ratio),
       speed: isSeeded ? speed : 0,
-      etaMs: isSeeded ? ((prof.bytes * (1 - ratio)) / speed) * 1000 : undefined,
+      etaMs: isSeeded ? ((prof.bytes * (dests.length - ratio)) / speed) * 1000 : undefined,
       currentFile: isSeeded ? 'C:\\Users\\Ana\\Pictures\\Escritório\\2026\\Clientes\\Reforma da fachada\\IMG_4821.HEIC' : undefined,
       destinationIndex: 0,
       destinationCount: dests.length,
@@ -699,7 +704,13 @@ export function createMockApi(): BcApi {
     if (!run) return
     const p = run.progress
     run.ticks++
-    if (p.phase === 'scanning') {
+    if (p.phase === 'queued') {
+      const someoneRunning = [...active.values()].some((a) => a !== run && a.progress.phase !== 'queued')
+      if (someoneRunning) return
+      p.phase = 'scanning'
+      p.startedAt = iso(Date.now())
+      run.ticks = 0
+    } else if (p.phase === 'scanning') {
       if (run.ticks >= 4) {
         p.phase = 'copying'
         p.filesTotal = run.filesPerDest
@@ -714,7 +725,8 @@ export function createMockApi(): BcApi {
       const src = run.routine.sources[Math.floor(Math.random() * run.routine.sources.length)]
       p.currentFile = `${src?.path ?? 'C:\\'}\\${FILE_NAMES[Math.floor(Math.random() * FILE_NAMES.length)]}`
       const elapsed = Date.now() - new Date(p.startedAt).getTime()
-      p.etaMs = elapsed > 5000 ? ((p.bytesTotal - p.bytesDone) / Math.max(1, p.speed)) * 1000 : undefined
+      const remaining = p.bytesTotal - p.bytesDone + (p.destinationCount - p.destinationIndex - 1) * p.bytesTotal
+      p.etaMs = elapsed > 5000 ? (remaining / Math.max(1, p.speed)) * 1000 : undefined
       if (p.bytesDone >= p.bytesTotal) {
         if (p.destinationIndex < p.destinationCount - 1) {
           p.destinationIndex++
@@ -749,7 +761,8 @@ export function createMockApi(): BcApi {
     const start = new Date(run.progress.startedAt)
     const record = buildRecord(
       { routine: run.routine, start, trigger: run.trigger, status },
-      mulberry32(hash(runId))
+      mulberry32(hash(runId)),
+      !!settings.smtp.host && !!settings.smtp.fromEmail
     )
     record.id = runId
     record.finishedAt = iso(Date.now())
@@ -899,6 +912,9 @@ export function createMockApi(): BcApi {
       },
       save: async (input) => {
         await delay(250)
+        // como o main: recusa salvar com problemas de nível "error"
+        const blocking = validate(input).filter((i) => i.level === 'error')
+        if (blocking.length) throw ipcError('routines:save', blocking[0].message)
         const ts = iso(Date.now())
         let saved: Routine
         const existing = input.id ? routines.find((r) => r.id === input.id) : undefined
@@ -918,7 +934,7 @@ export function createMockApi(): BcApi {
       },
       duplicate: async (id) => {
         const r = routines.find((x) => x.id === id)
-        if (!r) throw new Error('Rotina não encontrada.')
+        if (!r) throw ipcError('routines:duplicate', 'Rotina não encontrada.')
         const ts = iso(Date.now())
         const copy: Routine = { ...clone(r), id: uid('r'), name: `${r.name} (cópia)`, createdAt: ts, updatedAt: ts }
         delete copy.lastRun
@@ -933,8 +949,9 @@ export function createMockApi(): BcApi {
       },
       runNow: async (id) => {
         const r = routines.find((x) => x.id === id)
-        if (!r) throw new Error('Rotina não encontrada.')
-        if ([...active.values()].some((a) => a.routine.id === id)) throw new Error('Esta rotina já está em execução.')
+        if (!r) throw ipcError('routines:run-now', 'Rotina não encontrada.')
+        // já em execução ou na fila: devolve a execução existente (sem duplicar)
+        for (const [existingId, a] of active) if (a.routine.id === id) return { runId: existingId }
         const runId = startRun(r, 'manual')
         routinesChanged()
         return { runId }

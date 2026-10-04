@@ -133,7 +133,7 @@ export function TimePicker({ value, onChange, id, label = 'Horário', className 
           sideOffset={4}
           collisionPadding={8}
           onOpenAutoFocus={(e) => e.preventDefault()}
-          className="z-50 flex gap-1 rounded-lg border border-border bg-surface-raised p-1 shadow-pop data-[state=closed]:animate-pop-out data-[state=open]:animate-pop-in"
+          className="no-drag z-50 flex gap-1 rounded-lg border border-border bg-surface-raised p-1 shadow-pop data-[state=closed]:animate-pop-out data-[state=open]:animate-pop-in"
         >
           <Column
             label="Horas"

@@ -40,10 +40,10 @@ export function ConfirmDialog({
   return (
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-overlay data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
+        <AlertDialog.Overlay className="no-drag fixed inset-0 z-50 bg-overlay data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <AlertDialog.Content
           className={cn(
-            'fixed top-1/2 left-1/2 z-50 w-[calc(100vw-48px)] max-w-[440px] -translate-x-1/2 -translate-y-1/2',
+            'no-drag fixed top-1/2 left-1/2 z-50 w-[calc(100vw-48px)] max-w-[440px] -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border bg-surface-raised p-6 shadow-dialog',
             'data-[state=open]:animate-dialog-in data-[state=closed]:animate-dialog-out'
           )}

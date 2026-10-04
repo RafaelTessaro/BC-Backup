@@ -3,6 +3,7 @@ import { Toaster } from 'sonner'
 import { ROUTES } from '@shared/routes'
 import { LiveRunDrawer } from './components/run/LiveRunDrawer'
 import { RunDetailDrawer } from './components/run/RunDetailDrawer'
+import { ErrorBoundary } from './components/shell/ErrorBoundary'
 import { NavigationGuard } from './components/shell/NavigationGuard'
 import { Sidebar } from './components/shell/Sidebar'
 import { Titlebar } from './components/shell/Titlebar'
@@ -85,8 +86,10 @@ export function App() {
           <Titlebar platform={platform} />
           <main ref={mainRef} id="conteudo" className="@container relative min-h-0 flex-1 overflow-y-auto">
             {ready && (
-              <div key={route.name === 'settings' ? section : path} className="min-h-full animate-fade-in">
-                <Screen />
+              <div key={route.name === 'settings' ? section : path} className="flex min-h-full flex-col animate-fade-in">
+                <ErrorBoundary resetKey={path}>
+                  <Screen />
+                </ErrorBoundary>
               </div>
             )}
           </main>

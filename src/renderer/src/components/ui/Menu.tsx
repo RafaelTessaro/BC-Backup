@@ -25,7 +25,7 @@ export function MenuContent({
         sideOffset={4}
         collisionPadding={8}
         className={cn(
-          'z-50 min-w-[200px] overflow-hidden rounded-lg border border-border bg-surface-raised p-1 shadow-pop',
+          'no-drag z-50 min-w-[200px] overflow-hidden rounded-lg border border-border bg-surface-raised p-1 shadow-pop',
           'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out',
           className
         )}

@@ -45,6 +45,15 @@ function driveIcon(path: string, drive?: DriveInfo): LucideIcon {
   return drive?.removable ? Usb : HardDrive
 }
 
+function DriveIcon({ path, drive, className }: { path: string; drive?: DriveInfo; className?: string }) {
+  if (isNetworkPath(path) || drive?.network) return <Server className={className} strokeWidth={1.75} />
+  return drive?.removable ? (
+    <Usb className={className} strokeWidth={1.75} />
+  ) : (
+    <HardDrive className={className} strokeWidth={1.75} />
+  )
+}
+
 function findDrive(drives: DriveInfo[], path: string): DriveInfo | undefined {
   const up = path.toUpperCase()
   return [...drives]
@@ -83,7 +92,6 @@ function DestinationCard({
   onRemove: () => void
 }) {
   const space = useSpace(dest.path)
-  const Icon = driveIcon(dest.path, drive)
   const enabled = dest.enabled !== false
   const lacking = space && incoming ? incoming - space.free : 0
   const name = dest.label || drive?.label || dest.path
@@ -91,12 +99,14 @@ function DestinationCard({
     <li className={cn('flex flex-col gap-4 p-4', !enabled && 'opacity-60')}>
       <div className="flex items-center gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-hover text-fg-muted">
-          <Icon className="size-[18px]" strokeWidth={1.75} />
+          <DriveIcon path={dest.path} drive={drive} className="size-[18px]" />
         </span>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-small font-medium text-fg">
             {name}
-            {drive && dest.label && <span className="font-normal text-fg-subtle"> · {drive.label}</span>}
+            {drive && dest.label && dest.label.toLowerCase() !== drive.label.toLowerCase() && (
+              <span className="font-normal text-fg-subtle"> · {drive.label}</span>
+            )}
           </span>
           <PathText path={dest.path} className="text-fg-subtle" />
         </div>
@@ -209,12 +219,19 @@ function AddDestinationMenu({
               icon={Icon}
               disabled={used}
               onSelect={() => onAdd(d.path, d.removable || d.network ? d.label : undefined)}
-              hint={used ? 'Adicionado' : `${formatBytes(d.free)} livres`}
+              hint={
+                used ? (
+                  'Adicionado'
+                ) : (
+                  <span className={cn(pct > 90 && 'text-danger')}>
+                    {formatBytes(d.free)} livres{pct > 90 ? ` · ${formatPercent(pct)}` : ''}
+                  </span>
+                )
+              }
             >
-              <span className="flex items-baseline gap-1.5">
-                {d.label}
-                <span className="font-mono text-mono text-fg-subtle">{d.path}</span>
-                {!used && pct > 90 && <span className="text-caption text-danger">{formatPercent(pct)}</span>}
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span className="truncate">{d.label}</span>
+                <span className="shrink-0 font-mono text-mono text-fg-subtle">{d.path}</span>
               </span>
             </MenuItem>
           )

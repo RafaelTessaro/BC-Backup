@@ -22,7 +22,8 @@ import { cancelRun } from '@renderer/lib/actions'
 import { cn } from '@renderer/lib/cn'
 import { formatEta, formatNumber, formatPercent, plural } from '@renderer/lib/format'
 import { useTick } from '@renderer/lib/hooks'
-import { PHASE_LABEL, RUN_STATUS } from '@renderer/lib/status'
+import { destinationLabel, overallPercent } from '@renderer/lib/progress'
+import { PHASE_LABEL, ROUTINE_STATUS, RUN_STATUS } from '@renderer/lib/status'
 import { closeLiveRun, openRunDetail, progressFor, useApp } from '@renderer/lib/store'
 
 const ORDER: RunPhase[] = ['queued', 'scanning', 'copying', 'verifying', 'pruning', 'notifying', 'done']
@@ -103,8 +104,11 @@ function PhaseSteps({ p, routine }: { p: RunProgress; routine?: Routine }) {
 
 function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
   const now = useTick(1000)
-  const pct = p.bytesTotal > 0 ? (p.bytesDone / p.bytesTotal) * 100 : undefined
-  const preparing = p.phase === 'scanning' || p.phase === 'queued'
+  const pct = overallPercent(p)
+  const destPct = p.bytesTotal > 0 ? (p.bytesDone / p.bytesTotal) * 100 : 0
+  const queued = p.phase === 'queued'
+  const preparing = p.phase === 'scanning' || queued
+  const dest = destinationLabel(p)
   const elapsed = now.getTime() - new Date(p.startedAt).getTime()
   const drives = useApp((s) => s.drives)
   const dests = routine?.destinations.filter((d) => d.enabled !== false) ?? []
@@ -117,27 +121,37 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
             {pct === undefined ? '—' : formatPercent(pct)}
           </span>
           <span className="pb-1 text-small text-fg-muted tnum">
-            {preparing
-              ? 'Preparando…'
-              : p.phase === 'copying'
+            {queued
+              ? 'Na fila'
+              : preparing
+                ? 'Preparando…'
+                : p.phase === 'copying'
                 ? p.etaMs === undefined
                   ? 'Calculando…'
                   : `${formatEta(p.etaMs)} restantes`
                 : PHASE_LABEL[p.phase]}
           </span>
         </div>
-        <ProgressBar value={preparing ? undefined : pct} size="md" label="Progresso do backup" />
+        <ProgressBar value={queued ? 0 : preparing ? undefined : pct} size="md" label="Progresso do backup" />
         <p className="text-small text-fg-muted tnum">
-          {preparing
-            ? 'Contando arquivos…'
-            : `Copiando ${formatNumber(p.filesDone)} de ${plural(p.filesTotal, 'arquivo', 'arquivos')}`}
+          {queued
+            ? 'Aguardando a execução atual terminar. Só um backup roda por vez.'
+            : preparing
+              ? 'Contando arquivos…'
+              : p.phase === 'copying'
+                ? `Copiando ${formatNumber(p.filesDone)} de ${plural(p.filesTotal, 'arquivo', 'arquivos')}${dest ? ` · ${dest.toLowerCase()}` : ''}`
+                : PHASE_LABEL[p.phase]}
         </p>
       </section>
 
       <section className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg bg-surface-sunken p-4 dark:bg-surface">
-        <Stat label="Arquivos" value={formatNumber(p.filesDone)} sub={`/ ${formatNumber(p.filesTotal)}`} />
         <Stat
-          label="Dados"
+          label={dest ? 'Arquivos · neste destino' : 'Arquivos'}
+          value={formatNumber(p.filesDone)}
+          sub={`/ ${formatNumber(p.filesTotal)}`}
+        />
+        <Stat
+          label={dest ? 'Dados · neste destino' : 'Dados'}
           value={formatBytes(p.bytesDone)}
           sub={`/ ${formatBytes(p.bytesTotal)}`}
         />
@@ -187,7 +201,7 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
                       state === 'waiting' && 'text-fg-subtle'
                     )}
                   >
-                    {state === 'done' ? 'Concluído' : state === 'active' ? formatPercent(pct ?? 0) : 'Aguardando'}
+                    {state === 'done' ? 'Concluído' : state === 'active' ? formatPercent(destPct) : 'Aguardando'}
                   </span>
                 </li>
               )
@@ -250,7 +264,13 @@ export function LiveRunDrawer() {
   const routine = useApp((s) => s.routines.find((r) => r.id === routineId))
   const [confirmStop, setConfirmStop] = useState(false)
   const name = progress?.routineName ?? finished?.routineName ?? routine?.name ?? ''
-  const status = progress ? RUN_STATUS.running : finished ? RUN_STATUS[finished.status] : null
+  const status = progress
+    ? progress.phase === 'queued'
+      ? ROUTINE_STATUS.queued
+      : RUN_STATUS.running
+    : finished
+      ? RUN_STATUS[finished.status]
+      : null
 
   return (
     <>

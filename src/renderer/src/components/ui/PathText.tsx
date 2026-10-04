@@ -46,7 +46,10 @@ export function PathText({ path, className, mono = true, tooltip = 'auto' }: Pat
     const measure = (): void => {
       const width = el.clientWidth
       if (width <= 0) return
-      setMax(fit(path, width - 1, getComputedStyle(el).font))
+      const cs = getComputedStyle(el)
+      // `font` (atalho) volta vazio quando há font-variant/feature personalizados — monte à mão.
+      const font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+      setMax(fit(path, width - 1, font))
     }
     const ro = new ResizeObserver(measure)
     ro.observe(el)

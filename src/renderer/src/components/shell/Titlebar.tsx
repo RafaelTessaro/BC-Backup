@@ -1,8 +1,9 @@
-import { ChevronRight, LoaderCircle } from 'lucide-react'
+import { ChevronRight, Clock, LoaderCircle } from 'lucide-react'
 import { Fragment } from 'react'
 import { ROUTES, type ParsedRoute } from '@shared/routes'
 import { cn } from '@renderer/lib/cn'
 import { formatPercent } from '@renderer/lib/format'
+import { isQueued, overallPercent, primaryRun } from '@renderer/lib/progress'
 import { navigate, useRoute } from '@renderer/lib/router'
 import { openLiveRun, useApp } from '@renderer/lib/store'
 
@@ -43,8 +44,9 @@ export function Titlebar({ platform }: { platform: string }) {
   const routineName = route.name === 'routine-edit' ? routines.find((r) => r.id === route.id)?.name : undefined
   const crumbs = crumbsFor(route, routineName)
   const active = Object.values(progress)
-  const first = active[0]
-  const pct = first && first.bytesTotal > 0 ? (first.bytesDone / first.bytesTotal) * 100 : undefined
+  const first = primaryRun(progress)
+  const pct = first ? overallPercent(first) : undefined
+  const queuedOnly = active.length > 0 && active.every(isQueued)
 
   return (
     <div className="titlebar drag flex h-10 shrink-0 items-center" style={{ paddingRight: overlayReserve(platform) }}>
@@ -82,9 +84,17 @@ export function Titlebar({ platform }: { platform: string }) {
             onClick={() => openLiveRun(first.routineId)}
             className="no-drag flex h-6 max-w-[280px] min-w-0 items-center gap-1.5 rounded-full bg-accent-soft pr-2.5 pl-2 text-caption font-medium text-accent-text transition-[filter] duration-[120ms] hover:brightness-[0.97] dark:hover:brightness-125"
           >
-            <LoaderCircle className="size-3 shrink-0 animate-spin-slow" strokeWidth={2} aria-hidden />
+            {queuedOnly ? (
+              <Clock className="size-3 shrink-0" strokeWidth={2} aria-hidden />
+            ) : (
+              <LoaderCircle className="size-3 shrink-0 animate-spin-slow" strokeWidth={2} aria-hidden />
+            )}
             <span className="truncate">
-              {active.length > 1 ? `${active.length} backups em execução` : first.routineName}
+              {active.length > 1
+                ? `${first.routineName} + ${active.length - 1} na fila`
+                : queuedOnly
+                  ? `${first.routineName} · na fila`
+                  : first.routineName}
             </span>
             {active.length === 1 && pct !== undefined && <span className="tnum opacity-80">{formatPercent(pct)}</span>}
           </button>

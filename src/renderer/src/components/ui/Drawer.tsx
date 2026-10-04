@@ -24,8 +24,14 @@ export function Drawer({ open, onOpenChange, title, actions, subtitle, children,
         <Dialog.Overlay className="fixed inset-x-0 top-10 bottom-0 z-40 bg-overlay/50 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <Dialog.Content
           aria-describedby={undefined}
+          tabIndex={-1}
+          onOpenAutoFocus={(e) => {
+            // foca o painel (não o botão Fechar, que abriria o Tooltip)
+            e.preventDefault()
+            ;(e.currentTarget as HTMLElement | null)?.focus()
+          }}
           className={cn(
-            'fixed top-10 right-0 bottom-0 z-40 flex w-[480px] max-w-[calc(100vw-64px)] flex-col',
+            'no-drag fixed top-10 right-0 bottom-0 z-40 flex w-[480px] max-w-[calc(100vw-64px)] flex-col',
             'rounded-tl-xl border-t border-l border-border bg-surface-raised shadow-dialog',
             'data-[state=open]:animate-drawer-in data-[state=closed]:animate-drawer-out focus:outline-none'
           )}

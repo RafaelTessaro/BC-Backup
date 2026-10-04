@@ -3,6 +3,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   ChevronDown,
+  Clock,
   FolderSync,
   HardDrive,
   LoaderCircle,
@@ -27,7 +28,6 @@ import { Card, CardHeader } from '@renderer/components/ui/Card'
 import { DiskUsageBar, usageTone } from '@renderer/components/ui/DiskUsageBar'
 import { EmptyState } from '@renderer/components/ui/EmptyState'
 import { MenuContent, MenuItem, MenuLabel, MenuRoot, MenuTrigger } from '@renderer/components/ui/Menu'
-import { PathText } from '@renderer/components/ui/PathText'
 import { ProgressBar } from '@renderer/components/ui/ProgressBar'
 import { RelativeTime } from '@renderer/components/ui/RelativeTime'
 import { StatusPill } from '@renderer/components/ui/StatusPill'
@@ -48,7 +48,8 @@ import {
   plural
 } from '@renderer/lib/format'
 import { navigate } from '@renderer/lib/router'
-import { RUN_STATUS, STATUS_BAR } from '@renderer/lib/status'
+import { destinationLabel, overallPercent, primaryRun } from '@renderer/lib/progress'
+import { PHASE_LABEL, RUN_STATUS, STATUS_BAR } from '@renderer/lib/status'
 import { openLiveRun, openRunDetail, useApp } from '@renderer/lib/store'
 
 /* ------------------------------------------------------------------ */
@@ -151,7 +152,7 @@ function StatusHero({ routines }: { routines: Routine[] }) {
   const progress = useApp((s) => s.progress)
   const now = useNow()
   const days = stats?.days ?? []
-  const running = Object.values(progress)[0]
+  const running = primaryRun(progress)
   const enabled = routines.filter((r) => r.enabled)
   const failed = enabled.filter((r) => r.lastRun?.status === 'failed')
   const warned = enabled.filter((r) => r.lastRun?.status === 'warning')
@@ -177,21 +178,26 @@ function StatusHero({ routines }: { routines: Routine[] }) {
   )
 
   if (running) {
-    const pct = running.bytesTotal > 0 ? (running.bytesDone / running.bytesTotal) * 100 : undefined
+    const pct = overallPercent(running)
+    const dest = destinationLabel(running)
     return (
       <HeroShell
         tone="accent"
-        icon={LoaderCircle}
-        spin
-        title="Backup em andamento"
+        icon={running.phase === 'queued' ? Clock : LoaderCircle}
+        spin={running.phase !== 'queued'}
+        title={running.phase === 'queued' ? 'Backup na fila' : 'Backup em andamento'}
         days={days}
         line={
           <>
             <span className="font-medium text-fg">{running.routineName}</span>
             {' · '}
-            {running.phase === 'copying'
-              ? `copiando ${formatNumber(running.filesDone)} de ${plural(running.filesTotal, 'arquivo', 'arquivos')}`
-              : 'preparando…'}
+            {running.phase === 'queued'
+              ? 'na fila, aguardando outra execução terminar'
+              : running.phase === 'copying'
+                ? `copiando ${formatNumber(running.filesDone)} de ${plural(running.filesTotal, 'arquivo', 'arquivos')}${dest ? ` · ${dest.toLowerCase()}` : ''}`
+                : running.phase === 'scanning'
+                  ? 'preparando…'
+                  : PHASE_LABEL[running.phase].toLowerCase()}
           </>
         }
       >
@@ -201,7 +207,7 @@ function StatusHero({ routines }: { routines: Routine[] }) {
           className="group mt-3 flex max-w-[460px] items-center gap-3 rounded-md text-left"
           aria-label="Ver progresso"
         >
-          <ProgressBar value={pct} className="flex-1" label="Progresso" />
+          <ProgressBar value={running.phase === 'queued' ? 0 : pct} className="flex-1" label="Progresso" />
           <span className="shrink-0 text-small font-medium text-fg tnum">
             {pct !== undefined ? formatPercent(pct) : '—'}
             <span className="font-normal text-fg-subtle"> · {formatEta(running.etaMs)}</span>
@@ -410,7 +416,7 @@ function UpcomingCard({ routines }: { routines: Routine[] }) {
   }, [routines, nowMs])
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex h-full flex-col">
       <CardHeader title="Próximas execuções" />
       {items.length === 0 ? (
         <p className="px-5 pb-5 text-small text-fg-muted">Nenhuma execução agendada. Rotinas manuais rodam quando você pedir.</p>
@@ -496,7 +502,7 @@ function DestinationsCard({ routines }: { routines: Routine[] }) {
   const spaces = useDiskSpaces(rows.map((r) => r.root))
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex h-full flex-col">
       <CardHeader title="Destinos" />
       {rows.length === 0 ? (
         <p className="px-5 pb-5 text-small text-fg-muted">Nenhum destino configurado.</p>

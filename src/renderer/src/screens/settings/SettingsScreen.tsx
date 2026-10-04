@@ -30,7 +30,7 @@ export function SettingsScreen({ tab }: { tab: Tab }) {
           { value: 'sobre', label: 'Sobre', icon: Info }
         ]}
       />
-      <div key={tab} className="max-w-[760px] animate-fade-in">
+      <div key={tab} className="max-w-[800px] animate-fade-in">
         {tab === 'geral' && <GeneralTab />}
         {tab === 'email' && <EmailTab />}
         {tab === 'sobre' && <AboutTab />}

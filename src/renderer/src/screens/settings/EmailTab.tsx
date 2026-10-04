@@ -13,7 +13,10 @@ import { Switch } from '@renderer/components/ui/Switch'
 import { bc, errorMessage } from '@renderer/lib/bc'
 import { cn } from '@renderer/lib/cn'
 import { EMAIL_RE } from '@renderer/lib/format'
+import { navigate } from '@renderer/lib/router'
 import { smtpConfigured, useApp } from '@renderer/lib/store'
+import { hasStash } from '@renderer/screens/editor/model'
+import { ROUTES } from '@shared/routes'
 import { notify } from '@renderer/lib/toast'
 import { SettingsGroup, SettingsRow } from './SettingsRow'
 
@@ -83,8 +86,27 @@ export function EmailTab() {
     draft.fromEmail && draft.user && draft.user.includes('@') && draft.fromEmail.toLowerCase() !== draft.user.toLowerCase()
   const testValid = EMAIL_RE.test(testTo.trim())
 
+  const stash = hasStash()
+
   return (
     <div className="flex flex-col gap-8 pb-4">
+      {stash && (
+        <Callout
+          tone="accent"
+          title={`Rascunho guardado: ${stash.name.trim() || 'Nova rotina'}`}
+          action={
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => navigate(stash.key === 'new' ? ROUTES.newRoutine : ROUTES.routine(stash.key))}
+            >
+              Voltar para a rotina
+            </Button>
+          }
+        >
+          Salve o e-mail e volte para terminar a rotina — nada do que você preencheu foi perdido.
+        </Callout>
+      )}
       {!configured && !dirty && (
         <Callout tone="info" title="E-mail ainda não configurado">
           Configure o SMTP para avisar seus clientes ao fim de cada backup. Escolha o provedor abaixo para começar.
@@ -97,7 +119,7 @@ export function EmailTab() {
             value={draft.preset}
             onValueChange={pickPreset}
             aria-label="Provedor de e-mail"
-            className="flex flex-wrap gap-2"
+            className="flex flex-wrap gap-1.5"
             orientation="horizontal"
           >
             {SMTP_PRESETS.map((p) => (
@@ -105,7 +127,7 @@ export function EmailTab() {
                 key={p.id}
                 value={p.id}
                 className={cn(
-                  'h-8 rounded-md border px-3 text-small font-medium transition-[background-color,border-color,color] duration-[120ms]',
+                  'h-8 rounded-md border px-2.5 text-small font-medium transition-[background-color,border-color,color] duration-[120ms]',
                   'border-border-strong bg-surface-raised text-fg-muted shadow-xs hover:text-fg',
                   'data-[state=checked]:border-accent data-[state=checked]:bg-accent-soft data-[state=checked]:text-accent-text'
                 )}

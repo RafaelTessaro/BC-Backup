@@ -40,6 +40,7 @@ import {
 } from '@renderer/lib/actions'
 import { cn } from '@renderer/lib/cn'
 import { formatPercent, plural } from '@renderer/lib/format'
+import { destinationLabel, overallPercent } from '@renderer/lib/progress'
 import { navigate } from '@renderer/lib/router'
 import { ROUTINE_STATUS, routineState } from '@renderer/lib/status'
 import { openLiveRun, progressFor, showHistoryFor, useApp } from '@renderer/lib/store'
@@ -68,7 +69,8 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
   const [confirmStop, setConfirmStop] = useState(false)
   const state = routineState(routine, progress)
   const paused = !routine.enabled
-  const pct = progress && progress.bytesTotal > 0 ? (progress.bytesDone / progress.bytesTotal) * 100 : undefined
+  const pct = progress ? overallPercent(progress) : undefined
+  const dest = progress ? destinationLabel(progress) : null
 
   return (
     <li className="group relative">
@@ -117,21 +119,24 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
             aria-label="Ver progresso"
           >
             <span className="flex items-baseline justify-between text-caption tnum">
-              <span className="font-medium text-accent-text">{pct !== undefined ? formatPercent(pct) : 'Preparando…'}</span>
-              {progress.bytesTotal > 0 && (
-                <span className="text-fg-subtle">
+              <span className="font-medium text-accent-text">
+                {pct !== undefined ? formatPercent(pct) : progress.phase === 'queued' ? 'Na fila' : 'Preparando…'}
+              </span>
+              {progress.bytesTotal > 0 && progress.phase !== 'queued' && (
+                <span className="truncate text-fg-subtle">
+                  {dest ? `${dest} · ` : ''}
                   {formatBytes(progress.bytesDone)} de {formatBytes(progress.bytesTotal)}
                 </span>
               )}
             </span>
-            <ProgressBar value={pct} label="Progresso" />
+            <ProgressBar value={progress.phase === 'queued' ? 0 : pct} label="Progresso" />
           </button>
         ) : (
           <div className="hidden w-[180px] shrink-0 flex-col items-end gap-0.5 text-right @[52rem]:flex">
             <span className="text-caption text-fg-subtle">Próxima execução</span>
             <span className="text-small text-fg-muted">
               {paused ? (
-                '—'
+                <span className="text-fg-subtle">Não agendada</span>
               ) : nextRun ? (
                 <RelativeTime iso={nextRun} className="first-letter:uppercase" />
               ) : routine.schedule.kind === 'startup' ? (
@@ -143,19 +148,24 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
           </div>
         )}
 
-        <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex w-[112px] shrink-0 items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
           {progress ? (
             <IconButton icon={Square} label="Parar" onClick={() => setConfirmStop(true)} />
+          ) : paused ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={Play}
+              className="text-accent-text hover:text-accent-text"
+              onClick={() => void setRoutineEnabled(routine, true)}
+            >
+              Retomar
+            </Button>
           ) : (
-            <IconButton icon={Play} label="Executar agora" onClick={() => void runNow(routine)} />
-          )}
-          {!progress && (
-            <IconButton
-              icon={paused ? Play : Pause}
-              label={paused ? 'Retomar' : 'Pausar'}
-              onClick={() => void setRoutineEnabled(routine, paused)}
-              className={cn(paused && 'text-accent-text')}
-            />
+            <>
+              <IconButton icon={Play} label="Executar agora" onClick={() => void runNow(routine)} />
+              <IconButton icon={Pause} label="Pausar" onClick={() => void setRoutineEnabled(routine, false)} />
+            </>
           )}
           <MenuRoot>
             <Tooltip label="Mais ações">
@@ -163,13 +173,18 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
                 <button
                   type="button"
                   aria-label="Mais ações"
-                  className="flex size-7 items-center justify-center rounded-sm text-fg-muted transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg data-[state=open]:bg-surface-hover data-[state=open]:text-fg"
+                  className="flex size-7 items-center justify-center rounded-sm text-fg-muted transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg aria-expanded:bg-surface-hover aria-expanded:text-fg"
                 >
                   <Ellipsis className="size-4" strokeWidth={1.75} />
                 </button>
               </MenuTrigger>
             </Tooltip>
             <MenuContent>
+              {paused && !progress && (
+                <MenuItem icon={Play} onSelect={() => void runNow(routine)}>
+                  Executar agora
+                </MenuItem>
+              )}
               <MenuItem icon={Pencil} onSelect={() => navigate(ROUTES.routine(routine.id))}>
                 Editar
               </MenuItem>

@@ -11,6 +11,6 @@ export const bc: BcApi = new Proxy({} as BcApi, {
 /** Mensagem amigável de um erro vindo do IPC ("Error invoking remote method …: Error: X" → "X"). */
 export function errorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err)
-  const m = /Error: (.+)$/.exec(raw)
-  return (m ? m[1] : raw) || 'Algo deu errado. Tente de novo.'
+  const clean = raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '').trim()
+  return clean || 'Algo deu errado. Tente de novo.'
 }

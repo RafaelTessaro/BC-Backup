@@ -16,6 +16,10 @@ export function Kbd({ children, className }: { children: ReactNode; className?: 
   )
 }
 
+/** Classes para Kbd dentro do Tooltip invertido. */
+export const TOOLTIP_KBD =
+  '[&_kbd]:border-white/15 [&_kbd]:bg-white/10 [&_kbd]:text-current dark:[&_kbd]:border-black/15 dark:[&_kbd]:bg-black/5'
+
 export function Shortcut({ keys, className }: { keys: string[]; className?: string }) {
   return (
     <span className={cn('inline-flex items-center gap-0.5', className)}>

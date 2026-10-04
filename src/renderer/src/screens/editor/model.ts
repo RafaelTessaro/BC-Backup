@@ -93,11 +93,12 @@ export function stashDraft(s: Stash): void {
   stash = s
 }
 
-export function takeStash(key: string): Stash | null {
-  if (!stash || stash.key !== key) return null
-  const s = stash
-  stash = null
-  return s
+export function peekStash(key: string): Stash | null {
+  return stash && stash.key === key ? stash : null
+}
+
+export function clearStash(key: string): void {
+  if (stash?.key === key) stash = null
 }
 
 export function hasStash(): { key: string; name: string } | null {

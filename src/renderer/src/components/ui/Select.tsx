@@ -62,7 +62,7 @@ export function Select<T extends string>({
           sideOffset={4}
           collisionPadding={8}
           className={cn(
-            'z-50 max-h-[min(360px,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-surface-raised p-1 shadow-pop',
+            'no-drag z-50 max-h-[min(360px,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-surface-raised p-1 shadow-pop',
             'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out'
           )}
         >

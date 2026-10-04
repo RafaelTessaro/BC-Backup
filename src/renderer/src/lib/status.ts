@@ -30,10 +30,11 @@ export const RUN_STATUS: Record<RunStatus, StatusMeta> = {
   cancelled: { label: 'Cancelado', tone: 'muted', icon: Ban }
 }
 
-export type RoutineState = 'running' | 'paused' | 'failed' | 'warning' | 'scheduled' | 'manual'
+export type RoutineState = 'running' | 'queued' | 'paused' | 'failed' | 'warning' | 'scheduled' | 'manual'
 
 export const ROUTINE_STATUS: Record<RoutineState, StatusMeta> = {
   running: { label: 'Em execução', tone: 'accent', icon: LoaderCircle, spin: true },
+  queued: { label: 'Na fila', tone: 'neutral', icon: Clock },
   paused: { label: 'Pausada', tone: 'neutral', icon: Pause },
   failed: { label: 'Falhou', tone: 'danger', icon: CircleX },
   warning: { label: 'Com avisos', tone: 'warning', icon: TriangleAlert },
@@ -42,7 +43,7 @@ export const ROUTINE_STATUS: Record<RoutineState, StatusMeta> = {
 }
 
 export function routineState(r: Routine, progress?: RunProgress): RoutineState {
-  if (progress) return 'running'
+  if (progress) return progress.phase === 'queued' ? 'queued' : 'running'
   if (!r.enabled) return 'paused'
   if (r.lastRun?.status === 'failed') return 'failed'
   if (r.lastRun?.status === 'warning') return 'warning'

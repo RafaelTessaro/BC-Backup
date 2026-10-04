@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { ROUTES } from '@shared/routes'
 import { Badge } from '@renderer/components/ui/Badge'
 import { BrandMark, Wordmark } from '@renderer/components/ui/Logo'
-import { Shortcut } from '@renderer/components/ui/Kbd'
+import { Shortcut, TOOLTIP_KBD } from '@renderer/components/ui/Kbd'
 import { Tooltip } from '@renderer/components/ui/Tooltip'
 import { cn } from '@renderer/lib/cn'
 import { useNow } from '@renderer/lib/clock'
@@ -105,7 +105,7 @@ export function Sidebar({ collapsed, platform }: { collapsed: boolean; platform:
           <Tooltip
             label={
               <span className="flex items-center gap-2">
-                Nova rotina <Shortcut keys={['Ctrl', 'N']} className="[&_kbd]:border-white/15 [&_kbd]:bg-white/10 [&_kbd]:text-current dark:[&_kbd]:border-black/15 dark:[&_kbd]:bg-black/5" />
+                Nova rotina <Shortcut keys={['Ctrl', 'N']} className={TOOLTIP_KBD} />
               </span>
             }
             side="right"

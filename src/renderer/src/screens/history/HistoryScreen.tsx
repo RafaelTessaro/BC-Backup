@@ -274,7 +274,7 @@ export function HistoryScreen() {
           label="Filtrar por status"
           value={status}
           onChange={setStatus}
-          className="w-[400px]"
+          className="w-[460px]"
           options={[
             { value: 'all', label: 'Todos', count: counts.all },
             { value: 'success', label: 'Concluído', count: counts.success },
