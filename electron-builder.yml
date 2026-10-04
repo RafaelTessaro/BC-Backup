@@ -1,0 +1,75 @@
+# BC Backup — empacotamento (electron-builder 26).
+# Base validada em docs/research/03-arquitetura-tecnica.md §11 (build Linux --dir + E2E empacotado).
+# Ícones e imagens do instalador ficam em build/ (gerados por build/scripts/generate-icons.mjs):
+#   icon.ico (Windows, 16–256 px) · icon.png (1024 px, macOS/Linux) · installerSidebar.bmp · installerHeader.bmp
+
+appId: com.bcbackup.app # precisa ser igual ao APP_ID do processo principal (AUMID das notificações)
+productName: BC Backup
+copyright: Copyright © 2026 BC Backup
+
+directories:
+  buildResources: build
+  output: dist
+
+files:
+  - out/**
+  - resources/**
+  - package.json
+asarUnpack:
+  - resources/** # ícones da bandeja lidos por caminho (nativeImage)
+
+npmRebuild: false # sem módulos nativos
+publish: null # o CI anexa os instaladores à Release; nada de auto-update por enquanto
+
+# Fuses (@electron/fuses no empacotamento).
+# enableNodeCliInspectArguments fica true: o Playwright precisa dele para o E2E do app empacotado.
+# grantFileProtocolExtraPrivileges: manter o padrão (true) — false quebra o renderer em file:// (testado).
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: true
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  executableName: BCBackup
+  icon: build/icon.ico
+  # Sem certificado por enquanto: o SmartScreen avisa na primeira execução.
+  # Com orçamento, configurar win.azureSignOptions (Trusted Signing).
+
+nsis:
+  oneClick: false # instalador assistido (o técnico escolhe a pasta)
+  perMachine: false # por usuário: não pede administrador
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true # obrigatório para as notificações do Windows (AUMID)
+  shortcutName: BC Backup
+  uninstallDisplayName: BC Backup
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false # rotinas e histórico sobrevivem a uma reinstalação
+  installerLanguages: [pt_BR] # só português do Brasil, sem seletor de idioma
+  language: '1046' # LCID pt-BR (informações de versão do instalador)
+  artifactName: BC-Backup-Setup-${version}-${arch}.${ext}
+  include: build/installer.nsh # remove o "Iniciar com o Windows" ao desinstalar
+
+mac:
+  target:
+    - target: dmg
+      arch: [universal]
+  category: public.app-category.utilities
+  icon: build/icon.png
+dmg:
+  artifactName: BC-Backup-${version}-${arch}.${ext}
+
+linux:
+  target: [AppImage, deb] # deb: no Ubuntu 24.04 o AppArmor bloqueia o sandbox de AppImages Electron
+  category: Utility
+  executableName: bc-backup
+  icon: build/icon.png
+  maintainer: BC Backup
+  synopsis: Gerenciador de backups com rotinas, retenção e aviso por e-mail
+  artifactName: BC-Backup-${version}-${arch}.${ext}
