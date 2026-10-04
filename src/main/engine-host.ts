@@ -21,6 +21,13 @@ function inProcess(spec: JobSpec, onEvent: (e: EngineEvent) => void): EngineJob 
   }
 }
 
+/**
+ * Sem nenhum evento do motor por este tempo, a execução é considerada travada (ex.: pasta de rede
+ * que parou de responder no meio de uma leitura) e o processo é encerrado, liberando a fila.
+ * Generoso de propósito: apagar um backup antigo enorme não emite progresso.
+ */
+export const STALL_TIMEOUT_MS = Number(process.env.BC_ENGINE_STALL_MS) || 30 * 60_000
+
 function forked(spec: JobSpec, onEvent: (e: EngineEvent) => void): EngineJob {
   const child = utilityProcess.fork(enginePath, [], { serviceName: 'BC Backup Engine', stdio: 'pipe' })
   child.stdout?.on('data', (d: Buffer) => log.info(`[motor] ${d.toString().trimEnd()}`))
@@ -33,19 +40,42 @@ function forked(spec: JobSpec, onEvent: (e: EngineEvent) => void): EngineJob {
       // processo já encerrado
     }
   }
+  let lastActivity = Date.now()
+  let watchdog: NodeJS.Timeout | undefined
   const result = new Promise<JobResult>((resolve, reject) => {
+    watchdog = setInterval(
+      () => {
+        if (settled || Date.now() - lastActivity < STALL_TIMEOUT_MS) return
+        settled = true
+        clearInterval(watchdog)
+        const min = Math.round(STALL_TIMEOUT_MS / 60_000)
+        log.warn(`Motor sem progresso há ${min} min em "${spec.routine.name}"; encerrando.`)
+        reject(
+          new Error(
+            `O backup travou: nenhum progresso em ${min} min. Verifique se o disco ou a pasta de rede está respondendo.`
+          )
+        )
+        child.kill()
+      },
+      Math.min(30_000, STALL_TIMEOUT_MS)
+    )
+    watchdog.unref()
     child.once('spawn', () => send({ type: 'start', spec }))
     child.on('message', (m: FromWorker) => {
+      lastActivity = Date.now()
       if (m.type === 'progress' || m.type === 'log') {
         onEvent(m)
         return
       }
+      if (settled) return
       settled = true
+      clearInterval(watchdog)
       if (m.type === 'done') resolve(m.result)
       else reject(new Error(m.message))
       setTimeout(() => child.kill(), 50)
     })
     child.once('exit', (code) => {
+      clearInterval(watchdog)
       if (!settled) {
         settled = true
         reject(new Error(`O motor de backup parou inesperadamente (código ${code}).`))
