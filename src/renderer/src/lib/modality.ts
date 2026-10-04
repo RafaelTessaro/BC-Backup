@@ -18,6 +18,14 @@ function set(m: InputModality): void {
   document.documentElement.dataset.input = m
 }
 
+/**
+ * Define a modalidade sem esperar uma interação (painel da bandeja: aberto quase sempre pelo mouse,
+ * o foco inicial no botão principal não ganha anel; a primeira tecla o traz de volta).
+ */
+export function setInputModality(m: InputModality): void {
+  set(m)
+}
+
 export function trackInputModality(): void {
   if (installed) return
   installed = true

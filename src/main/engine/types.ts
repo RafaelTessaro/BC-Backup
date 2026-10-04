@@ -4,6 +4,7 @@ import type {
   DestinationResult,
   FinalRunStatus,
   LogEntry,
+  MoveReport,
   Routine,
   RunProgress,
   RunTrigger
@@ -18,6 +19,8 @@ export interface JobSpec {
   startedAt: string
   appVersion: string
   hostname: string
+  /** Pasta de dados do BC Backup: "Mover" recusa uma origem que a contenha. */
+  dataPath?: string
 }
 
 export interface JobResult {
@@ -33,6 +36,10 @@ export interface JobResult {
   errors: number
   destinations: DestinationResult[]
   log: LogEntry[]
+  /** Só em rotinas com "Mover". */
+  move?: MoveReport
+  filesMoved?: number
+  bytesMoved?: number
 }
 
 export type EngineEvent = { type: 'progress'; progress: RunProgress } | { type: 'log'; entry: LogEntry }

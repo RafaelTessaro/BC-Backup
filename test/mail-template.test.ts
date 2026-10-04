@@ -10,11 +10,12 @@ import {
   buildRunSubject,
   collectIssues,
   escapeHtml,
+  moveVariables,
   renderRunEmail,
   renderTestEmail,
   type RunEmailContext
 } from '../src/main/mail/template'
-import type { DestinationResult, FinalRunStatus, RunRecord } from '../src/shared/types'
+import type { DestinationResult, FinalRunStatus, MoveReport, RunRecord } from '../src/shared/types'
 
 /* ------------------------------------------------------------------ */
 /* Fixtures                                                            */
@@ -487,6 +488,206 @@ describe('e-mail de teste', () => {
 })
 
 /* ------------------------------------------------------------------ */
+/* "Mover" (doc 04 §6)                                                 */
+/* ------------------------------------------------------------------ */
+
+function moveReport(over: Partial<MoveReport> = {}): MoveReport {
+  return {
+    removed: [
+      { path: 'C:\\Backup\\ERP_2026-10-04.fbk', bytes: 2_147_483_648, sha256: 'a'.repeat(64) },
+      { path: 'C:\\Backup\\Diario\\ERP_2026-10-03.fbk', bytes: 2_362_232_012, sha256: 'b'.repeat(64) },
+      { path: 'C:\\Backup\\Diario\\notas.zip', bytes: 1_024, sha256: 'c'.repeat(64) }
+    ],
+    removedCount: 3,
+    removedBytes: 4_509_716_684,
+    kept: [],
+    keptCount: 0,
+    postponed: [],
+    postponedCount: 0,
+    sources: ['C:\\Backup'],
+    ...over
+  }
+}
+
+function moveRun(status: FinalRunStatus, over: Partial<RunRecord> = {}): RunRecord {
+  return run(status, {
+    routineName: 'Backup do ERP',
+    filesTotal: 3,
+    filesCopied: 3,
+    bytesTotal: 4_509_716_684,
+    bytesCopied: 4_509_716_684,
+    destinationCount: 2,
+    destinations: [
+      dest({ filesCopied: 3, bytesCopied: 4_509_716_684 }),
+      dest({
+        destinationId: 'd2',
+        label: 'Servidor',
+        path: '\\\\SERVIDOR\\backup',
+        outputPath: '\\\\SERVIDOR\\backup\\BC Backup\\Backup do ERP\\2026-10-04_18-00-05',
+        filesCopied: 3,
+        bytesCopied: 4_509_716_684,
+        pruned: []
+      })
+    ],
+    filesMoved: 3,
+    bytesMoved: 4_509_716_684,
+    move: moveReport(),
+    ...over
+  })
+}
+
+const moveCtx = (r: RunRecord) => ctx(r, { routine: { ...ctx(r).routine, name: 'Backup do ERP' } })
+
+describe('"Mover"', () => {
+  it('bloco de movidos: contagem, tamanho, pasta de origem e até 20 nomes', () => {
+    const { html, text, subject } = renderRunEmail(moveCtx(moveRun('success')))
+    expect(subject).toMatch(/^\[BC Backup\] Concluído – Backup do ERP/)
+    expect(text).toContain('Movidos para os destinos (apagados de C:\\Backup): 3 arquivos · 4,2 GB')
+    expect(text).toContain('  • Diario\\ERP_2026-10-03.fbk (2,2 GB)')
+    expect(text).toMatch(
+      /Depois de conferidos em todos os destinos, 3 arquivos foram apagados de C:\\Backup\./
+    )
+    expect(html).toContain('Movidos para os destinos')
+    expect(html).toContain('apagados de </span>')
+    expect(html).toContain('Diario\\ERP_2026-10-03.fbk')
+    expect(text).not.toContain('Ficaram na origem')
+    expect(text).not.toMatch(HTML_TAG)
+
+    const many = moveReport({
+      removed: Array.from({ length: 30 }, (_, i) => ({
+        path: `C:\\Backup\\ERP_${i}.fbk`,
+        bytes: 10,
+        sha256: 'd'.repeat(64)
+      })),
+      removedCount: 3000,
+      removedBytes: 30_000
+    })
+    const big = renderRunEmail(moveCtx(moveRun('success', { move: many })))
+    expect(big.text.match(/ {2}• ERP_\d+\.fbk/g)?.length).toBe(20)
+    expect(big.text).toContain('+2.980 outros')
+  })
+
+  it('bloco "Ficaram na origem" com motivos (mantidos + aguardando)', () => {
+    const r = moveRun('warning', {
+      warnings: 2,
+      move: moveReport({
+        removed: [moveReport().removed[0]],
+        removedCount: 1,
+        removedBytes: 2_147_483_648,
+        kept: [
+          {
+            path: 'C:\\Backup\\ERP_2.fbk',
+            reason: 'Alterado depois da cópia; será copiado de novo na próxima execução'
+          }
+        ],
+        keptCount: 1,
+        postponed: [{ path: 'C:\\Backup\\ERP_3.fbk', reason: 'Alterado há 4 min, pode estar sendo gravado' }],
+        postponedCount: 1
+      })
+    })
+    const { html, text } = renderRunEmail(moveCtx(r))
+    expect(text).toContain('Ficaram na origem: 2')
+    expect(text).toContain('  Alterado há 4 min, pode estar sendo gravado (1 arquivo)')
+    expect(text).toContain('    • C:\\Backup\\ERP_2.fbk')
+    expect(text).toMatch(/2 arquivos ficaram na origem/)
+    expect(html).toContain('Ficaram na origem')
+    expect(html).toContain('Alterado depois da cópia')
+  })
+
+  it('sem arquivo novo: assunto especial e a frase vira o destaque', () => {
+    const notice = 'Nenhum arquivo novo em C:\\Backup. O sistema pode não ter gerado o backup.'
+    const r = moveRun('warning', {
+      filesTotal: 0,
+      filesCopied: 0,
+      bytesCopied: 0,
+      warnings: 1,
+      filesMoved: 0,
+      bytesMoved: 0,
+      destinations: [dest({ filesCopied: 0, bytesCopied: 0, outputPath: undefined, pruned: [] })],
+      move: moveReport({ removed: [], removedCount: 0, removedBytes: 0, nothingNew: true, notice })
+    })
+    const c = moveCtx(r)
+    expect(buildRunSubject(c)).toBe('[ATENÇÃO] Backup do ERP: nenhum backup novo do sistema')
+    const { html, text, subject } = renderRunEmail(c)
+    expect(subject).toBe('[ATENÇÃO] Backup do ERP: nenhum backup novo do sistema')
+    expect(text.split('\n')[0]).toBe('NENHUM BACKUP NOVO DO SISTEMA')
+    expect(text).toContain(notice)
+    expect(text).toContain('terminou sem backup novo')
+    expect(html).toContain(escapeHtml(notice))
+    expect(html).toContain('Nenhum backup novo do sistema')
+    expect(text).not.toContain('Movidos para os destinos')
+    // "Nada novo" com o aviso desligado é sucesso comum.
+    const ok = moveRun('success', {
+      filesCopied: 0,
+      move: moveReport({
+        removed: [],
+        removedCount: 0,
+        removedBytes: 0,
+        nothingNew: true,
+        notice: 'Nada novo para mover.'
+      })
+    })
+    expect(renderRunEmail(moveCtx(ok)).subject).toMatch(/^\[BC Backup\] Concluído/)
+    expect(renderRunEmail(moveCtx(ok)).text).toContain('Nada novo para mover.')
+  })
+
+  it('Falha e cancelamento: "Nada foi apagado da origem"', () => {
+    const failed = moveRun('failed', {
+      errors: 1,
+      errorMessage: 'Servidor: Destino indisponível: verifique se o disco está conectado.',
+      filesMoved: 0,
+      move: moveReport({
+        removed: [],
+        removedCount: 0,
+        removedBytes: 0,
+        kept: [
+          { path: 'C:\\Backup\\ERP_1.fbk', reason: 'Não apagado: Servidor falhou' },
+          { path: 'C:\\Backup\\ERP_2.fbk', reason: 'Não apagado: Servidor falhou' }
+        ],
+        keptCount: 2,
+        notDeletedReason: 'Nada foi apagado da origem porque Servidor falhou.'
+      })
+    })
+    const f = renderRunEmail(moveCtx(failed))
+    expect(f.text).toContain('Nada foi apagado da origem.')
+    expect(f.html).toContain('Nada foi apagado da origem.')
+    expect(f.text).not.toContain('Movidos para os destinos')
+    expect(f.text).toContain('Ficaram na origem: 2')
+    const cancelled = renderRunEmail(
+      moveCtx(
+        moveRun('cancelled', { move: moveReport({ removedCount: 1, removed: [moveReport().removed[0]] }) })
+      )
+    )
+    expect(cancelled.text).toContain('Antes do cancelamento, 1 arquivo já conferido foi apagado da origem.')
+  })
+
+  it('variáveis {{movidos}}, {{tamanho_movido}}, {{lista_movidos}} e {{mantidos_origem}}', () => {
+    const v = moveVariables(
+      moveRun('warning', {
+        move: moveReport({ postponedCount: 2, keptCount: 1, kept: [{ path: 'x', reason: 'y' }] })
+      })
+    )
+    expect(v).toEqual({
+      movidos: '3',
+      tamanho_movido: '4,2 GB',
+      lista_movidos: 'ERP_2026-10-04.fbk\nDiario\\ERP_2026-10-03.fbk\nDiario\\notas.zip',
+      mantidos_origem: '3'
+    })
+    expect(moveVariables(run('success'))).toEqual({
+      movidos: '0',
+      tamanho_movido: '0 B',
+      lista_movidos: '',
+      mantidos_origem: '0'
+    })
+  })
+
+  it('rotina sem "Mover" não ganha nenhum bloco novo', () => {
+    const { text } = renderRunEmail(ctx(run('success')))
+    expect(text).not.toMatch(/Movidos|Ficaram na origem|apagado da origem/)
+  })
+})
+
+/* ------------------------------------------------------------------ */
 /* Prévias (opcional)                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -553,7 +754,25 @@ describe.runIf(process.env.PREVIEW)('prévias', () => {
         ]
       })
     )
+    const semNovo = moveRun('warning', {
+      filesTotal: 0,
+      filesCopied: 0,
+      bytesCopied: 0,
+      warnings: 1,
+      filesMoved: 0,
+      bytesMoved: 0,
+      destinations: [dest({ filesCopied: 0, bytesCopied: 0, outputPath: undefined, pruned: [] })],
+      move: moveReport({
+        removed: [],
+        removedCount: 0,
+        removedBytes: 0,
+        nothingNew: true,
+        notice: 'Nenhum arquivo novo em C:\\Backup. O sistema pode não ter gerado o backup.'
+      })
+    })
     const files: Record<string, string> = {
+      movidos: renderRunEmail(moveCtx(moveRun('success'))).html,
+      'sem-backup-novo': renderRunEmail(moveCtx(semNovo)).html,
       sucesso: renderRunEmail(sucesso).html,
       avisos: renderRunEmail(avisos).html,
       falha: renderRunEmail(falha).html,

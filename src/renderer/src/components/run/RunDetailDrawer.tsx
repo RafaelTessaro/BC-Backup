@@ -4,6 +4,7 @@ import {
   Copy,
   Download,
   FolderOpen,
+  FolderOutput,
   Mail,
   Play,
   Search,
@@ -13,7 +14,7 @@ import {
 } from 'lucide-react'
 import { Tabs } from 'radix-ui'
 import { useEffect, useMemo, useState } from 'react'
-import type { DestinationResult, LogEntry, RunRecord } from '@shared/types'
+import type { DestinationResult, LogEntry, MoveReport, RunRecord, SkippedFile } from '@shared/types'
 import { backupStamp, formatBytes, formatDuration } from '@shared/format'
 import { Button, IconButton } from '@renderer/components/ui/Button'
 import { Callout } from '@renderer/components/ui/Callout'
@@ -127,7 +128,185 @@ function DestinationItem({ d }: { d: DestinationResult }) {
   )
 }
 
-function Summary({ r }: { r: RunRecord }) {
+/** Total que ficou na origem numa execução "Mover" (mantidos + aguardando). */
+function stayedCount(m: MoveReport): number {
+  return (m.keptCount ?? m.kept.length) + m.postponedCount
+}
+
+/** Pasta de origem a que o caminho pertence, e o resto dele (lista mais curta). */
+function splitSource(path: string, sources: string[]): { base: string; rest: string } {
+  for (const src of sources) {
+    const base = src.replace(/[\\/]+$/, '')
+    const sep = path[base.length]
+    if (
+      path.length > base.length + 1 &&
+      path.slice(0, base.length).toLowerCase() === base.toLowerCase() &&
+      (sep === '\\' || sep === '/')
+    )
+      return { base, rest: path.slice(base.length + 1) }
+  }
+  return { base: '', rest: path }
+}
+
+function MoveSummary({ r, m, onOpenTab }: { r: RunRecord; m: MoveReport; onOpenTab: (tab: string) => void }) {
+  const stayed = stayedCount(m)
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-caption font-medium text-fg-subtle">Mover</h3>
+      <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <button
+          type="button"
+          onClick={() => onOpenTab('movidos')}
+          className="flex items-center gap-3 px-4 py-3 text-left transition-colors duration-[120ms] hover:bg-surface-hover/60"
+        >
+          {m.removedCount > 0 ? (
+            <CircleCheck className="size-4 shrink-0 text-success" strokeWidth={1.75} />
+          ) : (
+            <FolderOutput className="size-4 shrink-0 text-fg-subtle" strokeWidth={1.75} />
+          )}
+          <span className="min-w-0 flex-1 text-small text-fg">
+            {m.removedCount > 0 ? (
+              <>
+                <span className="font-medium">
+                  {plural(m.removedCount, 'arquivo removido', 'arquivos removidos')}
+                </span>{' '}
+                <span className="text-fg-muted">da origem · {formatBytes(m.removedBytes)}</span>
+              </>
+            ) : (
+              <span className="text-fg-muted">
+                {m.nothingNew ? 'Nenhum arquivo para mover nesta execução' : 'Nada foi apagado da origem'}
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 text-caption text-fg-subtle">Ver</span>
+        </button>
+        {stayed > 0 && (
+          <button
+            type="button"
+            onClick={() => onOpenTab('origem')}
+            className="flex items-center gap-3 px-4 py-3 text-left transition-colors duration-[120ms] hover:bg-surface-hover/60"
+          >
+            <TriangleAlert className="size-4 shrink-0 text-warning" strokeWidth={1.75} />
+            <span className="min-w-0 flex-1 text-small text-fg">
+              <span className="font-medium">
+                {plural(stayed, 'arquivo ficou', 'arquivos ficaram')} na origem
+              </span>{' '}
+              <span className="text-fg-muted">
+                {m.postponedCount > 0 && (m.keptCount ?? m.kept.length) === 0
+                  ? '· recentes ou em uso'
+                  : '· veja os motivos'}
+              </span>
+            </span>
+            <span className="shrink-0 text-caption text-fg-subtle">Ver</span>
+          </button>
+        )}
+      </div>
+      {r.status !== 'failed' && m.notDeletedReason && (
+        <p className="text-caption text-fg-subtle">{m.notDeletedReason}</p>
+      )}
+    </section>
+  )
+}
+
+function MovedList({ m }: { m: MoveReport }) {
+  const sources = m.sources ?? []
+  if (!m.removedCount)
+    return (
+      <div className="flex flex-col gap-3 px-5 py-5">
+        <Callout tone="neutral" title="Nada foi apagado da origem nesta execução">
+          {m.notDeletedReason ??
+            (m.nothingNew
+              ? 'Não havia arquivo pronto para mover (pasta vazia, ou só arquivos recentes ou em uso).'
+              : 'Nenhum arquivo passou por todas as conferências.')}
+        </Callout>
+      </div>
+    )
+  return (
+    <div className="flex flex-col gap-3 px-5 py-5">
+      <p className="text-small text-fg-muted">
+        <span className="font-medium text-fg">
+          {plural(m.removedCount, 'arquivo', 'arquivos')} · {formatBytes(m.removedBytes)}
+        </span>{' '}
+        apagados {sources.length === 1 ? 'de ' : 'da origem '}
+        {sources.length === 1 && <span className="font-mono text-mono text-fg">{sources[0]}</span>} depois de
+        conferidos (sha256) em todos os destinos.
+      </p>
+      <ul className="divide-y divide-border rounded-lg border border-border">
+        {m.removed.map((f) => {
+          const { rest } = splitSource(f.path, sources.length === 1 ? sources : [])
+          return (
+            <li key={f.path} className="flex items-center gap-3 px-4 py-2">
+              <div className="min-w-0 flex-1">
+                <Tooltip label={<span className="font-mono text-[11.5px]">{f.path}</span>} align="start">
+                  <span className="block truncate font-mono text-mono text-fg" data-selectable>
+                    {rest}
+                  </span>
+                </Tooltip>
+              </div>
+              <span className="shrink-0 text-caption text-fg-subtle tnum">{formatBytes(f.bytes)}</span>
+            </li>
+          )
+        })}
+      </ul>
+      {m.removedCount > m.removed.length && (
+        <p className="text-caption text-fg-subtle">
+          Mostrando os primeiros {formatNumber(m.removed.length)}. A lista completa está no log.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function StayedGroup({ title, items, total }: { title: string; items: SkippedFile[]; total: number }) {
+  if (!total) return null
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-caption font-medium text-fg-subtle">
+        {title} <span className="tnum">· {formatNumber(total)}</span>
+      </h3>
+      <ul className="divide-y divide-border rounded-lg border border-border">
+        {items.map((s, i) => (
+          <li key={`${s.path}-${i}`} className="flex flex-col gap-0.5 px-4 py-2.5">
+            <PathText path={s.path} className="text-fg" />
+            <span className="text-caption text-warning">{s.reason}</span>
+          </li>
+        ))}
+      </ul>
+      {total > items.length && (
+        <p className="text-caption text-fg-subtle">
+          Mostrando {formatNumber(items.length)} de {formatNumber(total)}. A lista completa está no log.
+        </p>
+      )}
+    </section>
+  )
+}
+
+function StayedList({ r, m }: { r: RunRecord; m: MoveReport }) {
+  return (
+    <div className="flex flex-col gap-6 px-5 py-5">
+      {m.notDeletedReason && (
+        <Callout tone={r.status === 'failed' ? 'danger' : 'neutral'} title={m.notDeletedReason}>
+          Os arquivos continuam na origem e serão copiados de novo na próxima execução.
+        </Callout>
+      )}
+      <StayedGroup
+        title="Copiados, mas mantidos na origem"
+        items={m.kept}
+        total={m.keptCount ?? m.kept.length}
+      />
+      <StayedGroup title="Aguardando a próxima execução" items={m.postponed} total={m.postponedCount} />
+      {stayedCount(m) === 0 && (
+        <p className="text-small text-fg-muted">
+          {m.nothingNew
+            ? 'A pasta de origem não tinha arquivos nesta execução.'
+            : 'Tudo o que estava pronto foi movido para os destinos.'}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function Summary({ r, onOpenTab }: { r: RunRecord; onOpenTab: (tab: string) => void }) {
   const skipped = r.destinations.flatMap((d) => d.skipped)
   const uniqueSkipped = skipped.filter((s, i) => skipped.findIndex((x) => x.path === s.path) === i)
   return (
@@ -135,7 +314,11 @@ function Summary({ r }: { r: RunRecord }) {
       {r.status === 'failed' && r.errorMessage && (
         <Callout tone="danger" title="O que aconteceu">
           {r.errorMessage}
+          {r.move && <span className="mt-1 block">Nada foi apagado da origem.</span>}
         </Callout>
+      )}
+      {r.status !== 'failed' && r.notice && (
+        <Callout tone={r.status === 'warning' ? 'warning' : 'neutral'} title={r.notice} />
       )}
       <section className="grid grid-cols-3 gap-x-6 gap-y-4 rounded-lg bg-surface-sunken p-4 dark:bg-surface">
         <Metric label="Arquivos" value={formatNumber(r.filesCopied)} />
@@ -158,6 +341,8 @@ function Summary({ r }: { r: RunRecord }) {
           ))}
         </ul>
       </section>
+
+      {r.move && <MoveSummary r={r} m={r.move} onOpenTab={onOpenTab} />}
 
       {uniqueSkipped.length > 0 && (
         <section className="flex flex-col gap-2">
@@ -322,7 +507,10 @@ export function RunDetailDrawer() {
   const routines = useApp((s) => s.routines)
   const now = useNow()
   const [loaded, setLoaded] = useState<{ id: string; record: RunRecord | null } | null>(null)
-  const [tab, setTab] = useState('resumo')
+  // A aba vale para a execução aberta: outra execução (ex.: sem "Mover") volta ao Resumo.
+  const [tabOf, setTabOf] = useState<{ runId: string | null; tab: string }>({ runId: null, tab: 'resumo' })
+  const tab = tabOf.runId === runId ? tabOf.tab : 'resumo'
+  const setTab = (next: string): void => setTabOf({ runId, tab: next })
 
   useEffect(() => {
     if (!runId) return
@@ -427,6 +615,12 @@ export function RunDetailDrawer() {
           >
             {[
               { v: 'resumo', l: 'Resumo' },
+              ...(r.move
+                ? [
+                    { v: 'movidos', l: 'Movidos', n: r.move.removedCount },
+                    { v: 'origem', l: 'Ficaram na origem', n: stayedCount(r.move) }
+                  ]
+                : []),
               { v: 'log', l: 'Log', n: r.log.length }
             ].map((t) => (
               <Tabs.Trigger
@@ -444,8 +638,18 @@ export function RunDetailDrawer() {
           </Tabs.List>
           {/* tabIndex -1: os painéis já têm conteúdo focável; evita uma parada de Tab sem indicador */}
           <Tabs.Content value="resumo" tabIndex={-1} className="focus-visible:outline-none">
-            <Summary r={r} />
+            <Summary r={r} onOpenTab={setTab} />
           </Tabs.Content>
+          {r.move && (
+            <>
+              <Tabs.Content value="movidos" tabIndex={-1} className="focus-visible:outline-none">
+                <MovedList m={r.move} />
+              </Tabs.Content>
+              <Tabs.Content value="origem" tabIndex={-1} className="focus-visible:outline-none">
+                <StayedList r={r} m={r.move} />
+              </Tabs.Content>
+            </>
+          )}
           <Tabs.Content value="log" tabIndex={-1} className="min-h-0 flex-1 focus-visible:outline-none">
             <LogView
               log={r.log}

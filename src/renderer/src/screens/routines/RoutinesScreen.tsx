@@ -2,6 +2,7 @@ import {
   Copy,
   Ellipsis,
   FolderOpen,
+  FolderOutput,
   FolderSync,
   History,
   Pause,
@@ -114,6 +115,17 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
               <TruncatedText>{routine.name}</TruncatedText>
             </button>
             <StatusPill meta={ROUTINE_STATUS[state]} />
+            {routine.moveSources?.enabled && (
+              <Tooltip label="Apaga da origem depois de copiar">
+                <span
+                  className="inline-flex h-[22px] shrink-0 items-center gap-1 rounded-full border border-border-strong px-2 text-caption font-medium whitespace-nowrap text-fg-muted"
+                  data-chip="mover"
+                >
+                  <FolderOutput className="size-3 shrink-0" strokeWidth={2} aria-hidden />
+                  Mover
+                </span>
+              </Tooltip>
+            )}
           </div>
           <TruncatedText className="text-small text-fg-subtle" label={summary}>
             <span id={descId}>

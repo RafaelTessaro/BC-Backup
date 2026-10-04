@@ -38,10 +38,20 @@ export function runNotificationText(r: RunSummary): { title: string; body: strin
     case 'success':
       return {
         title: 'Backup concluído',
-        body: `${r.routineName} · ${plural(r.filesCopied, 'arquivo', 'arquivos')} · ${formatBytes(r.bytesCopied)}`
+        body:
+          r.notice && !r.filesCopied
+            ? `${r.routineName}: ${r.notice}`
+            : `${r.routineName} · ${plural(r.filesCopied, 'arquivo', 'arquivos')} · ${formatBytes(r.bytesCopied)}` +
+              (r.filesMoved ? ` · ${plural(r.filesMoved, 'movido', 'movidos')}` : '')
       }
     case 'warning': {
       const n = Math.max(1, r.warnings || r.filesSkipped)
+      // "Mover": sem arquivo novo (o sistema pode não ter gerado o backup) ou arquivos que ficaram na origem.
+      if (r.notice)
+        return {
+          title: r.filesCopied ? `Concluído com ${plural(n, 'aviso', 'avisos')}` : 'Nenhum backup novo',
+          body: `${r.routineName}: ${r.notice}`
+        }
       return {
         title: `Concluído com ${plural(n, 'aviso', 'avisos')}`,
         body: `${r.routineName}: ${plural(r.filesSkipped || n, 'arquivo não copiado', 'arquivos não copiados')}. Clique para ver os detalhes.`

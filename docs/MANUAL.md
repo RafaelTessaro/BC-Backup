@@ -48,9 +48,13 @@ Depois de instalado:
 
 - O BC Backup **inicia junto com o Windows** e fica na **área de notificação** (os ícones perto do relógio). Dá para
   mudar em **Configurações › Geral › Iniciar com o Windows**.
+- **Um clique no ícone** (botão esquerdo ou direito) abre o **painel de resumo** ali mesmo: se está tudo protegido,
+  os últimos backups, o próximo horário e atalhos para **Executar agora**, **Pausar** e **Abrir o BC Backup**. Ele
+  some sozinho ao clicar fora ou apertar **Esc**. **Duplo clique** abre o programa inteiro. (Com **Shift** + botão
+  direito aparece o menu antigo.)
 - **Fechar a janela não fecha o programa**: ele continua na área de notificação para fazer os backups no horário.
-  Para fechar de verdade, clique com o botão direito no ícone e escolha **Sair do BC Backup** (os backups agendados
-  deixam de acontecer até ele ser aberto de novo).
+  Para fechar de verdade, clique no ícone, abra o menu **⋯** do painel e escolha **Sair do BC Backup** (os backups
+  agendados deixam de acontecer até ele ser aberto de novo).
 - No Windows 11, se o ícone não aparecer perto do relógio, clique na setinha **^** ou fixe-o em
   **Configurações do Windows › Personalização › Barra de tarefas › Outros ícones da bandeja do sistema**.
 

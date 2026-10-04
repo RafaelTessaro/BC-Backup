@@ -330,6 +330,86 @@ function prunedTotal(run: RunRecord): number {
   return (run.destinations ?? []).reduce((n, d) => n + (d.pruned?.length ?? 0), 0)
 }
 
+/* ------------------------------------------------------------------ */
+/* "Mover" (doc 04 §6)                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Pastas de origem de uma execução com "Mover" ("C:\\Backup" ou "C:\\A, D:\\B"). */
+function moveFrom(run: RunRecord): string {
+  return (run.move?.sources ?? []).map(oneLine).filter(Boolean).join(', ')
+}
+
+/** Caminho relativo à pasta de origem (lista mais curta); fora dela, o caminho inteiro. */
+function relToSource(path: string, sources: string[]): string {
+  const p = oneLine(path)
+  for (const src of sources) {
+    const base = oneLine(src).replace(/[\\/]+$/, '')
+    const sepAt = p[base.length]
+    if (
+      base &&
+      p.length > base.length + 1 &&
+      p.slice(0, base.length).toLowerCase() === base.toLowerCase() &&
+      (sepAt === '\\' || sepAt === '/')
+    )
+      return p.slice(base.length + 1)
+  }
+  return p
+}
+
+/** Execução "Mover" sem arquivo novo que terminou em Atenção (assunto e destaque especiais). */
+export function isNothingNewWarning(run: RunRecord): boolean {
+  return run.status === 'warning' && run.move?.nothingNew === true
+}
+
+/** O que ficou na origem (mantidos + aguardando), como itens agrupáveis por motivo. */
+function stayedIssues(run: RunRecord): EmailIssue[] {
+  const mv = run.move
+  if (!mv) return []
+  return [...(mv.kept ?? []), ...(mv.postponed ?? [])].map((k) => ({
+    level: 'warning' as const,
+    path: oneLine(k.path),
+    reason: oneLine(k.reason) || 'Mantido'
+  }))
+}
+
+function stayedTotal(run: RunRecord): number {
+  const mv = run.move
+  if (!mv) return 0
+  return (mv.keptCount ?? mv.kept?.length ?? 0) + (mv.postponedCount ?? mv.postponed?.length ?? 0)
+}
+
+/**
+ * Valores do "Mover" para modelos de e-mail personalizados ({{movidos}}, {{tamanho_movido}},
+ * {{lista_movidos}}, {{mantidos_origem}}). A lista completa vai no log anexado.
+ */
+export function moveVariables(
+  run: RunRecord
+): Record<'movidos' | 'tamanho_movido' | 'lista_movidos' | 'mantidos_origem', string> {
+  const mv = run.move
+  const sources = mv?.sources ?? []
+  return {
+    movidos: int(mv?.removedCount ?? 0),
+    tamanho_movido: formatBytes(mv?.removedBytes ?? 0),
+    lista_movidos: (mv?.removed ?? [])
+      .slice(0, MAX_LISTED_ISSUES)
+      .map((f) => relToSource(f.path, sources))
+      .join('\n'),
+    mantidos_origem: int(stayedTotal(run))
+  }
+}
+
+/** Frase do "Mover" acrescentada ao resumo (o que aconteceu com a origem). */
+function moveSentence(run: RunRecord): string {
+  const mv = run.move
+  if (!mv || mv.nothingNew) return ''
+  const n = mv.removedCount ?? 0
+  const from = moveFrom(run)
+  if (run.status === 'cancelled' && n > 0)
+    return ` Antes do cancelamento, ${plural(n, 'arquivo já conferido foi apagado', 'arquivos já conferidos foram apagados')} da origem.`
+  if (run.status === 'failed' || run.status === 'cancelled' || n === 0) return ' Nada foi apagado da origem.'
+  return ` Depois de conferidos em todos os destinos, ${plural(n, 'arquivo foi apagado', 'arquivos foram apagados')}${from ? ` de ${from}` : ' da origem'}.`
+}
+
 function destinationPhrase(run: RunRecord): string {
   const dests = run.destinations ?? []
   const count = dests.length || run.destinationCount || 0
@@ -352,13 +432,14 @@ function summarySentence(
   const took = ms !== null ? ` em ${formatDuration(ms)}` : ''
   const keptOld = prunedTotal(run) === 0 ? ' Nenhum backup antigo foi apagado.' : ''
   const skipped = run.filesSkipped ?? 0
+  const moved = moveSentence(run)
 
   let tail: string
   switch (run.status) {
     case 'success':
       tail = filesPart
-        ? ` foi concluído com sucesso: ${filesPart} ${files === 1 ? 'copiado' : 'copiados'}${dest ? ` ${dest}` : ''}${took}.`
-        : ` foi concluído com sucesso${took}.`
+        ? ` foi concluído com sucesso: ${filesPart} ${files === 1 ? 'copiado' : 'copiados'}${dest ? ` ${dest}` : ''}${took}.${moved}`
+        : ` foi concluído com sucesso${took}.${run.move?.nothingNew ? ' Nada novo para mover.' : moved}`
       break
     case 'warning': {
       const copied = filesPart ? `${filesPart} ${files === 1 ? 'foi copiado' : 'foram copiados'}` : ''
@@ -366,20 +447,26 @@ function summarySentence(
         skipped > 0
           ? `${plural(skipped, 'arquivo ficou', 'arquivos ficaram')} de fora`
           : 'houve avisos durante a cópia'
-      tail = ` foi concluído, mas com avisos: ${[copied, left].filter(Boolean).join(' e ')}. Confira os detalhes abaixo.`
+      const stayed = stayedTotal(run)
+      const leftMove =
+        run.move && stayed > 0 ? `${plural(stayed, 'arquivo ficou', 'arquivos ficaram')} na origem` : ''
+      tail = ` foi concluído, mas com avisos: ${[copied, leftMove || left].filter(Boolean).join(' e ')}.${moved} Confira os detalhes abaixo.`
       break
     }
     case 'failed': {
       const reason = oneLine(run.errorMessage).replace(/[.\s]+$/, '')
-      tail = ` falhou${reason ? `: ${reason}` : ''}.${keptOld} Verifique o problema o quanto antes para não ficar sem cópia.`
+      tail = ` falhou${reason ? `: ${reason}` : ''}.${keptOld}${moved} Verifique o problema o quanto antes para não ficar sem cópia.`
       break
     }
     case 'cancelled':
-      tail = ` foi cancelado antes de terminar.${keptOld}`
+      tail = ` foi cancelado antes de terminar.${keptOld}${moved}`
       break
     default:
       tail = ` está ${STATUS[run.status].label.toLowerCase()}.`
   }
+  // "Mover" sem arquivo novo: a frase do motor vira o destaque (logo abaixo, em faixa própria).
+  if (isNothingNewWarning(run))
+    tail = ' terminou sem backup novo. Os backups anteriores continuam guardados nos destinos.'
   const where = computer ? ` do computador ${computer}` : ''
   const whereHtml = computer
     ? ` do computador <strong style="white-space:nowrap;">${escapeHtml(computer)}</strong>`
@@ -631,8 +718,11 @@ function overflowNote(hidden: number, logAttached: boolean): [string, string] {
   return [`+${int(hidden)} ${hidden === 1 ? 'outro' : 'outros'}`, where]
 }
 
-function issuesList(issues: EmailIssue[], logAttached: boolean): string {
-  const { groups, hidden } = groupIssues(issues)
+/** `extraHidden`: itens que nem chegaram à lista (o histórico guarda uma lista limitada). */
+function issuesList(issues: EmailIssue[], logAttached: boolean, extraHidden = 0): string {
+  const grouped = groupIssues(issues)
+  const groups = grouped.groups
+  const hidden = grouped.hidden + Math.max(0, extraHidden)
   const blocks = groups
     .map((g, i) => {
       const color = g.level === 'error' ? STATUS.failed.color : STATUS.warning.color
@@ -654,6 +744,49 @@ function issuesList(issues: EmailIssue[], logAttached: boolean): string {
   return `<table ${TABLE} width="100%" style="width:100%;">
 ${blocks}
 ${more}
+</table>`
+}
+
+/** "Movidos para os destinos (apagados de C:\\Backup): 3 arquivos · 4,2 GB" + até 20 nomes. */
+function movedHeadline(run: RunRecord): string {
+  const mv = run.move
+  const from = moveFrom(run)
+  const facts = `${plural(mv?.removedCount ?? 0, 'arquivo', 'arquivos')} · ${formatBytes(mv?.removedBytes ?? 0)}`
+  return `Movidos para os destinos${from ? ` (apagados de ${from})` : ''}: ${facts}`
+}
+
+function movedList(run: RunRecord, logAttached: boolean): string {
+  const mv = run.move
+  if (!mv) return ''
+  const sources = mv.sources ?? []
+  const from = moveFrom(run)
+  const shown = (mv.removed ?? []).slice(0, MAX_LISTED_ISSUES)
+  const hidden = Math.max(0, (mv.removedCount ?? shown.length) - shown.length)
+  const head = `<tr><td style="padding:2px 0 6px 0;font-family:${FONT};font-size:14px;line-height:20px;color:${C.text};"><span style="color:${STATUS.success.color};font-size:12px;">&#9679;</span>&nbsp; <strong style="font-weight:600;">${escapeHtml(`${plural(mv.removedCount ?? 0, 'arquivo', 'arquivos')} · ${formatBytes(mv.removedBytes ?? 0)}`)}</strong>${from ? `<span style="color:${C.text2};"> apagados de </span><span style="font-family:${MONO};font-size:13px;color:${C.text2};word-break:break-all;">${escapeHtml(from)}</span>` : ''}<span style="color:${C.text3};"> depois de conferidos em todos os destinos</span></td></tr>`
+  const rows = shown
+    .map(
+      (f) =>
+        `<tr><td style="padding:3px 0 3px 19px;font-family:${MONO};font-size:12px;line-height:17px;color:${C.text2};word-break:break-all;">${escapeHtml(relToSource(f.path, sources))} <span style="font-family:${FONT};color:${C.text3};white-space:nowrap;">${escapeHtml(formatBytes(f.bytes))}</span></td></tr>`
+    )
+    .join('\n')
+  const [lead, where] = overflowNote(hidden, logAttached)
+  const more =
+    hidden > 0
+      ? `<tr><td style="padding:14px 0 0 0;font-family:${FONT};font-size:13px;line-height:18px;color:${C.text2};"><strong style="color:${C.text};">${escapeHtml(lead)}</strong> — ${escapeHtml(where)}</td></tr>`
+      : ''
+  return `<table ${TABLE} width="100%" style="width:100%;">
+${head}
+${rows}
+${more}
+</table>`
+}
+
+/** Faixa de destaque (Atenção) usada quando o "Mover" não encontrou arquivo novo. */
+function highlight(textHtml: string, theme: StatusTheme): string {
+  return `<table ${TABLE} width="100%" style="width:100%;margin-top:18px;">
+<tr>
+<td bgcolor="${theme.soft}" style="background-color:${theme.soft};border-left:3px solid ${theme.color};border-radius:8px;padding:12px 14px;font-family:${FONT};font-size:14px;line-height:21px;color:${C.text};font-weight:500;">${textHtml}</td>
+</tr>
 </table>`
 }
 
@@ -699,6 +832,8 @@ function textTable(rows: [string, string][]): string[] {
 export function buildRunSubject(ctx: RunEmailContext): string {
   const theme = STATUS[ctx.run.status] ?? STATUS.failed
   const routine = oneLine(ctx.routine.name) || 'Rotina sem nome'
+  // "Mover" sem arquivo novo: o sistema (ERP) pode ter parado de gerar backups.
+  if (isNothingNewWarning(ctx.run)) return `[ATENÇÃO] ${routine}: nenhum backup novo do sistema`
   const client = clientOf(ctx)
   const computer = computerOf(ctx.settings.computerAlias, ctx.hostname).name
   const when = toDate(ctx.run.startedAt)
@@ -727,6 +862,12 @@ export function renderRunEmail(ctx: RunEmailContext): RenderedEmail {
   const logAttached =
     ctx.logAttached ?? (attach === 'always' || (attach === 'onFailure' && run.status === 'failed'))
   const summary = summarySentence(ctx, routine, computer.name)
+  const nothingNew = isNothingNewWarning(run)
+  const notice = nothingNew ? oneLine(run.move?.notice) || 'Nenhum arquivo novo para mover.' : ''
+  const title = nothingNew ? 'Nenhum backup novo do sistema' : theme.title
+  const moved = run.move && !run.move.nothingNew ? run.move : null
+  const stayed = stayedIssues(run)
+  const stayedCount = stayedTotal(run)
   const greeting = client ? `Olá, ${client},` : 'Olá,'
   const subtitle = [routine, client, computer.name].filter(Boolean).join(' · ')
   const footer = footerLine(ctx.settings.companyName, ctx.appVersion)
@@ -769,6 +910,7 @@ export function renderRunEmail(ctx: RunEmailContext): RenderedEmail {
   const body: string[] = [
     paragraph(escapeHtml(greeting), 'margin-bottom:10px;'),
     paragraph(summary.html, 'margin-bottom:0;'),
+    ...(nothingNew ? [highlight(escapeHtml(notice), STATUS.warning)] : []),
     statTiles([
       { label: 'Arquivos copiados', value: values.files, note: filesOf },
       { label: 'Tamanho', value: values.size },
@@ -778,6 +920,13 @@ export function renderRunEmail(ctx: RunEmailContext): RenderedEmail {
     keyValueTable(kv)
   ]
   if (dests.length) body.push(sectionTitle('Destinos'), destinationsTable(dests))
+  if (moved && (moved.removedCount ?? 0) > 0)
+    body.push(sectionTitle('Movidos para os destinos', moved.removedCount), movedList(run, logAttached))
+  if (stayedCount > 0)
+    body.push(
+      sectionTitle('Ficaram na origem', stayedCount),
+      issuesList(stayed, logAttached, stayedCount - stayed.length)
+    )
   if (issues.length) body.push(sectionTitle(issuesTitle, issues.length), issuesList(issues, logAttached))
   if (nextText !== null) body.push(callout('Próximo backup:', escapeHtml(nextText)))
   if (logAttached && !(issues.length > MAX_LISTED_ISSUES)) {
@@ -791,19 +940,20 @@ export function renderRunEmail(ctx: RunEmailContext): RenderedEmail {
 
   const html = documentShell({
     title: subject,
-    preheader: summary.text,
+    preheader: nothingNew ? notice : summary.text,
     body: [
       brandHeader(ctx.settings.companyName),
       card(
-        statusBanner(theme, escapeHtml(theme.title), [routine, client, computer.name]) +
-          cardBody(body.join('\n'))
+        statusBanner(theme, escapeHtml(title), [routine, client, computer.name]) + cardBody(body.join('\n'))
       )
     ].join('\n'),
     footer: `${escapeHtml(footer)}<br>Para deixar de receber estes avisos, ajuste as notificações da rotina no BC Backup.`
   })
 
   /* ----- texto puro ----- */
-  const lines: string[] = [theme.title.toUpperCase(), subtitle, '', greeting, '', summary.text, '', 'RESUMO']
+  const lines: string[] = [title.toUpperCase(), subtitle, '', greeting, '', summary.text]
+  if (nothingNew) lines.push('', notice)
+  lines.push('', 'RESUMO')
   lines.push(
     ...textTable([
       ['Rotina', values.routine],
@@ -835,6 +985,24 @@ export function renderRunEmail(ctx: RunEmailContext): RenderedEmail {
       lines.push(`    ${facts.join(' · ')}`)
       if (d.error) lines.push(`    Erro: ${oneLine(d.error)}`)
     }
+  }
+  if (moved && (moved.removedCount ?? 0) > 0) {
+    lines.push('', movedHeadline(run))
+    const sources = moved.sources ?? []
+    const shown = (moved.removed ?? []).slice(0, MAX_LISTED_ISSUES)
+    for (const f of shown) lines.push(`  • ${relToSource(f.path, sources)} (${formatBytes(f.bytes)})`)
+    const hidden = Math.max(0, (moved.removedCount ?? 0) - shown.length)
+    if (hidden > 0) lines.push(`  ${overflowNote(hidden, logAttached).join(' — ')}`)
+  }
+  if (stayedCount > 0) {
+    lines.push('', `Ficaram na origem: ${int(stayedCount)}`)
+    const { groups, hidden } = groupIssues(stayed)
+    for (const g of groups) {
+      lines.push(`  ${g.reason} (${plural(g.total, 'arquivo', 'arquivos')})`)
+      for (const p of g.paths) lines.push(`    • ${p}`)
+    }
+    const more = hidden + Math.max(0, stayedCount - stayed.length)
+    if (more > 0) lines.push(`  ${overflowNote(more, logAttached).join(' — ')}`)
   }
   if (issues.length) {
     lines.push('', `${issuesTitle.toUpperCase()} (${int(issues.length)})`)

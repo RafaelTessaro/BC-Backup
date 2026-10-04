@@ -71,14 +71,22 @@ const api: BcApi = {
         return ''
       }
     },
-    inspectPaths: (paths) => invoke(IPC_CHANNELS.systemInspectPaths, paths)
+    inspectPaths: (paths) => invoke(IPC_CHANNELS.systemInspectPaths, paths),
+    previewMove: (sources, filters, move) => invoke(IPC_CHANNELS.systemPreviewMove, sources, filters, move)
   },
   on: {
     progress: (cb) => subscribe(IPC_EVENTS.progress, cb),
     runFinished: (cb) => subscribe(IPC_EVENTS.runFinished, cb),
     routinesChanged: (cb) => subscribe(IPC_EVENTS.routinesChanged, () => cb()),
     settingsChanged: (cb) => subscribe(IPC_EVENTS.settingsChanged, cb),
-    navigate: (cb) => subscribe(IPC_EVENTS.navigate, cb)
+    navigate: (cb) => subscribe(IPC_EVENTS.navigate, cb),
+    trayShown: (cb) => subscribe(IPC_EVENTS.trayShown, () => cb())
+  },
+  tray: {
+    openMain: (route) => invoke(IPC_CHANNELS.trayOpenMain, route),
+    hide: (opts) => invoke(IPC_CHANNELS.trayHide, opts),
+    setAllPaused: (paused) => invoke(IPC_CHANNELS.traySetAllPaused, paused),
+    quit: () => invoke(IPC_CHANNELS.trayQuit)
   }
 }
 

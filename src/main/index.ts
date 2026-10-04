@@ -13,28 +13,24 @@ import {
   Menu,
   nativeTheme,
   powerMonitor,
+  screen,
   session,
-  type MenuItemConstructorOptions
+  type MenuItemConstructorOptions,
+  type Rectangle
 } from 'electron'
 import { IPC_EVENTS } from '@shared/api'
 import { ROUTES } from '@shared/routes'
+import { confirmQuit, openMain, setAllEnabled } from './app-actions'
 import { HIDDEN_FLAG, setAutoStart, startedHidden } from './autostart'
+import { broadcast } from './broadcast'
 import { createContext, type AppContext } from './context'
 import { registerIpc } from './ipc'
 import { initLogger, log } from './logger'
 import { isAppUrl } from './paths'
 import { showNotification } from './notify'
-import { createTray, destroyTray } from './tray'
-import {
-  applyTheme,
-  currentResolvedTheme,
-  getWindow,
-  initWindow,
-  navigate,
-  sendToRenderer,
-  setQuitting,
-  showWindow
-} from './window'
+import { createTray, destroyTray, TRAY_USES_PANEL, trayIconBounds } from './tray'
+import { applyPanelTheme, createTrayPanel, hideTrayPanel, toggleTrayPanel } from './tray-panel'
+import { applyTheme, currentResolvedTheme, initWindow, navigate, setQuitting, showWindow } from './window'
 
 const APP_ID = 'com.bcbackup.app' // igual ao appId do electron-builder (AUMID do atalho do NSIS)
 
@@ -135,55 +131,6 @@ function macMenu(): Menu {
   return Menu.buildFromTemplate(template)
 }
 
-async function confirmQuit(c: AppContext): Promise<void> {
-  const busy = c.runner.liveProgress
-  const opts = {
-    type: 'question' as const,
-    buttons: ['Sair', 'Cancelar'],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true,
-    title: 'Sair do BC Backup',
-    message: 'Sair do BC Backup?',
-    detail:
-      'Os backups agendados não serão executados enquanto o BC Backup estiver fechado.' +
-      (busy ? `\n\nO backup "${busy.routineName}" está em andamento e será cancelado.` : '')
-  }
-  const w = getWindow()
-  const res = w && w.isVisible() ? await dialog.showMessageBox(w, opts) : await dialog.showMessageBox(opts)
-  if (res.response !== 0) return
-  setQuitting(true)
-  app.quit()
-}
-
-async function setAllEnabled(c: AppContext, enabled: boolean): Promise<void> {
-  const { store } = c
-  const now = new Date().toISOString()
-  if (!enabled) {
-    const ids = store
-      .routines()
-      .filter((r) => r.enabled)
-      .map((r) => r.id)
-    for (const id of ids) {
-      const r = store.getRoutine(id)
-      if (r) await store.upsertRoutine({ ...r, enabled: false, updatedAt: now })
-    }
-    store.state.data.pausedByTray = ids
-  } else {
-    const remembered = (store.state.data.pausedByTray ?? []).filter((id) => store.getRoutine(id))
-    const ids = remembered.length ? remembered : store.routines().map((r) => r.id)
-    for (const id of ids) {
-      const r = store.getRoutine(id)
-      if (!r || r.enabled) continue
-      store.setRoutineState(id, { lastAttemptSlot: now }) // antes do upsert: um tick no meio não recupera horários
-      await store.upsertRoutine({ ...r, enabled: true, updatedAt: now })
-    }
-    delete store.state.data.pausedByTray
-  }
-  await store.state.save().catch(() => {})
-  c.routinesChanged()
-}
-
 async function start(): Promise<void> {
   initLogger(join(app.getPath('userData'), 'logs'))
   log.info(`BC Backup ${app.getVersion()} iniciando (userData: ${app.getPath('userData')})`)
@@ -226,29 +173,44 @@ async function start(): Promise<void> {
       )
       void store
         .updateSettings({ trayHintShown: true })
-        .then(() => sendToRenderer(IPC_EVENTS.settingsChanged, store.settings))
+        .then(() => broadcast(IPC_EVENTS.settingsChanged, store.settings))
         .catch(() => {})
     }
   })
   nativeTheme.on('updated', () => {
-    // O renderer também avisa via app.setResolvedTheme; aqui cobre a janela oculta.
+    // O renderer também avisa via app.setResolvedTheme; aqui cobre a janela oculta e o painel.
     applyTheme(currentResolvedTheme())
+    applyPanelTheme(currentResolvedTheme())
   })
 
   registerIpc(c)
 
   createTray({
-    open: () => showWindow(),
+    open: () => openMain(),
     runNow: (id) => {
       c.runner.enqueue(id, 'manual')
       c.refreshTray()
     },
     pauseAll: () => void setAllEnabled(c, false),
     resumeAll: () => void setAllEnabled(c, true),
-    settings: () => navigate(ROUTES.settings),
-    quit: () => void confirmQuit(c)
+    settings: () => openMain(ROUTES.settings),
+    quit: () => void confirmQuit(c),
+    togglePanel: (bounds) => toggleTrayPanel(bounds),
+    hidePanel: () => hideTrayPanel()
   })
   c.refreshTray()
+  // Painel da bandeja: some ao trocar de monitor/DPI, ao bloquear a tela ou suspender (light-dismiss).
+  screen.on('display-metrics-changed', () => hideTrayPanel())
+  screen.on('display-added', () => hideTrayPanel())
+  screen.on('display-removed', () => hideTrayPanel())
+  powerMonitor.on('lock-screen', () => hideTrayPanel())
+  powerMonitor.on('suspend', () => hideTrayPanel())
+  if (process.env.BC_E2E === '1') {
+    // Gancho só para os testes E2E (app.evaluate): simula o clique no ícone da bandeja.
+    // Sem retângulo, usa o do ícone de verdade (Windows/macOS) ou cai no cursor.
+    ;(globalThis as { __bcTrayToggle?: (b?: Rectangle) => boolean }).__bcTrayToggle = (b) =>
+      toggleTrayPanel(b ?? trayIconBounds())
+  }
 
   c.scheduler.start()
   c.outbox?.start()
@@ -264,6 +226,9 @@ async function start(): Promise<void> {
 
   if (!startedHidden()) showWindow()
   else if (process.platform === 'darwin') app.dock?.hide()
+  // Pré-cria o painel oculto DEPOIS da janela principal: o primeiro clique no ícone já o encontra
+  // pronto (sem tela branca). No Linux o painel não é usado (menu nativo).
+  if (TRAY_USES_PANEL) setTimeout(() => createTrayPanel(), 1500)
   log.info(`Pronto${startedHidden() ? ' (oculto na bandeja)' : ''}.`)
 }
 

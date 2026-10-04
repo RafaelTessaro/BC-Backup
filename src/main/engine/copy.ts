@@ -29,6 +29,17 @@ export const SKIPPABLE_SOURCE = new Set([
 export interface EngineHooks {
   /** Chamado antes de abrir cada arquivo de origem; pode lançar um erro com `code`. */
   beforeOpen?: (item: FileItem) => void | Promise<void>
+  /**
+   * "Mover": chamado antes do teste de uso exclusivo (na varredura e de novo antes de apagar);
+   * pode lançar um erro com `code` (EBUSY simula outro programa com o arquivo aberto).
+   */
+  beforeProbe?: (item: FileItem, stage: 'scan' | 'delete') => void | Promise<void>
+  /** Depois da cópia e antes da verificação de um destino (ex.: corromper a cópia). */
+  beforeVerify?: (outputPath: string, destinationIndex: number) => void | Promise<void>
+  /** Depois de terminar cada destino (ex.: alterar a origem entre a cópia e a exclusão). */
+  afterDestination?: (destinationIndex: number) => void | Promise<void>
+  /** "Mover": antes de cada exclusão da origem; pode lançar um erro com `code`. */
+  beforeUnlink?: (item: FileItem) => void | Promise<void>
 }
 
 export interface CopiedFile {

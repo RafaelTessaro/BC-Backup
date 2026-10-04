@@ -5,10 +5,12 @@ import { readFile, stat, writeFile } from 'node:fs/promises'
 import { BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions, type WebFrameMain } from 'electron'
 import { IPC_CHANNELS, type BcApi, type FileResult, type PathInfo, type PickResult } from '@shared/api'
 import type { AppSettings, ID, Routine } from '@shared/types'
+import { confirmQuit, openMain, setAllEnabled } from './app-actions'
 import { buildExport, planImport } from './config-io'
 import type { AppContext } from './context'
 import { listDrives, diskSpace } from './drives'
 import { estimateSize } from './engine/walk'
+import { previewMove } from './engine/move'
 import { errMessage, pathExists } from './engine/fsutil'
 import {
   asAbsPath,
@@ -16,6 +18,7 @@ import {
   asFilters,
   asHistoryQuery,
   asId,
+  asMoveSources,
   asOptionalObject,
   asPathList,
   asRoutineForValidation,
@@ -23,7 +26,8 @@ import {
   asSettingsPatch,
   asSmtpInput,
   asString,
-  checkOpenablePath
+  checkOpenablePath,
+  IpcArgError
 } from './ipc-validate'
 import { log } from './logger'
 import { renderTestEmail } from './mail/template'
@@ -32,6 +36,7 @@ import { isAppUrl } from './paths'
 import { sealSecret } from './secrets'
 import { computeStats } from './stats'
 import { newId, type StoredRoutine } from './store'
+import { hideTrayPanel } from './tray-panel'
 import { isValidEmail, validateRoutine } from './validate'
 import { applyTheme, getWindow, windowAction } from './window'
 
@@ -71,6 +76,11 @@ interface HandlerMap {
   systemStats: A['system']['stats']
   systemEstimateSize: A['system']['estimateSize']
   systemInspectPaths: A['system']['inspectPaths']
+  systemPreviewMove: A['system']['previewMove']
+  trayOpenMain: A['tray']['openMain']
+  trayHide: A['tray']['hide']
+  traySetAllPaused: A['tray']['setAllPaused']
+  trayQuit: A['tray']['quit']
 }
 
 // Garante que todo canal de IPC_CHANNELS tem handler (e vice-versa).
@@ -175,7 +185,8 @@ export function registerIpc(ctx: AppContext): void {
     const issues = await validateRoutine(asRoutineForValidation(raw), {
       existing: store.routines(),
       smtpConfigured: isSmtpConfigured(store.settings),
-      checkFs: false
+      checkFs: false,
+      dataPath: ctx.info?.dataPath
     })
     const error = issues.find((i) => i.level === 'error')
     if (error) throw new Error(error.message)
@@ -251,7 +262,8 @@ export function registerIpc(ctx: AppContext): void {
     validateRoutine(asRoutineForValidation(raw), {
       existing: store.routines(),
       smtpConfigured: isSmtpConfigured(store.settings),
-      checkFs: true
+      checkFs: true,
+      dataPath: ctx.info?.dataPath
     })
   )
 
@@ -457,6 +469,26 @@ export function registerIpc(ctx: AppContext): void {
       })
     )
   )
+  handle('systemPreviewMove', (sources, filters, move) =>
+    previewMove(asPathList(sources), asFilters(filters), asMoveSources(move), { timeoutMs: 4000 })
+  )
+
+  /* ------------------------- painel da bandeja ----------------------- */
+  handle('trayOpenMain', (r) => {
+    if (r === undefined || r === null) return openMain()
+    const route = asString(r, 'rota', 200)
+    // Só rotas da interface ("/historico/…"); parseRoute cai no Painel para o resto.
+    if (!route.startsWith('/')) throw new IpcArgError('Parâmetro inválido: rota.')
+    openMain(route)
+  })
+  handle('trayHide', (o) => {
+    const opts = asOptionalObject(o, 'opções')
+    hideTrayPanel({ restoreFocus: opts.restoreFocus === true })
+  })
+  handle('traySetAllPaused', (paused) => setAllEnabled(ctx, !asBool(paused, 'pausar')))
+  handle('trayQuit', () => {
+    void confirmQuit(ctx) // não segura o painel esperando o diálogo
+  })
 }
 
 /**

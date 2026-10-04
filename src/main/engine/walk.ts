@@ -9,6 +9,7 @@
 // Barras invertidas viram "/" (globs sempre enxergam "/"). No Windows e no macOS a
 // comparação ignora maiúsculas/minúsculas.
 
+import type { Stats } from 'node:fs'
 import { lstat, opendir, stat } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import picomatch from 'picomatch'
@@ -23,6 +24,29 @@ export interface FileItem {
   size: number
   mtime: Date
   atime: Date
+  /** Última alteração de dados OU metadados (ChangeTime no NTFS). Usado pelo "Mover". */
+  ctime: Date
+  /** Criação (ausente quando o sistema não informa: época 0, como no Linux sem statx). */
+  birthtime?: Date
+  /** Valores exatos da varredura (o "Mover" compara de novo antes de apagar). */
+  mtimeMs: number
+  ctimeMs: number
+}
+
+type FileTimes = Omit<FileItem, 'abs' | 'rel'>
+
+/** Campos de data/tamanho de um FileItem a partir do stat. */
+export function fileTimes(st: Stats): FileTimes {
+  const t: FileTimes = {
+    size: st.size,
+    mtime: st.mtime,
+    atime: st.atime,
+    ctime: st.ctime,
+    mtimeMs: st.mtimeMs,
+    ctimeMs: st.ctimeMs
+  }
+  if (st.birthtimeMs > 0) t.birthtime = st.birthtime
+  return t
 }
 
 export interface WalkIssue {
@@ -138,7 +162,7 @@ export async function* walk(
 ): AsyncGenerator<FileItem> {
   const rootSt = await stat(root)
   if (rootSt.isFile()) {
-    yield { abs: root, rel: basename(root), size: rootSt.size, mtime: rootSt.mtime, atime: rootSt.atime }
+    yield { abs: root, rel: basename(root), ...fileTimes(rootSt) }
     return
   }
   const stack = [root]
@@ -193,7 +217,7 @@ export async function* walk(
         if (verdict === 'too-big') stats.tooBig++
         else if (verdict === 'hidden') stats.hidden++
         if (verdict !== 'ok') continue
-        yield { abs, rel, size: st.size, mtime: st.mtime, atime: st.atime }
+        yield { abs, rel, ...fileTimes(st) }
       }
     } catch (e) {
       if (signal?.aborted) throw e

@@ -37,6 +37,8 @@ export interface BackupManifest {
   appVersion: string
   hostname: string
   sources: Array<{ label: string; path: string }>
+  /** O backup veio de uma rotina "Mover": os arquivos podem não existir mais na origem. */
+  moveSources?: true
 }
 
 export interface RoutineMarker {

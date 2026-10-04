@@ -99,6 +99,19 @@ export interface RoutineNotification {
 
 export type RoutineColor = 'blue' | 'sky' | 'emerald' | 'amber' | 'rose' | 'violet' | 'slate'
 
+/**
+ * "Mover": apagar da origem depois de copiar (docs/research/04-mover-apos-copiar.md).
+ * Vale para a rotina inteira. Um arquivo só é apagado depois de copiado e conferido (sha256) em
+ * TODOS os destinos ativos e se continua idêntico na origem no instante da exclusão.
+ */
+export interface MoveSources {
+  enabled: boolean
+  /** Só move arquivos sem alteração (max de mtime/ctime/birthtime) há ≥ N min. Padrão 30; 5–1440. */
+  minAgeMinutes: number
+  /** Nenhum arquivo para mover → status 'warning' (true) ou 'success' (false). Padrão true. */
+  warnIfEmpty: boolean
+}
+
 export interface Routine {
   id: ID
   name: string
@@ -116,6 +129,8 @@ export interface Routine {
   schedule: Schedule
   retention: Retention
   notification: RoutineNotification
+  /** "Mover": apagar da origem depois de copiar (ausente = desligado). */
+  moveSources?: MoveSources
   createdAt: string
   updatedAt: string
   /** Resumo da última execução — preenchido pelo main. */
@@ -176,6 +191,11 @@ export interface RunSummary {
   email?: EmailStatus
   /** Mensagem principal do erro (para listas). */
   errorMessage?: string
+  /** "Mover": arquivos apagados da origem depois de conferidos em todos os destinos. */
+  filesMoved?: number
+  bytesMoved?: number
+  /** Frase de destaque que não é erro (ex.: "Mover": "Nenhum arquivo novo em C:\Backup…"). */
+  notice?: string
 }
 
 export type LogLevel = 'info' | 'warn' | 'error'
@@ -186,13 +206,46 @@ export interface LogEntry {
   message: string
 }
 
+/** Arquivo apagado da origem pelo "Mover" (conferido em todos os destinos). */
+export interface MovedFile {
+  path: string
+  bytes: number
+  sha256: string
+}
+
+/** Auditoria do "Mover" numa execução. */
+export interface MoveReport {
+  /** Apagados da origem (até MAX_MOVED_LISTED; a contagem continua exata). */
+  removed: MovedFile[]
+  removedCount: number
+  removedBytes: number
+  /** Copiados (ou elegíveis), mas mantidos na origem, com o motivo (lista limitada). */
+  kept: SkippedFile[]
+  /** Total exato de mantidos (ausente = kept.length). */
+  keptCount?: number
+  /** Não elegíveis nesta execução: recentes, em uso, data no futuro (lista limitada). */
+  postponed: SkippedFile[]
+  postponedCount: number
+  /** Pastas de origem da rotina (texto "apagados de C:\Backup"). */
+  sources?: string[]
+  /** Nenhum arquivo elegível: não houve backup novo nem retenção. */
+  nothingNew?: boolean
+  /** Frase de destaque quando não houve backup novo (e-mail e detalhe da execução). */
+  notice?: string
+  /** Por que nada foi apagado (destino com falha, cancelamento…). */
+  notDeletedReason?: string
+}
+
 export interface RunRecord extends RunSummary {
   destinations: DestinationResult[]
   log: LogEntry[]
   emailError?: string
+  /** Presente só em rotinas com "Mover". */
+  move?: MoveReport
 }
 
-export type RunPhase = 'queued' | 'scanning' | 'copying' | 'verifying' | 'pruning' | 'notifying' | 'done'
+export type RunPhase =
+  'queued' | 'scanning' | 'copying' | 'verifying' | 'pruning' | 'moving' | 'notifying' | 'done'
 
 export interface RunProgress {
   runId: ID

@@ -2,6 +2,7 @@
 // O yauzl NÃO confere CRC-32: na verificação completa calculamos com zlib.crc32 e comparamos.
 // Node puro.
 
+import { createHash } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { open, rm } from 'node:fs/promises'
 import { Transform, Writable, pipeline as pipeCb, type Readable } from 'node:stream'
@@ -27,6 +28,10 @@ import type { BackupManifest } from './manifest'
 export interface ZippedFile {
   name: string
   bytes: number
+  /** Caminho de origem (o "Mover" usa para saber o que foi conferido). */
+  abs?: string
+  /** sha256 do conteúdo lido da origem durante a compactação (conferido na verificação completa). */
+  sha256?: string
 }
 
 export interface ZipTreeResult {
@@ -86,10 +91,12 @@ export async function zipTree(
         continue
       }
       let count = 0
+      const hasher = createHash('sha256')
       const rs = fh.createReadStream({ highWaterMark: 1 << 20 })
       const counter = new Transform({
         transform(chunk: Buffer, _e, cb) {
           count += chunk.length
+          hasher.update(chunk)
           tracker.addBytes(chunk.length)
           cb(null, chunk)
         }
@@ -109,7 +116,7 @@ export async function zipTree(
         )
       }
       body = null
-      added.push({ name: zipName(item.rel), bytes: count })
+      added.push({ name: zipName(item.rel), bytes: count, abs: item.abs, sha256: hasher.digest('hex') })
       bytes += count
       tracker.fileDone()
     }
@@ -146,7 +153,7 @@ function openZip(path: string): Promise<yauzl.ZipFile> {
 
 /**
  * Verifica o ZIP: quick = diretório central legível + nomes e tamanhos conferem;
- * full = também descompacta cada entrada e confere o CRC-32.
+ * full = também descompacta cada entrada e confere o CRC-32 e, quando conhecido, o sha256 do original.
  */
 export async function verifyZip(
   zipPath: string,
@@ -157,6 +164,7 @@ export async function verifyZip(
 ): Promise<VerifyIssue[]> {
   const issues: VerifyIssue[] = []
   const want = new Map(expected.map((f) => [f.name, f.bytes]))
+  const wantHash = new Map(expected.filter((f) => f.sha256).map((f) => [f.name, f.sha256 as string]))
   const totalBytes = mode === 'full' ? expected.reduce((a, f) => a + f.bytes, 0) : 0
   tracker.startVerify(expected.length, totalBytes)
   let zip: yauzl.ZipFile
@@ -205,11 +213,14 @@ export async function verifyZip(
           return zip.readEntry()
         }
         let crc = 0
+        const expectedHash = wantHash.get(name)
+        const h = expectedHash ? createHash('sha256') : null
         pipeline(
           rs,
           new Writable({
             write(chunk: Buffer, _e, cb) {
               crc = crc32(chunk, crc)
+              h?.update(chunk)
               tracker.addBytes(chunk.length)
               cb()
             }
@@ -218,6 +229,8 @@ export async function verifyZip(
           () => {
             if (crc >>> 0 !== entry.crc32 >>> 0)
               issues.push({ path: name, reason: 'CRC-32 inválido (conteúdo corrompido)' })
+            else if (h && h.digest('hex') !== expectedHash)
+              issues.push({ path: name, reason: 'Conteúdo diferente do original (hash)' })
             tracker.fileDone()
             zip.readEntry()
           },

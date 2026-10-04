@@ -2,8 +2,22 @@
 // tray-running.png (executando), tray-warning.png (último backup com avisos), tray-error.png
 // (falha) — com @2x; no Windows prefere .ico; no macOS prefere "<nome>Template.png" (imagem modelo).
 // Arquivo ausente → cai para o ícone normal → imagem vazia (nunca quebra o app).
+//
+// Interação (05-painel-da-bandeja §0 e §7):
+// - Windows/macOS: clique esquerdo OU direito abre/fecha o painel da bandeja; duplo clique abre o
+//   app; Shift + clique direito mostra o menu nativo antigo (saída de emergência). O menu nativo é
+//   montado sempre, mas NÃO vai para `setContextMenu` (com ele, o Electron engole o `right-click`).
+// - Linux (AppIndicator, sem getBounds e com `click` pouco confiável): só o menu nativo.
+// - Se o painel caiu 2× ou não carregou, o clique volta a mostrar o menu nativo.
 
-import { Menu, Tray, nativeImage, type MenuItemConstructorOptions, type NativeImage } from 'electron'
+import {
+  Menu,
+  Tray,
+  nativeImage,
+  type MenuItemConstructorOptions,
+  type NativeImage,
+  type Rectangle
+} from 'electron'
 import { resourcePath } from './paths'
 import { log } from './logger'
 
@@ -27,12 +41,20 @@ export interface TrayActions {
   resumeAll(): void
   settings(): void
   quit(): void
+  /** Abre/fecha o painel junto do ícone. false = painel indisponível (mostra o menu nativo). */
+  togglePanel(bounds?: Rectangle): boolean
+  hidePanel(): void
 }
+
+/** Windows e macOS usam o painel; o Linux fica com o menu nativo. */
+export const TRAY_USES_PANEL = process.platform === 'win32' || process.platform === 'darwin'
 
 let tray: Tray | null = null // referência no módulo: evita o GC remover o ícone
 let actions: TrayActions | null = null
 let lastState: TrayState | null = null
 let lastMenuKey = ''
+/** Menu nativo (Windows/macOS: só com Shift + clique direito ou se o painel falhar). */
+let fallbackMenu: Menu | null = null
 const imageCache = new Map<TrayState, NativeImage>()
 
 function loadImage(state: TrayState): NativeImage {
@@ -72,9 +94,49 @@ export function createTray(a: TrayActions): void {
   }
   lastState = 'idle'
   tray.setToolTip('BC Backup')
-  // Windows/macOS: clique simples abre a janela. No Linux (AppIndicator) vale o menu.
-  tray.on('click', () => actions?.open())
-  tray.on('double-click', () => actions?.open())
+  if (!TRAY_USES_PANEL) {
+    // Linux: o menu (setContextMenu em updateTray) é a interface; o clique, quando chega, abre o app.
+    tray.on('click', () => actions?.open())
+    tray.on('double-click', () => actions?.open())
+    return
+  }
+  const toggle = (bounds?: Rectangle): void => {
+    if (!actions?.togglePanel(bounds)) popUpMenu()
+  }
+  tray.on('click', (_e, bounds) => toggle(bounds))
+  tray.on('right-click', (e, bounds) => (e.shiftKey ? popUpMenu() : toggle(bounds)))
+  tray.on('double-click', () => {
+    actions?.hidePanel()
+    actions?.open()
+  })
+  // macOS: cada clique alterna o painel na hora (sem esperar o intervalo de duplo clique).
+  if (process.platform === 'darwin') tray.setIgnoreDoubleClickEvents(true)
+}
+
+function popUpMenu(): void {
+  if (!tray || !fallbackMenu) return
+  actions?.hidePanel()
+  tray.popUpContextMenu(fallbackMenu)
+}
+
+/** Retângulo do ícone (Windows/macOS; null sem ícone ou no Linux). Pode vir zerado no "^". */
+export function trayIconBounds(): Rectangle | null {
+  if (!tray || tray.isDestroyed() || !TRAY_USES_PANEL) return null
+  try {
+    return tray.getBounds()
+  } catch {
+    return null
+  }
+}
+
+/** Devolve o foco do teclado à área de notificação (Esc no painel; só existe no Windows). */
+export function focusTrayIcon(): void {
+  if (process.platform !== 'win32' || !tray || tray.isDestroyed()) return
+  try {
+    tray.focus()
+  } catch {
+    // sem suporte: ignora
+  }
 }
 
 export function updateTray(m: TrayModel): void {
@@ -111,10 +173,13 @@ export function updateTray(m: TrayModel): void {
     { label: 'Configurações…', click: () => a.settings() },
     { label: 'Sair do BC Backup', click: () => a.quit() }
   ]
-  tray.setContextMenu(Menu.buildFromTemplate(template))
+  const menu = Menu.buildFromTemplate(template)
+  if (TRAY_USES_PANEL) fallbackMenu = menu
+  else tray.setContextMenu(menu)
 }
 
 export function destroyTray(): void {
   tray?.destroy()
   tray = null
+  fallbackMenu = null
 }

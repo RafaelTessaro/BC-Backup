@@ -117,6 +117,16 @@ export function ReviewStep({
               <span className="text-caption text-fg-subtle">e mais {draft.sources.length - 4}</span>
             )}
           </div>
+          {draft.moveSources?.enabled && (
+            <p className="mt-1.5 text-fg">
+              Mover: apaga da origem depois de copiar e conferir
+              <span className="text-fg-muted">
+                {' '}
+                · arquivos sem alteração há {plural(draft.moveSources.minAgeMinutes, 'minuto', 'minutos')}
+                {draft.moveSources.warnIfEmpty ? ' · avisa se não houver arquivo novo' : ''}
+              </span>
+            </p>
+          )}
         </Row>
         <Row label="Destinos" onEdit={() => goTo('destinos')}>
           {draft.destinations.length === 0 ? (

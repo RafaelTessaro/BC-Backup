@@ -94,6 +94,23 @@ export class ProgressTracker {
     this.tick(true)
   }
 
+  /**
+   * "Mover": fase de exclusão na origem. Os bytes do último destino ficam completos (o percentual
+   * geral continua em 100 %); filesTotal/filesDone passam a contar os arquivos conferidos para apagar.
+   */
+  startMoving(filesTotal: number): void {
+    this.p = {
+      ...this.p,
+      phase: 'moving',
+      filesTotal,
+      filesDone: 0,
+      bytesDone: this.p.bytesTotal,
+      currentFile: undefined,
+      etaMs: undefined
+    }
+    this.tick(true)
+  }
+
   file(rel: string): void {
     this.p.currentFile = rel
     this.tick()

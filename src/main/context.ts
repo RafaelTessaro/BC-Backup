@@ -7,7 +7,9 @@ import { join } from 'node:path'
 import { IPC_EVENTS } from '@shared/api'
 import type { AppInfo, AppSettings, Routine, RunProgress, RunSummary } from '@shared/types'
 import { formatDateTime } from '@shared/format'
+import { summarizeHealth } from '@shared/health'
 import { setAutoStart } from './autostart'
+import { broadcast } from './broadcast'
 import { HistoryStore } from './history'
 import { log } from './logger'
 import { Outbox } from './mail/outbox'
@@ -18,7 +20,8 @@ import { Scheduler } from './scheduler'
 import { openSecret, weakSecretStorage } from './secrets'
 import { AppStore, type StoredRoutine } from './store'
 import { updateTray, type TrayModel } from './tray'
-import { applyTheme, currentResolvedTheme, isWindowFocused, navigate, sendToRenderer } from './window'
+import { applyPanelTheme } from './tray-panel'
+import { applyTheme, currentResolvedTheme, isWindowFocused, navigate } from './window'
 
 export interface AppContext {
   store: AppStore
@@ -78,12 +81,11 @@ export async function createContext(): Promise<AppContext> {
 
   const buildTrayModel = (): TrayModel => {
     const routines = store.routines()
-    const latest = history.latestByRoutine()
     const live = runner.liveProgress
     const active = runner.active()
-    const enabled = routines.filter((r) => r.enabled)
-    const failing = enabled.filter((r) => latest.get(r.id)?.status === 'failed')
-    const warned = enabled.filter((r) => latest.get(r.id)?.status === 'warning')
+    // Mesma regra do painel da bandeja e do hero do Painel (src/shared/health.ts).
+    const withRuns = routines.map(withLastRun)
+    const health = summarizeHealth(withRuns, active)
     const nextRuns = scheduler.nextRuns()
     let next: { at: string; name: string } | null = null
     for (const r of routines) {
@@ -93,36 +95,49 @@ export async function createContext(): Promise<AppContext> {
     const statusLines: string[] = []
     let tooltip: string
     let state: TrayModel['state'] = 'idle'
-    if (live) {
-      state = 'running'
-      const frac = live.bytesTotal > 0 ? live.bytesDone / live.bytesTotal : 0
-      const pct = Math.min(
-        100,
-        Math.floor(((live.destinationIndex + frac) / Math.max(1, live.destinationCount)) * 100)
-      )
-      const busyText = live.phase === 'scanning' ? 'preparando…' : `${pct} %`
-      statusLines.push(`Em execução: ${live.routineName} — ${busyText}`)
-      tooltip = `Backup em andamento: ${live.routineName} (${busyText})`
-    } else if (failing.length) {
-      state = 'error'
-      tooltip =
-        failing.length === 1
-          ? `O último backup de "${failing[0].name}" falhou`
-          : `${failing.length} rotinas com falha`
-    } else if (warned.length) {
-      state = 'warning'
-      tooltip =
-        warned.length === 1
-          ? `O último backup de "${warned[0].name}" teve avisos`
-          : `${warned.length} rotinas com avisos`
-    } else if (!routines.length) {
-      tooltip = 'Nenhuma rotina criada'
-    } else if (!enabled.length) {
-      tooltip = 'Rotinas pausadas'
-    } else {
-      tooltip = next ? `Tudo protegido · próximo ${relDay(new Date(next.at))}` : 'Tudo protegido'
+    const failingCount = withRuns.filter((r) => r.enabled && r.lastRun?.status === 'failed').length
+    switch (health.kind) {
+      case 'running': {
+        state = 'running'
+        const p = live ?? health.run!
+        const frac = p.bytesTotal > 0 ? p.bytesDone / p.bytesTotal : 0
+        const pct = Math.min(
+          100,
+          Math.floor(((p.destinationIndex + frac) / Math.max(1, p.destinationCount)) * 100)
+        )
+        const busyText = p.phase === 'scanning' ? 'preparando…' : `${pct} %`
+        statusLines.push(`Em execução: ${p.routineName} — ${busyText}`)
+        tooltip = `Backup em andamento: ${p.routineName} (${busyText})`
+        break
+      }
+      case 'queued':
+        state = 'running'
+        tooltip = `Backup na fila: ${health.run!.routineName}`
+        break
+      case 'failed':
+        state = 'error'
+        tooltip =
+          health.count === 1
+            ? `O último backup de "${health.routine!.name}" falhou`
+            : `${health.count} rotinas com falha`
+        break
+      case 'warning':
+        state = 'warning'
+        tooltip =
+          health.count === 1
+            ? `O último backup de "${health.routine!.name}" teve avisos`
+            : `${health.count} rotinas com avisos`
+        break
+      case 'empty':
+        tooltip = 'Nenhuma rotina criada'
+        break
+      case 'paused':
+        tooltip = 'Rotinas pausadas'
+        break
+      default:
+        tooltip = next ? `Tudo protegido · próximo ${relDay(new Date(next.at))}` : 'Tudo protegido'
     }
-    if (!live) {
+    if (health.kind !== 'running') {
       const last = history.records().find((r) => r.status !== 'running' && r.status !== 'queued')
       statusLines.push(
         last
@@ -133,12 +148,12 @@ export async function createContext(): Promise<AppContext> {
     statusLines.push(next ? `Próximo: ${relDay(new Date(next.at))} — ${next.name}` : 'Nenhum backup agendado')
     const queued = active.filter((p) => p.phase === 'queued').length
     if (queued) statusLines.push(`Na fila: ${queued}`)
-    if (failing.length && live) statusLines.push(`${failing.length} rotina(s) com falha`)
+    if (failingCount && health.kind === 'running') statusLines.push(`${failingCount} rotina(s) com falha`)
     return {
       state,
       tooltip,
       statusLines,
-      anyEnabled: enabled.length > 0,
+      anyEnabled: routines.some((r) => r.enabled),
       routines: [...routines]
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
         .map((r) => ({ id: r.id, name: r.name, busy: runner.isBusy(r.id) }))
@@ -185,12 +200,12 @@ export async function createContext(): Promise<AppContext> {
     getSmtpPassword,
     info: { version, hostname },
     emitProgress: (p: RunProgress) => {
-      sendToRenderer(IPC_EVENTS.progress, p)
+      broadcast(IPC_EVENTS.progress, p)
       refreshTrayThrottled()
     },
     onFinished: (summary: RunSummary) => {
-      sendToRenderer(IPC_EVENTS.runFinished, summary)
-      sendToRenderer(IPC_EVENTS.routinesChanged)
+      broadcast(IPC_EVENTS.runFinished, summary)
+      broadcast(IPC_EVENTS.routinesChanged)
       refreshTray()
       if (store.settings.desktopNotifications && !isWindowFocused()) notifyRunFinished(summary, navigate)
     },
@@ -214,7 +229,7 @@ export async function createContext(): Promise<AppContext> {
             message: 'E-mail enviado (nova tentativa da fila de saída).'
           }
         ])
-        sendToRenderer(IPC_EVENTS.routinesChanged)
+        broadcast(IPC_EVENTS.routinesChanged)
       },
       onExpired: async (item, lastError) => {
         await history.update(item.runId, { email: 'failed', emailError: lastError }, [
@@ -224,7 +239,7 @@ export async function createContext(): Promise<AppContext> {
             message: `E-mail não enviado após 24 horas de tentativas: ${lastError}`
           }
         ])
-        sendToRenderer(IPC_EVENTS.routinesChanged)
+        broadcast(IPC_EVENTS.routinesChanged)
       }
     })
   } catch (e) {
@@ -252,7 +267,7 @@ export async function createContext(): Promise<AppContext> {
     withLastRun,
     routinesWithLastRun: () => store.routines().map(withLastRun),
     routinesChanged: () => {
-      sendToRenderer(IPC_EVENTS.routinesChanged)
+      broadcast(IPC_EVENTS.routinesChanged)
       scheduler.tick()
       refreshTray()
     },
@@ -261,10 +276,11 @@ export async function createContext(): Promise<AppContext> {
       if (!prev || prev.theme !== s.theme) {
         nativeTheme.themeSource = s.theme
         applyTheme(currentResolvedTheme())
+        applyPanelTheme(currentResolvedTheme())
       }
       if (!prev || prev.launchAtLogin !== s.launchAtLogin) await setAutoStart(s.launchAtLogin)
       if (prev && prev.historyDays !== s.historyDays) await history.prune(s.historyDays).catch(() => 0)
-      sendToRenderer(IPC_EVENTS.settingsChanged, s)
+      broadcast(IPC_EVENTS.settingsChanged, s)
       refreshTray()
     },
     getSmtpPassword,

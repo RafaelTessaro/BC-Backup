@@ -20,6 +20,15 @@ export default defineConfig({
   },
   renderer: {
     resolve: { alias: { ...shared, '@renderer': resolve('src/renderer/src') } },
-    plugins: [react(), tailwindcss()]
+    plugins: [react(), tailwindcss()],
+    // Duas páginas: a janela principal e o painel da bandeja (React/Radix/lucide num chunk comum).
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/renderer/index.html'),
+          tray: resolve('src/renderer/tray.html')
+        }
+      }
+    }
   }
 })

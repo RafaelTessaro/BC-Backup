@@ -14,6 +14,7 @@ import type {
   FileResult,
   HistoryQuery,
   MailTestResult,
+  MovePreview,
   PathInfo,
   PickResult,
   RoutineInput,
@@ -32,6 +33,7 @@ import type {
   FinalRunStatus,
   ID,
   LogEntry,
+  MoveReport,
   Routine,
   RunProgress,
   RunRecord,
@@ -124,7 +126,8 @@ const KNOWN_SIZES: Record<string, { bytes: number; files: number }> = {
   'C:\\ERP\\Config\\erp.ini': { bytes: 12 * 1024, files: 1 },
   'C:\\Contabilidade': { bytes: 6.1 * GB, files: 14211 },
   'D:\\Fiscal\\SPED': { bytes: 2.3 * GB, files: 4221 },
-  'C:\\Users\\Ana\\Documents\\Diretoria': { bytes: 4.8 * GB, files: 1876 }
+  'C:\\Users\\Ana\\Documents\\Diretoria': { bytes: 4.8 * GB, files: 1876 },
+  'C:\\ERP\\Backup': { bytes: 4.2 * GB, files: 2 }
 }
 
 function sizeOf(path: string): { bytes: number; files: number } {
@@ -269,6 +272,39 @@ function seedRoutines(): Routine[] {
     ),
     baseRoutine(
       {
+        id: 'r-erp',
+        name: 'Backup do ERP',
+        description: 'Backups gerados pelo ERP: copiados para 2 destinos e apagados do disco principal.',
+        color: 'sky',
+        sources: [{ id: 's1', path: 'C:\\ERP\\Backup', kind: 'folder' }],
+        destinations: [
+          { id: 'd1', path: 'E:\\', label: 'HD externo azul', enabled: true },
+          { id: 'd2', path: '\\\\SERVIDOR\\backup', label: 'Servidor', enabled: true }
+        ],
+        verify: 'full',
+        schedule: {
+          kind: 'daily',
+          times: ['23:30'],
+          weekdays: [],
+          intervalMinutes: 240,
+          window: null,
+          startupDelayMinutes: 5,
+          catchUpMissed: true
+        },
+        retention: { enabled: true, days: 7, minKeep: 3 },
+        moveSources: { enabled: true, minAgeMinutes: 30, warnIfEmpty: true },
+        notification: {
+          ...DEFAULT_NOTIFICATION,
+          enabled: true,
+          recipients: ['ti@padariapaoquente.com.br'],
+          bcc: ['suporte@bcinformatica.com.br'],
+          onSuccess: false
+        }
+      },
+      20
+    ),
+    baseRoutine(
+      {
         id: 'r-contab',
         name: 'Contabilidade',
         color: 'emerald',
@@ -355,6 +391,10 @@ interface GenSpec {
   status: FinalRunStatus
   errorMessage?: string
   failedDestination?: number
+  /** "Mover": o ERP não gerou backup (pasta vazia) → Atenção, sem backup novo. */
+  nothingNew?: boolean
+  /** "Mover": um arquivo foi alterado depois da cópia e ficou na origem. */
+  keptOne?: boolean
 }
 
 function profile(r: Routine): { bytes: number; files: number; speed: number } {
@@ -538,12 +578,148 @@ function buildRecord(spec: GenSpec, rnd: () => number, smtpReady = true): RunRec
   }
 }
 
+const fakeSha = (s: string): string => hash(s).toString(16).padStart(8, '0').repeat(8)
+
+/**
+ * "Mover" (mesma semântica do motor): acrescenta o relatório de movidos/mantidos, o destaque de
+ * "nenhum arquivo novo" e as linhas "Movido: …" do log a um registro gerado por `buildRecord`.
+ */
+function decorateMove(rec: RunRecord, spec: GenSpec): RunRecord {
+  const r = spec.routine
+  if (!r.moveSources?.enabled) return rec
+  const from = r.sources.map((s) => s.path)
+  const root = from[0] ?? 'C:\\Backup'
+  const d = spec.start
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const names = [`ERP_${day}_2300.fbk`, `Diario\\NFE_${day}.zip`]
+  const base: MoveReport = {
+    removed: [],
+    removedCount: 0,
+    removedBytes: 0,
+    kept: [],
+    keptCount: 0,
+    postponed: [],
+    postponedCount: 0,
+    sources: from
+  }
+  const finalLine = rec.log[rec.log.length - 1]
+  const at = (offsetMs: number): string =>
+    iso(new Date(finalLine ? finalLine.t : rec.startedAt).getTime() - offsetMs)
+
+  if (spec.nothingNew) {
+    const notice = `Nenhum arquivo novo em ${from.join(', ')}. O sistema pode não ter gerado o backup.`
+    const n = r.notification
+    return {
+      ...rec,
+      status: 'warning',
+      filesTotal: 0,
+      filesCopied: 0,
+      filesSkipped: 0,
+      bytesTotal: 0,
+      bytesCopied: 0,
+      warnings: 1,
+      errors: 0,
+      errorMessage: undefined,
+      notice,
+      filesMoved: 0,
+      bytesMoved: 0,
+      durationMs: 1800,
+      finishedAt: iso(new Date(rec.startedAt).getTime() + 1800),
+      email: n.enabled && n.recipients.length > 0 && n.onWarning ? 'sent' : rec.email,
+      destinations: rec.destinations.map((x) => ({
+        ...x,
+        status: 'success',
+        outputPath: undefined,
+        filesCopied: 0,
+        bytesCopied: 0,
+        skipped: [],
+        pruned: [],
+        error: undefined
+      })),
+      log: [
+        rec.log[0],
+        {
+          t: iso(new Date(rec.startedAt).getTime() + 900),
+          level: 'info',
+          message: 'Encontrados 0 arquivos (0 B).'
+        },
+        {
+          t: iso(new Date(rec.startedAt).getTime() + 1800),
+          level: 'warn',
+          message: `${notice} Nenhum backup novo foi criado.`
+        }
+      ],
+      move: { ...base, nothingNew: true, notice }
+    }
+  }
+
+  const sizes = [Math.round(rec.bytesCopied * 0.82), rec.bytesCopied - Math.round(rec.bytesCopied * 0.82)]
+  const files = names.map((n, i) => ({
+    path: `${root}\\${n}`,
+    bytes: sizes[i],
+    sha256: fakeSha(`${root}${n}`)
+  }))
+  if (rec.status === 'failed' || rec.status === 'cancelled') {
+    const failed = rec.destinations.find((x) => x.status === 'failed')
+    const why =
+      rec.status === 'failed'
+        ? `Nada foi apagado da origem porque ${failed?.label || failed?.path || 'um destino'} falhou.`
+        : 'Nada foi apagado da origem porque a execução foi cancelada.'
+    const kept = files.map((f) => ({
+      path: f.path,
+      reason: why.replace(/^Nada foi apagado da origem porque /, 'Não apagado: ').replace(/\.$/, '')
+    }))
+    return {
+      ...rec,
+      filesMoved: 0,
+      bytesMoved: 0,
+      log: [
+        ...rec.log.slice(0, -1),
+        { t: at(100), level: rec.status === 'failed' ? 'error' : 'warn', message: why },
+        ...rec.log.slice(-1)
+      ],
+      move: { ...base, kept, keptCount: kept.length, notDeletedReason: why }
+    }
+  }
+  const removed = spec.keptOne ? files.slice(1) : files
+  const kept = spec.keptOne
+    ? [{ path: files[0].path, reason: 'Alterado depois da cópia; será copiado de novo na próxima execução' }]
+    : []
+  const n = rec.destinations.length
+  const moveLog: LogEntry[] = [
+    {
+      t: at(900),
+      level: 'info',
+      message: `Removendo da origem o que foi copiado e conferido em ${n} ${n === 1 ? 'destino' : 'destinos'}.`
+    },
+    ...removed.map((f, i) => ({
+      t: at(800 - i * 100),
+      level: 'info' as const,
+      message: `Movido: ${f.path} (${formatBytes(f.bytes)}), conferido em ${n} ${n === 1 ? 'destino' : 'destinos'}.`
+    })),
+    ...kept.map((k) => ({ t: at(300), level: 'warn' as const, message: `Mantido: ${k.path} — ${k.reason}` }))
+  ]
+  const removedBytes = removed.reduce((a, f) => a + f.bytes, 0)
+  return {
+    ...rec,
+    status: kept.length ? 'warning' : rec.status,
+    warnings: rec.warnings + kept.length,
+    notice: kept.length ? '1 arquivo ficou na origem; veja os motivos no histórico.' : rec.notice,
+    filesMoved: removed.length,
+    bytesMoved: removedBytes,
+    log: [...rec.log.slice(0, -1), ...moveLog, ...rec.log.slice(-1)],
+    move: { ...base, removed, removedCount: removed.length, removedBytes, kept, keptCount: kept.length }
+  }
+}
+
 function seedRuns(routines: Routine[], scenario: Scenario, now: Date): RunRecord[] {
   const rnd = mulberry32(20261004)
   const specs: GenSpec[] = []
   for (let back = 14; back >= 0; back--) {
     const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back)
     for (const r of routines) {
+      // "Backup do ERP" tem histórico próprio (abaixo): não mexe na sequência das demais.
+      if (r.moveSources?.enabled) continue
       const created = new Date(r.createdAt)
       // a rotina pausada rodou até 6 dias atrás
       if (!r.enabled && back < 6) continue
@@ -594,7 +770,30 @@ function seedRuns(routines: Routine[], scenario: Scenario, now: Date): RunRecord
   }
   if (scenario === 'warning' && contab) contab.status = 'warning'
 
-  return specs.map((s) => buildRecord(s, rnd)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  const records = specs.map((s) => buildRecord(s, rnd))
+
+  // "Mover": um backup do ERP por noite; um dia sem arquivo novo, um com arquivo alterado, uma falha.
+  const rndErp = mulberry32(4242)
+  for (const r of routines.filter((x) => x.moveSources?.enabled)) {
+    for (let back = 14; back >= 0; back--) {
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back)
+      for (const slot of slotsForDay(r.schedule, day)) {
+        const start = new Date(slot.getTime() + Math.floor(rndErp() * 40_000))
+        if (start < new Date(r.createdAt) || start.getTime() > now.getTime() - 20 * 60_000) continue
+        const spec: GenSpec = { routine: r, start, trigger: 'schedule', status: 'success' }
+        if (back === 4) spec.nothingNew = true
+        else if (back === 2) spec.keptOne = true
+        else if (back === 6) {
+          spec.status = 'failed'
+          spec.errorMessage =
+            'Destino indisponível: \\\\SERVIDOR\\backup não respondeu. Verifique se o servidor está ligado.'
+          spec.failedDestination = 1
+        }
+        records.push(decorateMove(buildRecord(spec, rndErp), spec))
+      }
+    }
+  }
+  return records.sort((a, b) => b.startedAt.localeCompare(a.startedAt))
 }
 
 /* ------------------------------------------------------------------ */
@@ -647,7 +846,8 @@ export function createMockApi(): BcApi {
     runFinished: new Set<Listener<RunSummary>>(),
     routinesChanged: new Set<Listener<void>>(),
     settingsChanged: new Set<Listener<AppSettings>>(),
-    navigate: new Set<Listener<string>>()
+    navigate: new Set<Listener<string>>(),
+    trayShown: new Set<Listener<void>>()
   }
   const emit = <T>(set: Set<Listener<T>>, value: T): void => {
     for (const l of set) l(value)
@@ -783,8 +983,24 @@ export function createMockApi(): BcApi {
       p.phase = 'pruning'
       run.ticks = 0
     } else if (p.phase === 'pruning' && run.ticks >= 3) {
-      p.phase = run.routine.notification.enabled ? 'notifying' : 'done'
+      if (run.routine.moveSources?.enabled) {
+        // "Mover": confere e apaga da origem o que foi copiado (bytes do último destino completos).
+        p.phase = 'moving'
+        p.filesTotal = run.filesPerDest
+        p.filesDone = 0
+        p.bytesDone = p.bytesTotal
+        p.speed = 0
+      } else p.phase = run.routine.notification.enabled ? 'notifying' : 'done'
       run.ticks = 0
+    } else if (p.phase === 'moving') {
+      p.filesDone = Math.min(p.filesTotal, p.filesDone + 1)
+      const src = run.routine.sources[0]?.path ?? 'C:\\Backup'
+      p.currentFile = `${src}\\${p.filesDone % 2 ? 'ERP_2026-10-04_2300.fbk' : 'Diario\\NFE_2026-10-04.zip'}`
+      if (run.ticks >= Math.max(3, p.filesTotal + 1)) {
+        p.phase = run.routine.notification.enabled ? 'notifying' : 'done'
+        p.currentFile = undefined
+        run.ticks = 0
+      }
     } else if (p.phase === 'notifying' && run.ticks >= 3) {
       p.phase = 'done'
     }
@@ -798,10 +1014,10 @@ export function createMockApi(): BcApi {
     if (run.timer) clearInterval(run.timer)
     active.delete(runId)
     const start = new Date(run.progress.startedAt)
-    const record = buildRecord(
-      { routine: run.routine, start, trigger: run.trigger, status },
-      mulberry32(hash(runId)),
-      !!settings.smtp.host && !!settings.smtp.fromEmail
+    const spec: GenSpec = { routine: run.routine, start, trigger: run.trigger, status }
+    const record = decorateMove(
+      buildRecord(spec, mulberry32(hash(runId)), !!settings.smtp.host && !!settings.smtp.fromEmail),
+      spec
     )
     record.id = runId
     record.finishedAt = iso(Date.now())
@@ -841,11 +1057,16 @@ export function createMockApi(): BcApi {
       level: ValidationIssue['level'],
       step: ValidationIssue['step'],
       message: string,
-      destinationId?: string
+      destinationId?: string,
+      topic?: ValidationIssue['topic']
     ): void => {
-      if (!issues.some((i) => i.message === message && i.step === step))
-        issues.push(destinationId ? { level, step, message, destinationId } : { level, step, message })
+      if (issues.some((i) => i.message === message && i.step === step)) return
+      const issue: ValidationIssue = { level, step, message }
+      if (destinationId) issue.destinationId = destinationId
+      if (topic) issue.topic = topic
+      issues.push(issue)
     }
+    const move = input.moveSources?.enabled === true
     const norm = (p: string): string => p.toUpperCase().replace(/[\\/]+$/, '')
     const isAbs = (p: string): boolean =>
       /^[A-Za-z]:[\\/]/.test(p) || p.startsWith('\\\\') || p.startsWith('/')
@@ -911,7 +1132,15 @@ export function createMockApi(): BcApi {
           !inside(d.path, s.path) &&
           !inside(s.path, d.path)
       )
-      if (sameDisk)
+      if (sameDisk && move)
+        add(
+          'warning',
+          'destinos',
+          `O destino ${destName(d)} fica no mesmo disco da origem: "Mover" não libera espaço nesse disco.`,
+          d.id,
+          'move'
+        )
+      else if (sameDisk)
         add(
           'warning',
           'destinos',
@@ -972,6 +1201,97 @@ export function createMockApi(): BcApi {
           message:
             'Configure o servidor de e-mail (SMTP) em Configurações › E-mail para os avisos funcionarem.'
         })
+    }
+    // "Mover" — mesmas regras e textos de src/main/validate.ts (pastas bloqueadas simplificadas).
+    if (move) {
+      const blocked = (path: string): boolean => {
+        const n = norm(path)
+        if (/^[A-Z]:$/.test(n) || /^\\\\[^\\]+\\[^\\]+$/.test(n)) return true
+        if (n === 'C:\\WINDOWS' || n.startsWith('C:\\WINDOWS\\')) return true
+        if (['C:\\PROGRAM FILES', 'C:\\PROGRAM FILES (X86)', 'C:\\PROGRAMDATA', 'C:\\USERS'].includes(n))
+          return true
+        const parts = n.split('\\')
+        if (parts[0] === 'C:' && parts[1] === 'USERS' && parts.length === 3) return true
+        const known = ['DESKTOP', 'DOCUMENTS', 'DOCUMENTOS', 'DOWNLOADS', 'PICTURES', 'IMAGENS']
+        if (
+          parts[0] === 'C:' &&
+          parts[1] === 'USERS' &&
+          parts.length === 4 &&
+          (known.includes(parts[3]) || /^ONEDRIVE( - .+)?$/.test(parts[3]))
+        )
+          return true
+        return false
+      }
+      for (const s of input.sources) {
+        if (!s.path?.trim() || !isAbs(s.path)) continue
+        if (s.kind === 'file')
+          add(
+            'error',
+            'origem',
+            '"Mover" só funciona com pastas. Troque o arquivo pela pasta que o contém.',
+            undefined,
+            'move'
+          )
+        else if (blocked(s.path))
+          add(
+            'error',
+            'origem',
+            'Não é possível usar "Mover" em uma unidade inteira ou pasta do sistema (C:\\, C:\\Windows, C:\\Users\\Ana…). Escolha a pasta onde o sistema grava os backups.',
+            undefined,
+            'move'
+          )
+        for (const other of routines) {
+          if (other.id === input.id) continue
+          if (other.sources.some((o) => inside(o.path, s.path) || inside(s.path, o.path)))
+            add(
+              'warning',
+              'origem',
+              `A rotina "${other.name}" também usa esta pasta e pode não encontrar os arquivos depois que eles forem movidos.`,
+              undefined,
+              'move'
+            )
+        }
+      }
+      if (
+        input.sources.some((s) =>
+          /(^|[\\/])(onedrive( - [^\\/]+)?|dropbox|google drive|meu drive)([\\/]|$)/i.test(s.path)
+        )
+      )
+        add(
+          'warning',
+          'origem',
+          'Esta pasta é sincronizada com a nuvem (OneDrive/Dropbox): apagar aqui também apaga lá.',
+          undefined,
+          'move'
+        )
+      if (dests.length === 1)
+        add(
+          'warning',
+          'destinos',
+          'Só há 1 destino ativo: depois de mover, o backup existirá em um único lugar. Recomendamos 2 destinos.',
+          undefined,
+          'move'
+        )
+      if (!ret.enabled)
+        add(
+          'warning',
+          'retencao',
+          'A retenção está desligada: os destinos vão acumular todos os backups movidos.',
+          undefined,
+          'move'
+        )
+      if (sc.kind === 'interval' && input.moveSources?.warnIfEmpty !== false && sc.intervalMinutes >= 5) {
+        const m = sc.intervalMinutes
+        const every =
+          m % 60 === 0 ? (m === 60 ? 'a cada hora' : `a cada ${m / 60} horas`) : `a cada ${m} minutos`
+        add(
+          'warning',
+          'agendamento',
+          `Com execuções ${every}, desmarque "Avisar se não houver arquivo novo".`,
+          undefined,
+          'move'
+        )
+      }
     }
     return issues
   }
@@ -1234,6 +1554,38 @@ export function createMockApi(): BcApi {
         }
         if (filters?.maxFileSizeMB) bytes *= 0.82
         return { bytes: Math.round(bytes), files, partial: files > 12000 }
+      },
+      previewMove: async (sources, _filters, move): Promise<MovePreview> => {
+        await delay(380)
+        // Mesmas regras do motor, simuladas: o ERP terminou de gravar 2 arquivos e ainda grava 1.
+        const out: MovePreview = {
+          files: 0,
+          bytes: 0,
+          names: [],
+          waiting: 0,
+          waitingItems: [],
+          partial: false
+        }
+        for (const src of sources) {
+          if (/\.[^.\\/]+$/.test(src)) continue // arquivo: "Mover" só funciona com pastas
+          const z = sizeOf(src)
+          const r = mulberry32(hash(src))
+          const files = Math.min(z.files, 2 + Math.floor(r() * 2))
+          const recent = move.minAgeMinutes >= 120 ? 2 : 1
+          out.files += Math.max(0, files - recent + 1)
+          out.bytes += Math.round(z.bytes * 0.92)
+          for (let i = 0; i < files - recent + 1; i++)
+            out.names.push(i === 0 ? 'ERP_2026-10-04_2300.fbk' : `Diario\\NFE_2026-10-0${4 - i}.zip`)
+          out.waiting += recent
+          for (let i = 0; i < recent; i++)
+            out.waitingItems.push({
+              name: i === 0 ? 'ERP_2026-10-05_1200.fbk' : 'Diario\\NFE_2026-10-05.zip',
+              reason: `Alterado há ${4 + i * 9} min, pode estar sendo gravado`
+            })
+        }
+        out.names = out.names.slice(0, 10)
+        out.waitingItems = out.waitingItems.slice(0, 10)
+        return out
       }
     },
     on: {
@@ -1241,8 +1593,34 @@ export function createMockApi(): BcApi {
       runFinished: (cb) => subscribe(listeners.runFinished, cb),
       routinesChanged: (cb) => subscribe(listeners.routinesChanged, () => cb()),
       settingsChanged: (cb) => subscribe(listeners.settingsChanged, cb),
-      navigate: (cb) => subscribe(listeners.navigate, cb)
-    }
+      navigate: (cb) => subscribe(listeners.navigate, cb),
+      trayShown: (cb) => subscribe(listeners.trayShown, () => cb())
+    },
+    // Painel da bandeja (http://localhost:5199/tray.html): no navegador não há janela a mostrar.
+    tray: (() => {
+      let pausedByTray: ID[] = []
+      return {
+        openMain: async (route?: string) => {
+          console.info('[mock] tray.openMain', route ?? '/')
+        },
+        hide: async () => {},
+        setAllPaused: async (paused: boolean) => {
+          const now = iso(Date.now())
+          if (paused) {
+            pausedByTray = routines.filter((r) => r.enabled).map((r) => r.id)
+            routines = routines.map((r) => (r.enabled ? { ...r, enabled: false, updatedAt: now } : r))
+          } else {
+            const ids = pausedByTray.length ? new Set(pausedByTray) : null
+            routines = routines.map((r) =>
+              !r.enabled && (!ids || ids.has(r.id)) ? { ...r, enabled: true, updatedAt: now } : r
+            )
+            pausedByTray = []
+          }
+          routinesChanged()
+        },
+        quit: async () => {}
+      }
+    })()
   }
   return api
 }

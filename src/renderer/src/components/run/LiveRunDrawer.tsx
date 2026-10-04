@@ -27,7 +27,16 @@ import { destinationLabel, overallPercent } from '@renderer/lib/progress'
 import { PHASE_LABEL, ROUTINE_STATUS, RUN_STATUS } from '@renderer/lib/status'
 import { closeLiveRun, openRunDetail, progressFor, useApp } from '@renderer/lib/store'
 
-const ORDER: RunPhase[] = ['queued', 'scanning', 'copying', 'verifying', 'pruning', 'notifying', 'done']
+const ORDER: RunPhase[] = [
+  'queued',
+  'scanning',
+  'copying',
+  'verifying',
+  'pruning',
+  'moving',
+  'notifying',
+  'done'
+]
 
 function Stat({
   label,
@@ -80,6 +89,12 @@ function PhaseSteps({ p, routine }: { p: RunProgress; routine?: Routine }) {
   })
   if (!routine || routine.retention.enabled)
     steps.push({ phase: 'pruning', label: 'Limpando cópias antigas' })
+  if (routine?.moveSources?.enabled || p.phase === 'moving')
+    steps.push({
+      phase: 'moving',
+      label: 'Removendo da origem',
+      detail: 'Apagando o que já foi copiado e conferido'
+    })
   if (routine?.notification.enabled) steps.push({ phase: 'notifying', label: 'Enviando e-mail' })
   const current = ORDER.indexOf(p.phase)
   return (
@@ -180,14 +195,18 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
               ? 'Contando arquivos…'
               : p.phase === 'copying'
                 ? `Copiando ${formatNumber(p.filesDone)} de ${plural(p.filesTotal, 'arquivo', 'arquivos')}${dest ? ` · ${dest.toLowerCase()}` : ''}`
-                : PHASE_LABEL[p.phase]}
+                : p.phase === 'moving'
+                  ? `Removendo da origem · ${formatNumber(p.filesDone)} de ${plural(p.filesTotal, 'arquivo conferido', 'arquivos conferidos')}`
+                  : PHASE_LABEL[p.phase]}
         </p>
       </section>
 
       {!queued && (
         <section className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg bg-surface-sunken p-4 dark:bg-surface">
           <Stat
-            label={dest ? 'Arquivos · neste destino' : 'Arquivos'}
+            label={
+              p.phase === 'moving' ? 'Conferidos na origem' : dest ? 'Arquivos · neste destino' : 'Arquivos'
+            }
             value={formatNumber(p.filesDone)}
             sub={`/ ${formatNumber(p.filesTotal)}`}
             pending={preparing && p.filesTotal === 0}
@@ -203,9 +222,11 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
         </section>
       )}
 
-      {p.currentFile && p.phase === 'copying' && (
+      {p.currentFile && (p.phase === 'copying' || p.phase === 'moving') && (
         <section className="flex flex-col gap-1.5">
-          <span className="text-caption font-medium text-fg-subtle">Arquivo atual</span>
+          <span className="text-caption font-medium text-fg-subtle">
+            {p.phase === 'moving' ? 'Conferindo e apagando' : 'Arquivo atual'}
+          </span>
           <div className="rounded-md border border-border bg-surface px-3 py-2">
             <PathText path={p.currentFile} className="text-fg-muted" />
           </div>
@@ -287,11 +308,13 @@ function Finished({ r }: { r: RunSummary }) {
           <p className="text-section font-semibold text-fg">
             {r.status === 'success'
               ? 'Backup concluído'
-              : r.status === 'warning'
-                ? `Concluído com ${plural(r.warnings, 'aviso', 'avisos')}`
-                : r.status === 'failed'
-                  ? 'O backup falhou'
-                  : meta.label}
+              : r.status === 'warning' && r.notice && !r.filesCopied
+                ? 'Nenhum backup novo'
+                : r.status === 'warning'
+                  ? `Concluído com ${plural(r.warnings, 'aviso', 'avisos')}`
+                  : r.status === 'failed'
+                    ? 'O backup falhou'
+                    : meta.label}
           </p>
           <p className="text-small text-fg-muted">
             {r.durationMs !== undefined ? `Levou ${formatDuration(r.durationMs)}` : null}
@@ -301,10 +324,28 @@ function Finished({ r }: { r: RunSummary }) {
       {r.errorMessage && (
         <p className="rounded-md bg-danger-soft p-3 text-small text-danger">{r.errorMessage}</p>
       )}
+      {r.notice && (
+        <p
+          className={cn(
+            'rounded-md p-3 text-small',
+            r.status === 'warning' ? 'bg-warning-soft text-fg' : 'bg-surface-hover text-fg-muted'
+          )}
+        >
+          {r.notice}
+        </p>
+      )}
       <section className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg bg-surface-sunken p-4 dark:bg-surface">
         <Stat label="Arquivos copiados" value={formatNumber(r.filesCopied)} />
         <Stat label="Dados" value={formatBytes(r.bytesCopied)} />
-        <Stat label="Avisos" value={formatNumber(r.warnings)} />
+        {r.filesMoved !== undefined ? (
+          <Stat
+            label="Removidos da origem"
+            value={formatNumber(r.filesMoved)}
+            sub={r.bytesMoved ? `· ${formatBytes(r.bytesMoved)}` : undefined}
+          />
+        ) : (
+          <Stat label="Avisos" value={formatNumber(r.warnings)} />
+        )}
         <Stat label="Destinos" value={formatNumber(r.destinationCount)} />
       </section>
     </div>
@@ -387,7 +428,11 @@ export function LiveRunDrawer() {
         open={confirmStop}
         onOpenChange={setConfirmStop}
         title={`Parar “${name}”?`}
-        description="A cópia parcial será mantida no destino. A rotina continua agendada normalmente."
+        description={
+          routine?.moveSources?.enabled
+            ? 'Nada mais é apagado da origem: o que ainda não foi removido fica lá para a próxima execução. A rotina continua agendada normalmente.'
+            : 'A cópia parcial será mantida no destino. A rotina continua agendada normalmente.'
+        }
         confirmLabel="Parar backup"
         onConfirm={() => (routineId ? cancelRun(routineId) : undefined)}
       />

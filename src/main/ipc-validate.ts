@@ -4,9 +4,9 @@
 import { realpath, stat } from 'node:fs/promises'
 import { extname } from 'node:path'
 import type { HistoryQuery, RoutineInput } from '@shared/api'
-import type { AppSettings, Filters, RunStatus, SmtpInput } from '@shared/types'
+import type { AppSettings, Filters, MoveSources, RunStatus, SmtpInput } from '@shared/types'
 import { DEFAULT_SETTINGS } from '@shared/defaults'
-import { isObj, migrateRoutine, migrateSmtp } from './store'
+import { isObj, migrateMoveSources, migrateRoutine, migrateSmtp } from './store'
 import { isAbsolutePath } from './validate'
 
 export class IpcArgError extends Error {
@@ -54,6 +54,13 @@ export function asFilters(v: unknown): Filters | undefined {
   if (!isObj(v)) throw new IpcArgError('Parâmetro inválido: filtros.')
   // migrateRoutine normaliza os filtros (padrões, tipos).
   return migrateRoutine({ filters: v }).filters
+}
+
+/** Opções do "Mover" vindas do editor (prévia): mesma normalização do store. */
+export function asMoveSources(v: unknown): MoveSources {
+  const m = migrateMoveSources(v)
+  if (!m) throw new IpcArgError('Parâmetro inválido: opções de "Mover".')
+  return m
 }
 
 const RUN_STATUSES: readonly RunStatus[] = ['queued', 'running', 'success', 'warning', 'failed', 'cancelled']

@@ -17,6 +17,7 @@ import type {
   Destination,
   Filters,
   ID,
+  MoveSources,
   Retention,
   Routine,
   RoutineColor,
@@ -32,8 +33,10 @@ import type {
 } from '@shared/types'
 import {
   DEFAULT_EXCLUDES,
+  DEFAULT_MOVE_SOURCES,
   DEFAULT_NOTIFICATION,
   DEFAULT_SETTINGS,
+  MOVE_MIN_AGE_RANGE,
   createDefaultRoutine
 } from '@shared/defaults'
 import { parseTime } from '@shared/schedule'
@@ -201,6 +204,7 @@ const ROUTINE_KEYS = [
   'schedule',
   'retention',
   'notification',
+  'moveSources',
   'createdAt',
   'updatedAt',
   'lastRun'
@@ -310,6 +314,17 @@ function migrateNotification(v: unknown): RoutineNotification {
   return n
 }
 
+/** "Mover": objeto inválido ou ausente → undefined (desligado); valores fora da faixa são limitados. */
+export function migrateMoveSources(v: unknown): MoveSources | undefined {
+  if (!isObj(v)) return undefined
+  const d = DEFAULT_MOVE_SOURCES
+  return {
+    enabled: bool(v.enabled, d.enabled),
+    minAgeMinutes: int(v.minAgeMinutes, d.minAgeMinutes, MOVE_MIN_AGE_RANGE.min, MOVE_MIN_AGE_RANGE.max),
+    warnIfEmpty: bool(v.warnIfEmpty, d.warnIfEmpty)
+  }
+}
+
 /**
  * Normaliza uma rotina vinda do disco, do renderer ou de um arquivo importado.
  * Nunca lança: campos inválidos recebem o padrão. `id` ausente → novo id.
@@ -340,6 +355,8 @@ export function migrateRoutine(raw: unknown, now: Date = new Date()): StoredRout
     createdAt,
     updatedAt: isoOr(r.updatedAt, createdAt)
   }
+  const moveSources = migrateMoveSources(r.moveSources)
+  if (moveSources) routine.moveSources = moveSources
   return routine
 }
 

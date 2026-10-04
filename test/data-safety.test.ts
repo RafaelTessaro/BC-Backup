@@ -382,7 +382,10 @@ describe('cópia: nomes que colidem no destino', () => {
       rel: 'Fotos/foto.jpg',
       size: 8,
       mtime: st.mtime,
-      atime: st.atime
+      atime: st.atime,
+      ctime: st.ctime,
+      mtimeMs: st.mtimeMs,
+      ctimeMs: st.ctimeMs
     }))
     const tracker = new ProgressTracker(
       { runId: 'r', routineId: 'x', routineName: 'x', startedAt: '', destinationCount: 1 },

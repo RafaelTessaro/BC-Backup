@@ -87,6 +87,7 @@ export const PHASE_LABEL: Record<RunProgress['phase'], string> = {
   copying: 'Copiando',
   verifying: 'Verificando a cópia…',
   pruning: 'Limpando cópias antigas…',
+  moving: 'Removendo da origem…',
   notifying: 'Enviando e-mail…',
   done: 'Concluído'
 }

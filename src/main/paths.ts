@@ -34,13 +34,21 @@ export function rendererIndexPath(): string {
   return join(__dirname, '../renderer/index.html')
 }
 
+/** Painel da bandeja (segunda entrada do renderer). */
+export function rendererTrayPath(): string {
+  return join(__dirname, '../renderer/tray.html')
+}
+
 /** URL de dev (electron-vite) ou null no build. */
 export function devRendererUrl(): string | null {
   const url = process.env.ELECTRON_RENDERER_URL
   return url && !app.isPackaged ? url : null
 }
 
-/** A URL pertence à nossa interface? (valida remetente IPC e navegação). */
+/**
+ * A URL pertence à nossa interface? (valida remetente IPC e navegação). Aceita a janela principal
+ * (index.html) e o painel da bandeja (tray.html); em dev, qualquer página do servidor do Vite.
+ */
 export function isAppUrl(url: string): boolean {
   if (!url) return false
   const dev = devRendererUrl()
@@ -51,8 +59,8 @@ export function isAppUrl(url: string): boolean {
     u.hash = ''
     u.search = ''
     const a = normalize(fileURLToPath(u))
-    const b = normalize(rendererIndexPath())
-    return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+    const same = (b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
+    return same(normalize(rendererIndexPath())) || same(normalize(rendererTrayPath()))
   } catch {
     return false
   }

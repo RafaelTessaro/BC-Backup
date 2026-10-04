@@ -1,4 +1,4 @@
-import { Archive, ShieldCheck } from 'lucide-react'
+import { Archive, FolderOutput, ShieldCheck } from 'lucide-react'
 import type { RoutineInput, ValidationIssue } from '@shared/api'
 import { formatBytes } from '@shared/format'
 import { Callout } from '@renderer/components/ui/Callout'
@@ -47,6 +47,11 @@ export function RetentionStep({
 
   return (
     <div className="flex flex-col gap-6">
+      {draft.moveSources?.enabled && (
+        <Callout tone="accent" icon={FolderOutput}>
+          Com “Mover”, os backups do sistema ficam só nos destinos: a retenção decide por quanto tempo.
+        </Callout>
+      )}
       <Card className="divide-y divide-border">
         <OptionRow
           title="Apagar backups antigos automaticamente"

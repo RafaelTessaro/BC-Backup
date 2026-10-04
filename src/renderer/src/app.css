@@ -425,3 +425,33 @@ html[data-input='pointer'] :has([data-row-main]:focus-visible) {
 [data-theme-switching] *::after {
   transition: none !important;
 }
+
+/* Painel da bandeja (tray.html, 05-painel-da-bandeja §3): janela opaca em surface-raised. */
+html[data-surface='tray'],
+html[data-surface='tray'] body {
+  background: var(--surface-raised);
+}
+/* No Windows 11 o DWM desenha cantos, borda e sombra; no Windows 10, macOS e Linux, a borda é nossa. */
+html[data-surface='tray']:not([data-os='win11']) #root::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+html[data-surface='tray'][data-os='mac'] #root::after {
+  border-radius: 10px;
+}
+/* Pré-criado oculto: nada aparece até o painel ser mostrado (a entrada é animada no TrayPanel). */
+html[data-tray-hidden] #root > * {
+  opacity: 0;
+}
+@media (forced-colors: active) {
+  html[data-surface='tray'] #root::after {
+    box-shadow: inset 0 0 0 1px CanvasText;
+  }
+  html[data-surface='tray'] [data-tray-divider] {
+    border-color: CanvasText;
+  }
+}

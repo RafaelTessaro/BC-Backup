@@ -96,15 +96,22 @@ export function toastRunFinished(r: RunSummary): void {
   switch (r.status) {
     case 'success':
       notify.success('Backup concluído', {
-        description: `${r.routineName} · ${plural(r.filesCopied, 'arquivo', 'arquivos')} · ${formatBytes(r.bytesCopied)}`,
+        description:
+          r.notice && !r.filesCopied
+            ? `${r.routineName}: ${r.notice}`
+            : `${r.routineName} · ${plural(r.filesCopied, 'arquivo', 'arquivos')} · ${formatBytes(r.bytesCopied)}` +
+              (r.filesMoved ? ` · ${plural(r.filesMoved, 'movido', 'movidos')}` : ''),
         action: details
       })
       break
     case 'warning':
-      notify.warning(`Concluído com ${plural(r.warnings, 'aviso', 'avisos')}`, {
-        description: r.routineName,
-        action: details
-      })
+      notify.warning(
+        r.notice && !r.filesCopied ? 'Nenhum backup novo' : `Concluído com ${plural(r.warnings, 'aviso', 'avisos')}`,
+        {
+          description: r.notice ? `${r.routineName}: ${r.notice}` : r.routineName,
+          action: details
+        }
+      )
       break
     case 'failed':
       notify.error('Falha no backup', {

@@ -1,5 +1,5 @@
 import type { RoutineInput } from './api'
-import type { AppSettings, RoutineNotification, SmtpPreset, SmtpSecurity } from './types'
+import type { AppSettings, MoveSources, RoutineNotification, SmtpPreset, SmtpSecurity } from './types'
 
 export const DEFAULT_EXCLUDES = [
   '**/Thumbs.db',
@@ -21,6 +21,31 @@ export const DELETING_SUFFIX = '.excluindo'
 export const MANIFEST_FILE = 'bcbackup-manifesto.json'
 /** Marcador gravado na pasta da rotina dentro do destino. */
 export const ROUTINE_MARKER_FILE = '.bcbackup-rotina.json'
+
+/** "Mover" desligado por padrão; `createDefaultRoutine()` NÃO preenche o campo. */
+export const DEFAULT_MOVE_SOURCES: MoveSources = { enabled: false, minAgeMinutes: 30, warnIfEmpty: true }
+/** Limites de "Só mover arquivos sem alteração há pelo menos N minutos". */
+export const MOVE_MIN_AGE_RANGE = { min: 5, max: 1440 } as const
+/** Arquivos apagados listados por execução no histórico (a contagem continua exata). */
+export const MAX_MOVED_LISTED = 5000
+/** Nunca entram numa rotina "Mover" (nem copiados nem apagados). */
+export const MOVE_NEVER = [
+  '**/*.exe',
+  '**/*.dll',
+  '**/*.msi',
+  '**/*.bat',
+  '**/*.cmd',
+  '**/*.ps1',
+  '**/*.vbs',
+  '**/*.lnk',
+  '**/*.ini',
+  '**/*.config',
+  '**/*.tmp',
+  '**/*.part',
+  '**/*.partial',
+  '**/*.crdownload',
+  '**/~*'
+]
 
 export const DEFAULT_NOTIFICATION: RoutineNotification = {
   enabled: false,

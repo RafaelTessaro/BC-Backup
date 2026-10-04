@@ -28,7 +28,9 @@ do Windows e e-mail.
 - **Retenção** por dias de calendário + **mínimo garantido** de backups ("manter 7 dias, nunca menos de 3").
 - **E-mail** por SMTP (Gmail, Microsoft 365, Hostinger, Locaweb, UOL, KingHost, HostGator ou personalizado) com
   resumo, destinos, arquivos ignorados e próximo backup; botão **Enviar e-mail de teste**; log anexado opcional.
-- **Bandeja do sistema**: roda em segundo plano, inicia com o Windows, mostra o estado (ok, em execução, erro).
+- **Bandeja do sistema**: roda em segundo plano, inicia com o Windows, mostra o estado (ok, em execução, erro). Um
+  clique no ícone abre um **painel de resumo** ali mesmo (status, últimos backups, próximo horário, executar agora,
+  pausar) sem abrir o app inteiro.
 - **Painel e histórico** com detalhes por destino, log completo e "Abrir pasta do backup".
 - **Marca própria**: nome da empresa do técnico e do cliente nos e-mails.
 - **Tema claro e escuro**, interface em português do Brasil.
@@ -38,6 +40,12 @@ do Windows e e-mail.
 | Claro                                                                   | Escuro                                                                  |
 | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | ![Painel do BC Backup no tema claro](docs/screenshots/painel-light.png) | ![Painel do BC Backup no tema escuro](docs/screenshots/painel-dark.png) |
+
+Painel da bandeja (clique no ícone perto do relógio):
+
+| Claro                                                                  | Escuro                                                                 |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| ![Painel da bandeja no tema claro](docs/screenshots/bandeja-light.png) | ![Painel da bandeja no tema escuro](docs/screenshots/bandeja-dark.png) |
 
 E-mails enviados ao fim de cada backup (prévias em [`docs/email-preview/`](docs/email-preview/)):
 

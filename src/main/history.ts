@@ -38,6 +38,9 @@ export function toSummary(r: StoredRun | RunRecord): RunSummary {
   if (r.durationMs !== undefined) s.durationMs = r.durationMs
   if (r.email !== undefined) s.email = r.email
   if (r.errorMessage !== undefined) s.errorMessage = r.errorMessage
+  if (r.filesMoved !== undefined) s.filesMoved = r.filesMoved
+  if (r.bytesMoved !== undefined) s.bytesMoved = r.bytesMoved
+  if (r.notice !== undefined) s.notice = r.notice
   return s
 }
 

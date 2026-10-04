@@ -171,7 +171,11 @@ test('inicia oculto na bandeja e fechar a janela só esconde', async () => {
       l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()))
     )
     .toBe(true)
-  await l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
+  await l.app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((w) => !w.webContents.getURL().includes('tray.html'))
+      ?.close()
+  )
   await expect
     .poll(() =>
       l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()))

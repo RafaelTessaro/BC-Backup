@@ -1,7 +1,7 @@
 // Executor das rotinas no main: fila global (1 por vez), motor no utilityProcess, histórico,
 // e-mail consolidado (com fila de saída) e impedimento de suspensão durante o backup.
 
-import { powerSaveBlocker } from 'electron'
+import { app, powerSaveBlocker } from 'electron'
 import type {
   DestinationResult,
   ID,
@@ -43,6 +43,14 @@ interface LiveRun {
 }
 
 const MAX_LIVE_LOG = 5000
+
+function userDataPath(): string | undefined {
+  try {
+    return app.getPath('userData')
+  } catch {
+    return undefined
+  }
+}
 
 export class RunManager {
   private readonly queue: RunQueue
@@ -241,7 +249,9 @@ export class RunManager {
       trigger: item.trigger,
       startedAt,
       appVersion: this.d.info.version,
-      hostname: this.d.info.hostname
+      hostname: this.d.info.hostname,
+      // "Mover" recusa uma origem que contenha (ou esteja dentro de) a pasta de dados do app.
+      dataPath: userDataPath()
     }
     let result: JobResult
     const job = startEngineJob(spec, (ev) => {
@@ -302,6 +312,18 @@ export class RunManager {
       log: result.log
     }
     if (result.errorMessage) record.errorMessage = result.errorMessage
+    if (result.move) {
+      record.move = result.move
+      record.filesMoved = result.filesMoved ?? result.move.removedCount
+      record.bytesMoved = result.bytesMoved ?? result.move.removedBytes
+      if (result.move.notice) record.notice = result.move.notice
+    } else if (routine.moveSources?.enabled) {
+      // O motor parou sem devolver o relatório: o log ao vivo diz o que já tinha sido apagado.
+      const moved = record.log.filter((l) => l.message.startsWith('Movido: ')).length
+      record.notice = moved
+        ? `A execução parou antes de terminar; ${moved === 1 ? '1 arquivo já tinha sido apagado' : `${moved} arquivos já tinham sido apagados`} da origem (veja o log).`
+        : 'Nada foi apagado da origem.'
+    }
 
     // E-mail consolidado (um por execução).
     live.progress = { ...live.progress, phase: 'notifying', currentFile: undefined, etaMs: undefined }

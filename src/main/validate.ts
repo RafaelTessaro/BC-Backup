@@ -1,19 +1,25 @@
 // Validação de rotinas (assistente) — doc 01 §2.1 item 16. Node puro.
 
+import { homedir } from 'node:os'
 import { stat } from 'node:fs/promises'
 import { dirname, posix, win32 } from 'node:path'
 import type { RoutineInput, ValidationIssue } from '@shared/api'
-import type { ID } from '@shared/types'
+import type { ID, SourceItem } from '@shared/types'
 import { parseTime } from '@shared/schedule'
 import { withTimeout } from './engine/fsutil'
 
 export interface ValidateContext {
-  /** Rotinas já salvas (para nomes repetidos). */
-  existing: Array<{ id: ID; name: string }>
+  /** Rotinas já salvas (nomes repetidos; "Mover" avisa se outra rotina usa a mesma pasta). */
+  existing: Array<{ id: ID; name: string; sources?: SourceItem[] }>
   smtpConfigured: boolean
   platform?: NodeJS.Platform
   /** false = pula checagens no disco (acessível, mesmo disco). */
   checkFs?: boolean
+  /** Variáveis de ambiente e pasta pessoal usadas nas pastas bloqueadas do "Mover" (padrão: do processo). */
+  env?: Record<string, string | undefined>
+  homedir?: string
+  /** Pasta de dados do BC Backup ("Mover" recusa uma origem que a contenha). */
+  dataPath?: string
 }
 
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/
@@ -60,6 +66,178 @@ export function volumeRoot(p: string, platform: NodeJS.Platform = process.platfo
   return platform === 'win32' ? root.toLowerCase() : root
 }
 
+/* ------------------------------------------------------------------ */
+/* "Mover": pastas que nunca podem ser origem (doc 04 §3)              */
+/* ------------------------------------------------------------------ */
+
+export interface MoveGuardContext {
+  platform?: NodeJS.Platform
+  env?: Record<string, string | undefined>
+  homedir?: string
+  /** Pasta de dados do BC Backup: uma origem que a contenha é recusada. */
+  dataPath?: string
+}
+
+/** Pastas conhecidas na raiz de cada perfil (nome no disco e o nome em português). */
+const PROFILE_FOLDERS = new Set([
+  'desktop',
+  'área de trabalho',
+  'documents',
+  'documentos',
+  'meus documentos',
+  'my documents',
+  'downloads',
+  'pictures',
+  'imagens',
+  'minhas imagens'
+])
+const isOneDriveName = (name: string): boolean => /^onedrive( - .+)?$/i.test(name.trim())
+const POSIX_BLOCKED = [
+  '/',
+  '/Users',
+  '/home',
+  '/System',
+  '/usr',
+  '/etc',
+  '/var',
+  '/Applications',
+  '/Library',
+  '/Volumes',
+  '/private',
+  '/private/var',
+  '/private/etc',
+  '/root',
+  '/bin',
+  '/sbin',
+  '/lib',
+  '/boot',
+  '/dev',
+  '/proc',
+  '/sys',
+  '/run',
+  '/opt',
+  '/srv',
+  '/mnt',
+  '/media',
+  '/tmp'
+]
+
+/**
+ * true se a pasta é uma unidade inteira ou pasta do sistema/perfil e por isso NÃO pode ser usada
+ * com "Mover". Regra exata (subpastas como C:\Program Files (x86)\ERP\Backup são permitidas),
+ * exceto %SystemRoot% (qualquer coisa dentro) e a pasta de dados do BC Backup (quem a contém ou
+ * está dentro dela).
+ */
+export function isBlockedMoveSource(path: string, ctx: MoveGuardContext = {}): boolean {
+  const platform = ctx.platform ?? process.platform
+  const env = ctx.env ?? process.env
+  const home = ctx.homedir ?? safeHomedir()
+  const api = pathApi(platform)
+  if (!path.trim() || !api.isAbsolute(path)) return true
+  const eq = (a: string | undefined, b: string | undefined): boolean =>
+    !!a && !!b && normalizeForCompare(a, platform) === normalizeForCompare(b, platform)
+  const n = normalizeForCompare(path, platform)
+  const name = api.basename(api.resolve(path))
+  const parent = api.dirname(api.resolve(path))
+  const grand = api.dirname(parent)
+
+  if (ctx.dataPath && (isInside(ctx.dataPath, path, platform) || isInside(path, ctx.dataPath, platform)))
+    return true
+  // Raiz da unidade ou do compartilhamento ("C:\", "\\servidor\backup", "/").
+  if (n === normalizeForCompare(api.parse(api.resolve(path)).root, platform)) return true
+
+  if (platform === 'win32') {
+    const drive = env.SystemDrive || 'C:'
+    const sysRoot = env.SystemRoot || env.windir || `${drive}\\Windows`
+    if (isInside(path, sysRoot, platform)) return true
+    const usersDir = env.USERPROFILE ? win32.dirname(env.USERPROFILE) : `${drive}\\Users`
+    const exact = [
+      env.ProgramFiles || `${drive}\\Program Files`,
+      env['ProgramFiles(x86)'] || `${drive}\\Program Files (x86)`,
+      env.ProgramW6432,
+      env.ProgramData || `${drive}\\ProgramData`,
+      env.ALLUSERSPROFILE,
+      env.PUBLIC,
+      usersDir,
+      `${drive}\\Users`,
+      env.USERPROFILE,
+      home,
+      env.OneDrive,
+      env.OneDriveCommercial,
+      env.OneDriveConsumer
+    ]
+    if (exact.some((x) => eq(x, path))) return true
+    const usersDirs = [usersDir, `${drive}\\Users`]
+    // Raiz de cada perfil (C:\Users\Ana, C:\Users\Public…).
+    if (usersDirs.some((u) => eq(parent, u))) return true
+    // Desktop, Documentos, Downloads, Imagens e OneDrive na raiz do perfil…
+    const lower = name.toLowerCase()
+    const known = PROFILE_FOLDERS.has(lower) || isOneDriveName(name)
+    if (known && usersDirs.some((u) => eq(grand, u))) return true
+    // …e as mesmas pastas dentro do OneDrive (backup de pastas conhecidas).
+    if (
+      PROFILE_FOLDERS.has(lower) &&
+      isOneDriveName(win32.basename(parent)) &&
+      usersDirs.some((u) => eq(win32.dirname(grand), u))
+    )
+      return true
+    return false
+  }
+
+  const exact = [...POSIX_BLOCKED, home]
+  if (exact.some((x) => eq(x, path))) return true
+  // Raiz de cada perfil (/home/ana, /Users/ana) e volumes do macOS (/Volumes/Backup).
+  if (['/home', '/Users', '/Volumes'].some((d) => eq(parent, d))) return true
+  // Desktop, Documentos, Downloads, Imagens e OneDrive na pasta pessoal.
+  if ((PROFILE_FOLDERS.has(name.toLowerCase()) || isOneDriveName(name)) && eq(parent, home)) return true
+  return false
+}
+
+function safeHomedir(): string | undefined {
+  try {
+    return homedir()
+  } catch {
+    return undefined
+  }
+}
+
+/** Pasta sincronizada com a nuvem: apagar aqui também apaga lá. */
+export function isCloudSyncedPath(path: string): boolean {
+  return path
+    .split(/[\\/]+/)
+    .some(
+      (seg) =>
+        isOneDriveName(seg) ||
+        /^dropbox( \(.+\))?$/i.test(seg) ||
+        /^google drive$/i.test(seg) ||
+        /^(meu drive|my drive)$/i.test(seg) ||
+        /^icloud ?drive$/i.test(seg) ||
+        seg === 'Mobile Documents'
+    )
+}
+
+/** Exemplos do texto de erro do "Mover" conforme o sistema. */
+function blockedExamples(platform: NodeJS.Platform): string {
+  if (platform === 'win32') return 'C:\\, C:\\Windows, C:\\Users\\Ana…'
+  if (platform === 'darwin') return '/, /Users, /Users/ana…'
+  return '/, /home, /home/ana…'
+}
+
+export function moveBlockedMessage(platform: NodeJS.Platform = process.platform): string {
+  return `Não é possível usar "Mover" em uma unidade inteira ou pasta do sistema (${blockedExamples(platform)}). Escolha a pasta onde o sistema grava os backups.`
+}
+
+export const MOVE_FILE_SOURCE_MESSAGE =
+  '"Mover" só funciona com pastas. Troque o arquivo pela pasta que o contém.'
+
+function intervalText(minutes: number): string {
+  if (minutes % 60 === 0) {
+    const h = minutes / 60
+    return h === 1 ? 'a cada hora' : `a cada ${h} horas`
+  }
+  return `a cada ${minutes} minutos`
+}
+
 /** Id do dispositivo do caminho ou do ancestral mais próximo que existe (POSIX). */
 async function deviceOf(p: string): Promise<number | null> {
   let cur = p
@@ -97,11 +275,16 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
     level: ValidationIssue['level'],
     step: ValidationIssue['step'],
     message: string,
-    destinationId?: string
+    destinationId?: string,
+    topic?: ValidationIssue['topic']
   ) => {
-    if (!issues.some((i) => i.message === message && i.step === step))
-      issues.push(destinationId ? { level, step, message, destinationId } : { level, step, message })
+    if (issues.some((i) => i.message === message && i.step === step)) return
+    const issue: ValidationIssue = { level, step, message }
+    if (destinationId) issue.destinationId = destinationId
+    if (topic) issue.topic = topic
+    issues.push(issue)
   }
+  const move = input.moveSources?.enabled === true
   const destName = (d: { label?: string; path: string }) => (d.label ? `${d.label} (${d.path})` : d.path)
 
   /* Nome + origens */
@@ -195,12 +378,21 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
         if (!s.path || !isAbsolutePath(s.path, platform)) continue
         if (isInside(d.path, s.path, platform) || isInside(s.path, d.path, platform)) continue
         if (await sameDisk(s.path, d.path, platform)) {
-          add(
-            'warning',
-            'destinos',
-            `O destino ${destName(d)} está no mesmo disco da origem: se o disco falhar, perde os dois.`,
-            d.id
-          )
+          if (move)
+            add(
+              'warning',
+              'destinos',
+              `O destino ${destName(d)} fica no mesmo disco da origem: "Mover" não libera espaço nesse disco.`,
+              d.id,
+              'move'
+            )
+          else
+            add(
+              'warning',
+              'destinos',
+              `O destino ${destName(d)} está no mesmo disco da origem: se o disco falhar, perde os dois.`,
+              d.id
+            )
           break
         }
       }
@@ -269,6 +461,73 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
         )
       }
     }
+  }
+
+  /* "Mover" (doc 04 §3) */
+  if (move) {
+    const guard = { platform, env: ctx.env, homedir: ctx.homedir, dataPath: ctx.dataPath }
+    for (const s of sources) {
+      if (!s.path?.trim() || !isAbsolutePath(s.path, platform)) continue
+      if (s.kind === 'file') add('error', 'origem', MOVE_FILE_SOURCE_MESSAGE, undefined, 'move')
+      else if (isBlockedMoveSource(s.path, guard))
+        add('error', 'origem', moveBlockedMessage(platform), undefined, 'move')
+      else if (checkFs) {
+        const st = await withTimeout(stat(s.path), 4000).catch(() => null)
+        if (st?.isFile()) add('error', 'origem', MOVE_FILE_SOURCE_MESSAGE, undefined, 'move')
+      }
+    }
+    for (const s of sources) {
+      if (!s.path?.trim() || !isAbsolutePath(s.path, platform)) continue
+      for (const other of ctx.existing) {
+        if (other.id === input.id) continue
+        const overlaps = (other.sources ?? []).some(
+          (o) =>
+            !!o.path &&
+            isAbsolutePath(o.path, platform) &&
+            (isInside(o.path, s.path, platform) || isInside(s.path, o.path, platform))
+        )
+        if (overlaps)
+          add(
+            'warning',
+            'origem',
+            `A rotina "${other.name}" também usa esta pasta e pode não encontrar os arquivos depois que eles forem movidos.`,
+            undefined,
+            'move'
+          )
+      }
+    }
+    if (sources.some((s) => s.path && isCloudSyncedPath(s.path)))
+      add(
+        'warning',
+        'origem',
+        'Esta pasta é sincronizada com a nuvem (OneDrive/Dropbox): apagar aqui também apaga lá.',
+        undefined,
+        'move'
+      )
+    if (dests.length === 1)
+      add(
+        'warning',
+        'destinos',
+        'Só há 1 destino ativo: depois de mover, o backup existirá em um único lugar. Recomendamos 2 destinos.',
+        undefined,
+        'move'
+      )
+    if (ret && !ret.enabled)
+      add(
+        'warning',
+        'retencao',
+        'A retenção está desligada: os destinos vão acumular todos os backups movidos.',
+        undefined,
+        'move'
+      )
+    if (sch?.kind === 'interval' && input.moveSources?.warnIfEmpty !== false && sch.intervalMinutes >= 5)
+      add(
+        'warning',
+        'agendamento',
+        `Com execuções ${intervalText(sch.intervalMinutes)}, desmarque "Avisar se não houver arquivo novo".`,
+        undefined,
+        'move'
+      )
   }
 
   return issues

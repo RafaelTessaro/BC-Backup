@@ -20,6 +20,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { DayStatus, DiskSpace, Routine, RunSummary } from '@shared/types'
 import { formatBytes, formatDuration } from '@shared/format'
+import { summarizeHealth } from '@shared/health'
 import { ROUTES } from '@shared/routes'
 import { describeSchedule, upcomingRuns } from '@shared/schedule'
 import { Page, PageHeader } from '@renderer/components/shell/Page'
@@ -51,7 +52,7 @@ import {
   plural
 } from '@renderer/lib/format'
 import { navigate } from '@renderer/lib/router'
-import { destinationLabel, overallPercent, primaryRun } from '@renderer/lib/progress'
+import { destinationLabel, overallPercent } from '@renderer/lib/progress'
 import { PHASE_LABEL, RUN_STATUS, STATUS_BAR } from '@renderer/lib/status'
 import { openLiveRun, openRunDetail, useApp } from '@renderer/lib/store'
 
@@ -155,10 +156,11 @@ function StatusHero({ routines }: { routines: Routine[] }) {
   const progress = useApp((s) => s.progress)
   const now = useNow()
   const days = stats?.days ?? []
-  const running = primaryRun(progress)
-  const enabled = routines.filter((r) => r.enabled)
-  const failed = enabled.filter((r) => r.lastRun?.status === 'failed')
-  const warned = enabled.filter((r) => r.lastRun?.status === 'warning')
+  // Mesma regra do ícone e do painel da bandeja (src/shared/health.ts).
+  const health = summarizeHealth(routines, progress)
+  const running = health.kind === 'running' || health.kind === 'queued' ? health.run : undefined
+  const failed = health.kind === 'failed' ? health.affected : []
+  const warned = health.kind === 'warning' ? health.affected : []
   const lastOk = useApp((s) => s.runs.find((r) => r.status === 'success' || r.status === 'warning'))
   const next = stats?.nextRun
 
@@ -306,7 +308,7 @@ function StatusHero({ routines }: { routines: Routine[] }) {
     )
   }
 
-  if (enabled.length === 0) {
+  if (health.kind === 'paused' || health.kind === 'empty') {
     return (
       <HeroShell
         tone="neutral"

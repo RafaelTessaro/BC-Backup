@@ -10,6 +10,7 @@ import type {
   DriveInfo,
   Filters,
   ID,
+  MoveSources,
   Routine,
   RunProgress,
   RunRecord,
@@ -46,6 +47,23 @@ export interface ValidationIssue {
   message: string
   /** Destino a que o problema se refere (para destacar o cartão certo no editor). */
   destinationId?: ID
+  /** 'move' = aviso da opção "Mover" (exibido no card dela, no passo Origem). */
+  topic?: 'move'
+}
+
+/** Prévia do "Mover": o que seria movido se a rotina rodasse agora. */
+export interface MovePreview {
+  /** Arquivos elegíveis (sem alteração há ≥ minAgeMinutes e livres). */
+  files: number
+  bytes: number
+  /** Até 10 caminhos relativos dos elegíveis. */
+  names: string[]
+  /** Arquivos que ficariam aguardando (recentes, em uso, data no futuro). */
+  waiting: number
+  /** Até 10 aguardando, com o motivo. */
+  waitingItems: Array<{ name: string; reason: string }>
+  /** true se a contagem foi interrompida pelo tempo limite (valor parcial). */
+  partial: boolean
 }
 
 export interface SizeEstimate {
@@ -124,6 +142,8 @@ export interface BcApi {
     pathForFile(file: File): string
     /** Diz se cada caminho é arquivo ou pasta (para origens soltas na janela). */
     inspectPaths(paths: string[]): Promise<PathInfo[]>
+    /** "Mover": o que seria movido agora (mesmas regras do motor; tempo limite ~4 s). */
+    previewMove(sources: string[], filters: Filters, move: MoveSources): Promise<MovePreview>
   }
   on: {
     progress(cb: (p: RunProgress) => void): () => void
@@ -132,6 +152,19 @@ export interface BcApi {
     settingsChanged(cb: (s: AppSettings) => void): () => void
     /** O main pede para a UI navegar (ex.: clique no tray / notificação). */
     navigate(cb: (route: string) => void): () => void
+    /** O painel da bandeja acabou de aparecer: atualizar o relógio e consultar de novo. */
+    trayShown(cb: () => void): () => void
+  }
+  /** Painel da bandeja (docs/research/05-painel-da-bandeja.md). */
+  tray: {
+    /** Esconde o painel e mostra a janela principal; `route` = uma das ROUTES (ex.: ROUTES.run(id)). */
+    openMain(route?: string): Promise<void>
+    /** Esconde o painel. `restoreFocus` devolve o teclado à área de notificação (Esc, Windows). */
+    hide(opts?: { restoreFocus?: boolean }): Promise<void>
+    /** true = pausa as rotinas ativas (lembra quais em `pausedByTray`); false = retoma. */
+    setAllPaused(paused: boolean): Promise<void>
+    /** Pede confirmação (diálogo nativo, avisa se há backup rodando) e encerra o app. */
+    quit(): Promise<void>
   }
 }
 
@@ -168,7 +201,12 @@ export const IPC_CHANNELS = {
   systemPickFiles: 'system:pick-files',
   systemStats: 'system:stats',
   systemEstimateSize: 'system:estimate-size',
-  systemInspectPaths: 'system:inspect-paths'
+  systemInspectPaths: 'system:inspect-paths',
+  systemPreviewMove: 'system:preview-move',
+  trayOpenMain: 'tray:open-main',
+  trayHide: 'tray:hide',
+  traySetAllPaused: 'tray:set-all-paused',
+  trayQuit: 'tray:quit'
 } as const
 
 export const IPC_EVENTS = {
@@ -176,7 +214,8 @@ export const IPC_EVENTS = {
   runFinished: 'evt:run-finished',
   routinesChanged: 'evt:routines-changed',
   settingsChanged: 'evt:settings-changed',
-  navigate: 'evt:navigate'
+  navigate: 'evt:navigate',
+  trayShown: 'evt:tray-shown'
 } as const
 
 declare global {

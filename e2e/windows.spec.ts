@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BcApi, RoutineInput } from '../src/shared/api'
 import { BACKUP_ROOT_DIR, MANIFEST_FILE, createDefaultRoutine } from '../src/shared/defaults'
+import { mainPage, trayPage } from './fixtures'
 
 type G = { bc: BcApi }
 const exe = process.env.BC_E2E_EXE
@@ -36,8 +37,13 @@ const errors: string[] = []
 test.beforeAll(async () => {
   mkdirSync(shots, { recursive: true })
   userData = mkdtempSync(join(tmpdir(), 'bcb-win-'))
-  app = await electron.launch({ executablePath: exe!, env: { ...process.env, BC_USER_DATA_DIR: userData } })
-  page = await app.firstWindow()
+  // BC_E2E=1: gancho __bcTrayToggle (simula o clique no ícone da bandeja).
+  app = await electron.launch({
+    executablePath: exe!,
+    env: { ...process.env, BC_USER_DATA_DIR: userData, BC_E2E: '1' }
+  })
+  // Pela URL (index.html): o painel da bandeja (tray.html) também é uma janela do app.
+  page = await mainPage(app)
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text()}`))
   await page.waitForFunction(
@@ -185,12 +191,47 @@ test('telas principais abrem sem erros (screenshots claro e escuro)', async () =
     ] as const) {
       // Mesmo caminho da bandeja/notificações: o main manda o evento "navigate".
       await app.evaluate(({ BrowserWindow }, r) => {
-        BrowserWindow.getAllWindows()[0].webContents.send('evt:navigate', r)
+        const main = BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('tray.html'))
+        main?.webContents.send('evt:navigate', r)
       }, route)
       await page.waitForTimeout(600)
       await page.screenshot({ path: join(shots, `tela-${name}-${theme}.png`) })
     }
   }
+  expect(errors).toEqual([])
+})
+
+test('painel da bandeja abre junto do ícone e fecha com Esc', async () => {
+  // Clique no ícone de verdade (sem retângulo, o gancho usa tray.getBounds()). Mostrar e conferir na
+  // mesma chamada: no runner do CI outra janela pode tirar o foco (e o light-dismiss esconde o painel).
+  const opened = await app.evaluate(({ BrowserWindow, screen }) => {
+    const hook = (globalThis as { __bcTrayToggle?: () => boolean }).__bcTrayToggle
+    const ok = hook?.() ?? false
+    const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('tray.html'))
+    if (!w) return { ok, visible: false, inside: false }
+    const b = w.getBounds()
+    const wa = screen.getDisplayMatching(b).workArea
+    const inside =
+      b.x >= wa.x && b.y >= wa.y && b.x + b.width <= wa.x + wa.width && b.y + b.height <= wa.y + wa.height
+    return { ok, visible: w.isVisible(), inside, size: [b.width, b.height] }
+  })
+  expect(opened.ok).toBe(true)
+  expect(opened.inside).toBe(true)
+  const panel = await trayPage(app)
+  panel.on('pageerror', (e) => errors.push(`painel: ${e.message}`))
+  panel.on('console', (m) => m.type() === 'error' && errors.push(`painel: ${m.text()}`))
+  await expect(panel.getByRole('heading', { level: 1 })).toBeVisible()
+  if (opened.visible) await panel.screenshot({ path: join(shots, 'bandeja.png') })
+  await panel.keyboard.press('Escape')
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()
+          .find((x) => x.webContents.getURL().includes('tray.html'))
+          ?.isVisible()
+      )
+    )
+    .toBe(false)
   expect(errors).toEqual([])
 })
 

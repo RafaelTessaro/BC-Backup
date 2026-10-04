@@ -29,6 +29,7 @@ import { baseName, formatNumber, plural } from '@renderer/lib/format'
 import { notify } from '@renderer/lib/toast'
 import { NAME_MAX, withSources, type Update } from '../model'
 import type { SourceSizes } from '../sizes'
+import { MoveCard } from './MoveCard'
 import { IssueList } from './shared'
 
 /** Pasta onde o item está ("C:\Users\Ana\Desktop"); raízes devolvem o próprio caminho. */
@@ -70,7 +71,8 @@ export function SourcesStep({
   const nameIssues = issues.filter((i) => /\bnome\b/i.test(i.message))
   const nameError = nameIssues.find((i) => i.level === 'error')
   const nameWarning = nameError ? undefined : nameIssues.find((i) => i.level === 'warning')
-  const otherIssues = issues.filter((i) => !nameIssues.includes(i))
+  const moveIssues = issues.filter((i) => i.topic === 'move')
+  const otherIssues = issues.filter((i) => !nameIssues.includes(i) && i.topic !== 'move')
   const sourcesError = otherIssues.some((i) => i.level === 'error')
 
   const pick = async (kind: SourceKind): Promise<void> => {
@@ -263,6 +265,8 @@ export function SourcesStep({
         )}
         <IssueList issues={otherIssues} paths={draft.sources.map((x) => x.path)} />
       </section>
+
+      <MoveCard draft={draft} update={update} issues={moveIssues} />
 
       <Collapsible.Root open={advancedOpen} onOpenChange={setAdvancedOpen} className="flex flex-col">
         <Collapsible.Trigger className="group -ml-1 flex w-fit items-center gap-1.5 rounded-sm px-1 py-0.5 text-small font-medium text-fg-muted hover:text-fg">
