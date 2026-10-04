@@ -821,80 +821,156 @@ export function createMockApi(): BcApi {
 
   function validate(input: RoutineInput): ValidationIssue[] {
     const issues: ValidationIssue[] = []
-    if (!input.name.trim())
-      issues.push({ level: 'error', step: 'origem', message: 'Dê um nome para a rotina.' })
-    else if (
-      routines.some(
-        (r) => r.id !== input.id && r.name.trim().toLowerCase() === input.name.trim().toLowerCase()
-      )
-    )
-      issues.push({ level: 'warning', step: 'origem', message: 'Já existe uma rotina com esse nome.' })
-    if (input.sources.length === 0)
+    // mesmas regras e textos de src/main/validate.ts
+    const name = input.name.trim()
+    const key = name.toLocaleLowerCase('pt-BR')
+    if (!name) issues.push({ level: 'error', step: 'origem', message: 'Dê um nome para a rotina.' })
+    else if (name.length > 60)
       issues.push({
         level: 'error',
         step: 'origem',
-        message: 'Adicione ao menos uma pasta ou arquivo para copiar.'
+        message: 'Use no máximo 60 caracteres no nome da rotina.'
       })
-    const dests = input.destinations.filter((d) => d.enabled !== false)
-    if (dests.length === 0)
+    else if (routines.some((r) => r.id !== input.id && r.name.trim().toLocaleLowerCase('pt-BR') === key))
       issues.push({
         level: 'error',
-        step: 'destinos',
-        message: 'Adicione ao menos um destino para as cópias.'
+        step: 'origem',
+        message: `Já existe uma rotina chamada "${name}". Escolha outro nome.`
       })
+    const add = (
+      level: ValidationIssue['level'],
+      step: ValidationIssue['step'],
+      message: string,
+      destinationId?: string
+    ): void => {
+      if (!issues.some((i) => i.message === message && i.step === step))
+        issues.push(destinationId ? { level, step, message, destinationId } : { level, step, message })
+    }
+    const norm = (p: string): string => p.toUpperCase().replace(/[\\/]+$/, '')
+    const isAbs = (p: string): boolean =>
+      /^[A-Za-z]:[\\/]/.test(p) || p.startsWith('\\\\') || p.startsWith('/')
+    const inside = (child: string, parent: string): boolean => {
+      const c = norm(child)
+      const pa = norm(parent)
+      return c === pa || c.startsWith(pa + '\\') || c.startsWith(pa + '/')
+    }
+    const destName = (d: { label?: string; path: string }): string =>
+      d.label ? `${d.label} (${d.path})` : d.path
+
+    if (input.sources.length === 0)
+      add('error', 'origem', 'Escolha pelo menos uma pasta ou arquivo para copiar.')
+    const seenSources = new Set<string>()
+    for (const s of input.sources) {
+      if (!s.path?.trim() || !isAbs(s.path))
+        add('error', 'origem', `Caminho de origem inválido: ${s.path || '(vazio)'}`)
+      if (s.path && seenSources.has(norm(s.path))) add('warning', 'origem', `Origem repetida: ${s.path}`)
+      if (s.path) seenSources.add(norm(s.path))
+    }
+
+    const dests = input.destinations.filter((d) => d.enabled !== false)
+    if (dests.length === 0) add('error', 'destinos', 'Escolha pelo menos um destino para as cópias.')
+    const seenDests = new Set<string>()
     for (const d of input.destinations) {
-      const dp = d.path.toUpperCase().replace(/\\$/, '')
-      for (const s of input.sources) {
-        const sp = s.path.toUpperCase().replace(/\\$/, '')
-        if (dp === sp || dp.startsWith(sp + '\\'))
-          issues.push({
-            level: 'error',
-            step: 'destinos',
-            message: `O destino ${d.path} fica dentro da origem ${s.path}. Escolha outro local.`
-          })
+      if (!d.path?.trim() || !isAbs(d.path)) {
+        add('error', 'destinos', `Caminho de destino inválido: ${d.path || '(vazio)'}`)
+        continue
       }
-      const drive = driveFor(d.path)
-      if (!drive)
-        issues.push({
-          level: 'warning',
-          step: 'destinos',
-          message: `Não foi possível acessar ${d.path} agora.`
-        })
+      if (seenDests.has(norm(d.path))) add('error', 'destinos', `Destino repetido: ${d.path}`, d.id)
+      seenDests.add(norm(d.path))
+    }
+    for (const d of dests) {
+      if (!d.path || !isAbs(d.path)) continue
+      for (const s of input.sources) {
+        if (!s.path || !isAbs(s.path)) continue
+        if (inside(d.path, s.path))
+          add(
+            'error',
+            'destinos',
+            `O destino ${destName(d)} fica dentro da origem ${s.path}. Escolha outra pasta.`,
+            d.id
+          )
+        else if (inside(s.path, d.path))
+          add(
+            'error',
+            'destinos',
+            `O destino ${destName(d)} contém a origem ${s.path}. Escolha outra pasta.`,
+            d.id
+          )
+      }
+      if (!driveFor(d.path))
+        add(
+          'warning',
+          'destinos',
+          `Destino indisponível agora: ${destName(d)}. Conecte o disco antes do horário do backup.`,
+          d.id
+        )
       const sameDisk = input.sources.find(
-        (s) => s.path.slice(0, 2).toUpperCase() === d.path.slice(0, 2).toUpperCase()
+        (s) =>
+          /^[A-Z]:/i.test(d.path) &&
+          s.path.slice(0, 2).toUpperCase() === d.path.slice(0, 2).toUpperCase() &&
+          !inside(d.path, s.path) &&
+          !inside(s.path, d.path)
       )
-      if (sameDisk && /^[A-Z]:/i.test(d.path))
-        issues.push({
-          level: 'warning',
-          step: 'destinos',
-          message: `${d.path} está no mesmo disco da origem. Se o disco falhar, você perde o original e a cópia.`
-        })
+      if (sameDisk)
+        add(
+          'warning',
+          'destinos',
+          `O destino ${destName(d)} está no mesmo disco da origem: se o disco falhar, perde os dois.`,
+          d.id
+        )
     }
     const sc = input.schedule
-    if ((sc.kind === 'daily' || sc.kind === 'weekly') && sc.times.length === 0)
-      issues.push({ level: 'error', step: 'agendamento', message: 'Escolha ao menos um horário.' })
-    if (sc.kind === 'weekly' && sc.weekdays.length === 0)
-      issues.push({ level: 'error', step: 'agendamento', message: 'Escolha ao menos um dia da semana.' })
-    if (sc.kind === 'interval' && sc.window && sc.window.end <= sc.window.start)
-      issues.push({
-        level: 'error',
-        step: 'agendamento',
-        message: 'O horário final precisa ser depois do inicial.'
-      })
-    if (input.retention.enabled && input.retention.days < 1)
-      issues.push({ level: 'error', step: 'retencao', message: 'Mantenha os backups por pelo menos 1 dia.' })
+    if (sc.kind === 'daily' || sc.kind === 'weekly') {
+      const valid = sc.times.filter((t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t))
+      if (!valid.length) add('error', 'agendamento', 'Informe pelo menos um horário (HH:MM).')
+      if (sc.times.length > 6) add('error', 'agendamento', 'Use no máximo 6 horários por dia.')
+      if (valid.length !== sc.times.length)
+        add('error', 'agendamento', 'Há um horário inválido. Use o formato HH:MM.')
+      if (sc.kind === 'weekly' && !sc.weekdays.length)
+        add('error', 'agendamento', 'Escolha pelo menos um dia da semana.')
+    }
+    if (sc.kind === 'interval') {
+      if (!(sc.intervalMinutes >= 5)) add('error', 'agendamento', 'O intervalo mínimo é de 5 minutos.')
+      // fim igual ao início é permitido (como no main)
+      if (sc.window && sc.window.end < sc.window.start)
+        add('error', 'agendamento', 'O fim da janela precisa ser depois do início.')
+    }
+    const ret = input.retention
+    if (ret.enabled) {
+      if (!(ret.days >= 1)) add('error', 'retencao', 'Mantenha os backups por pelo menos 1 dia.')
+      if (!(ret.minKeep >= 0))
+        add('error', 'retencao', 'O mínimo de backups guardados não pode ser negativo.')
+      else if (ret.minKeep === 0)
+        add(
+          'warning',
+          'retencao',
+          'Sem um mínimo garantido, um computador desligado por dias pode ficar sem backups antigos.'
+        )
+    }
     const n = input.notification
+    // como o main: com o aviso desligado, e-mails não são validados (campos ocultos)
     if (n.enabled) {
-      if (n.recipients.length === 0)
-        issues.push({ level: 'error', step: 'notificacao', message: 'Informe ao menos um destinatário.' })
-      const bad = [...n.recipients, ...n.bcc].filter((e) => !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e))
-      if (bad.length)
-        issues.push({ level: 'error', step: 'notificacao', message: `E-mail inválido: ${bad.join(', ')}` })
+      for (const e of [...n.recipients, ...n.bcc])
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e))
+          issues.push({ level: 'error', step: 'notificacao', message: `E-mail inválido: ${e}` })
+      if (n.recipients.length === 0 && n.bcc.length === 0)
+        issues.push({
+          level: 'error',
+          step: 'notificacao',
+          message: 'Informe pelo menos um destinatário para os avisos por e-mail.'
+        })
+      if (!n.onSuccess && !n.onWarning && !n.onFailure)
+        issues.push({
+          level: 'warning',
+          step: 'notificacao',
+          message: 'Nenhuma situação marcada: nenhum e-mail será enviado.'
+        })
       if (!settings.smtp.host || !settings.smtp.fromEmail)
         issues.push({
           level: 'warning',
           step: 'notificacao',
-          message: 'O servidor de e-mail ainda não foi configurado. Nada será enviado até lá.'
+          message:
+            'Configure o servidor de e-mail (SMTP) em Configurações › E-mail para os avisos funcionarem.'
         })
     }
     return issues

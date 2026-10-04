@@ -15,6 +15,9 @@ interface NumberStepperProps {
   className?: string
 }
 
+/** "Dias de histórico" → "dias de histórico" (mantém siglas como "MB"). */
+const lower = (s: string): string => s.charAt(0).toLocaleLowerCase('pt-BR') + s.slice(1)
+
 /** NumberStepper (§8): input 72 px centralizado tabular + botões Minus/Plus ghost 28 px. */
 export function NumberStepper({
   value,
@@ -42,7 +45,7 @@ export function NumberStepper({
       <button
         type="button"
         className={btn}
-        aria-label="Diminuir"
+        aria-label={label ? `Diminuir ${lower(label)}` : 'Diminuir'}
         disabled={value <= min}
         onClick={() => onChange(clamp(value - step))}
       >
@@ -71,7 +74,7 @@ export function NumberStepper({
       <button
         type="button"
         className={btn}
-        aria-label="Aumentar"
+        aria-label={label ? `Aumentar ${lower(label)}` : 'Aumentar'}
         disabled={value >= max}
         onClick={() => onChange(clamp(value + step))}
       >

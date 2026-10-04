@@ -44,7 +44,10 @@ export function makeSourceTree(): string {
   mkdirSync(join(root, 'Notas fiscais', '2026'), { recursive: true })
   mkdirSync(join(root, 'Planilhas'), { recursive: true })
   for (let i = 1; i <= 12; i++) {
-    writeFileSync(join(root, 'Notas fiscais', '2026', `NF-${String(i).padStart(4, '0')}.xml`), `<nf>${i}</nf>`.repeat(200))
+    writeFileSync(
+      join(root, 'Notas fiscais', '2026', `NF-${String(i).padStart(4, '0')}.xml`),
+      `<nf>${i}</nf>`.repeat(200)
+    )
   }
   writeFileSync(join(root, 'Planilhas', 'Fluxo de caixa.xlsx'), Buffer.alloc(256 * 1024, 7))
   writeFileSync(join(root, 'Planilhas', 'Thumbs.db'), 'lixo') // deve ser excluído pelo filtro padrão

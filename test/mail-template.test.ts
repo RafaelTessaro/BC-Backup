@@ -234,7 +234,7 @@ describe('HTML', () => {
     const { html } = renderRunEmail(ctx(run('success')))
     expect(html).toContain('Olá, Padaria Pão Quente,')
     expect(html).toContain(
-      'foi concluído com sucesso: 1.204 arquivos (2,1 GB) copiados para HD externo azul em 3min 12s.'
+      'foi concluído com sucesso: 1.204 arquivos (2,1 GB) copiados para HD externo azul em 3 min 12 s.'
     )
     for (const label of [
       'Rotina',

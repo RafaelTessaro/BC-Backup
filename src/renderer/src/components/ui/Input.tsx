@@ -67,6 +67,7 @@ export function Field({ label, description, error, children, className, aside }:
   const hintId = `${id}-hint`
   const hasHint = !!error || !!description
   // Liga descrição/erro ao controle (aria-describedby) sem exigir nada de quem usa o Field.
+  // Roda a cada render: se o controle tiver o próprio aria-describedby (ex.: ChipInput), mescla.
   useLayoutEffect(() => {
     const el = document.getElementById(id)
     if (!el) return
@@ -74,7 +75,7 @@ export function Field({ label, description, error, children, className, aside }:
     const next = hasHint ? [...new Set([...current, hintId])] : current.filter((x) => x !== hintId)
     if (next.length) el.setAttribute('aria-describedby', next.join(' '))
     else el.removeAttribute('aria-describedby')
-  }, [id, hintId, hasHint])
+  })
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {(label || aside) && (

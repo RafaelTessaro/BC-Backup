@@ -66,6 +66,9 @@ npm test             # testes unitários (Vitest): agendador, retenção, cópia
 npm run e2e          # build + testes E2E com Playwright controlando o Electron
 ```
 
+Na interface simulada (`npm run dev:web`) dá para forçar cenários pela URL: `?scenario=running|ok|warning|failed|empty`,
+`?empty=1`, `?theme=light|dark`, `?platform=win32|darwin`, `?slow=1` (mostra os estados de carregamento).
+
 No Linux sem interface gráfica (ou no CI), rode o E2E dentro do `xvfb`:
 
 ```bash

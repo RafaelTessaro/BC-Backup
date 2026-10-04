@@ -2,7 +2,12 @@ import { test, expect } from '@playwright/test'
 import { existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { BcApi, RoutineInput } from '../src/shared/api'
-import { createDefaultRoutine, BACKUP_ROOT_DIR, MANIFEST_FILE, ROUTINE_MARKER_FILE } from '../src/shared/defaults'
+import {
+  createDefaultRoutine,
+  BACKUP_ROOT_DIR,
+  MANIFEST_FILE,
+  ROUTINE_MARKER_FILE
+} from '../src/shared/defaults'
 import { backupStamp } from '../src/shared/format'
 import { launch, mainWindow, makeDir, makeSourceTree } from './fixtures'
 
@@ -83,7 +88,10 @@ test('backup completo para dois destinos, com manifesto e retenção segura', as
     expect(existsSync(join(dir, ROUTINE_MARKER_FILE))).toBe(true)
     const snaps = readdirSync(dir).filter((n) => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(n))
     const today = backupStamp(new Date()).slice(0, 10)
-    const newest = snaps.filter((n) => n.startsWith(today)).sort().pop()
+    const newest = snaps
+      .filter((n) => n.startsWith(today))
+      .sort()
+      .pop()
     expect(newest, `backup de hoje em ${dest}`).toBeTruthy()
     const snap = join(dir, newest!)
     const manifest = JSON.parse(readFileSync(join(snap, MANIFEST_FILE), 'utf8'))
@@ -159,11 +167,15 @@ test('inicia oculto na bandeja e fechar a janela só esconde', async () => {
     app.emit('activate')
   })
   await expect
-    .poll(() => l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible())))
+    .poll(() =>
+      l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()))
+    )
     .toBe(true)
   await l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
   await expect
-    .poll(() => l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible())))
+    .poll(() =>
+      l.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()))
+    )
     .toBe(false)
   await l.app.close()
 })

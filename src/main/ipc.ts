@@ -468,5 +468,7 @@ function smtpAccountChanged(
   next: Pick<AppSettings['smtp'], 'host' | 'port' | 'user'>
 ): boolean {
   const norm = (v: string) => v.trim().toLowerCase()
-  return norm(saved.host) !== norm(next.host) || saved.port !== next.port || norm(saved.user) !== norm(next.user)
+  return (
+    norm(saved.host) !== norm(next.host) || saved.port !== next.port || norm(saved.user) !== norm(next.user)
+  )
 }

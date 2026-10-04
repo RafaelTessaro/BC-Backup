@@ -142,7 +142,13 @@ describe('senha SMTP salva não vaza para outro servidor', () => {
     let secret: string | undefined = 'sealed'
     store.settings = {
       ...DEFAULT_SETTINGS,
-      smtp: { ...DEFAULT_SETTINGS.smtp, host: 'smtp.gmail.com', port: 465, user: 'tecnico@gmail.com', hasPassword: true }
+      smtp: {
+        ...DEFAULT_SETTINGS.smtp,
+        host: 'smtp.gmail.com',
+        port: 465,
+        user: 'tecnico@gmail.com',
+        hasPassword: true
+      }
     }
     store.config = { data: { secrets: { smtpPassword: secret } } } as never
     store.setSmtpPassword = async (v: string | undefined) => {
@@ -155,7 +161,13 @@ describe('senha SMTP salva não vaza para outro servidor', () => {
     return { store, secret: () => secret }
   }
   const ctxWith = (store: ReturnType<typeof fakeStore>, getSmtpPassword = vi.fn(async () => 'segredo')) =>
-    ({ ...(fakeCtx(store) as object), settingsChanged: vi.fn(), getSmtpPassword, hostname: 'PC', version: '0.1.0' }) as never
+    ({
+      ...(fakeCtx(store) as object),
+      settingsChanged: vi.fn(),
+      getSmtpPassword,
+      hostname: 'PC',
+      version: '0.1.0'
+    }) as never
 
   it('testar com outro host sem digitar a senha é recusado (a senha salva não é usada)', async () => {
     const { store } = smtpStore()

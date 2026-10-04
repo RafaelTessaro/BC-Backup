@@ -1,6 +1,6 @@
 import { Clock } from 'lucide-react'
 import { Popover } from 'radix-ui'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { parseTime } from '@shared/schedule'
 import { cn } from '@renderer/lib/cn'
 import { inputBase } from './Input'
@@ -9,22 +9,32 @@ const pad = (n: number): string => String(n).padStart(2, '0')
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5)
 
-/** Normaliza o que foi digitado ("9" → "09:00", "930" → "09:30", "21h" → "21:00"). */
-function normalize(raw: string): string | null {
-  const digits = raw.replace(/[^\d]/g, '')
-  if (!digits) return null
+/**
+ * Normaliza o que foi digitado. Com separador (":" ou "h") cada parte vale sozinha:
+ * "7:3" → 07:03, "12:5" → 12:05, "7h30" → 07:30, "21h" → 21:00.
+ * Só dígitos: "9" → 09:00, "730" → 07:30, "1230" → 12:30. Inválido → null.
+ */
+export function normalizeTime(raw: string): string | null {
+  const s = raw.trim().toLowerCase()
+  if (!s) return null
   let h: number
   let m: number
-  if (digits.length <= 2) {
-    h = Number(digits)
-    m = 0
-  } else if (digits.length === 3) {
-    h = Number(digits.slice(0, 1))
-    m = Number(digits.slice(1))
-  } else {
-    h = Number(digits.slice(0, 2))
-    m = Number(digits.slice(2, 4))
-  }
+  const sep = /^(\d{1,2})\s*[:h]\s*(\d{0,2})$/.exec(s)
+  if (sep) {
+    h = Number(sep[1])
+    m = sep[2] ? Number(sep[2]) : 0
+  } else if (/^\d{1,4}$/.test(s)) {
+    if (s.length <= 2) {
+      h = Number(s)
+      m = 0
+    } else if (s.length === 3) {
+      h = Number(s.slice(0, 1))
+      m = Number(s.slice(1))
+    } else {
+      h = Number(s.slice(0, 2))
+      m = Number(s.slice(2))
+    }
+  } else return null
   if (h > 23 || m > 59) return null
   return `${pad(h)}:${pad(m)}`
 }
@@ -88,14 +98,31 @@ interface TimePickerProps {
 export function TimePicker({ value, onChange, id, label = 'Horário', className }: TimePickerProps) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<string | null>(null)
+  const [invalid, setInvalid] = useState(false)
+  const errorId = useId()
   const parsed = parseTime(value) ?? { h: 18, m: 0 }
   const minutes = MINUTES.includes(parsed.m) ? MINUTES : [...MINUTES, parsed.m].sort((a, b) => a - b)
 
   const commit = (): void => {
     if (draft === null) return
-    const n = normalize(draft)
-    if (n) onChange(n)
+    const n = normalizeTime(draft)
+    if (n) {
+      onChange(n)
+      setDraft(null)
+      setInvalid(false)
+    } else if (draft.trim() === '') {
+      // campo apagado: volta ao horário atual
+      setDraft(null)
+      setInvalid(false)
+    } else {
+      // mantém o que foi digitado e sinaliza (em vez de voltar ao valor anterior em silêncio)
+      setInvalid(true)
+    }
+  }
+  const pick = (v: string): void => {
     setDraft(null)
+    setInvalid(false)
+    onChange(v)
   }
 
   return (
@@ -116,9 +143,14 @@ export function TimePicker({ value, onChange, id, label = 'Horário', className 
             id={id}
             aria-label={label}
             inputMode="numeric"
+            aria-invalid={invalid || undefined}
+            aria-describedby={invalid ? errorId : undefined}
             className={cn(inputBase, 'pr-2 pl-8 font-mono text-[13px] tnum')}
             value={draft ?? value}
-            onChange={(e) => setDraft(e.target.value.replace(/[^\d:h]/g, '').slice(0, 5))}
+            onChange={(e) => {
+              setDraft(e.target.value.replace(/[^\d:hH]/g, '').slice(0, 5))
+              setInvalid(false)
+            }}
             onFocus={(e) => e.currentTarget.select()}
             onBlur={commit}
             onKeyDown={(e) => {
@@ -132,6 +164,9 @@ export function TimePicker({ value, onChange, id, label = 'Horário', className 
               }
             }}
           />
+          <span id={errorId} className="sr-only" role={invalid ? 'alert' : undefined}>
+            {invalid ? 'Horário inválido. Use HH:MM, por exemplo 07:30.' : ''}
+          </span>
         </div>
       </Popover.Anchor>
       <Popover.Portal>
@@ -146,7 +181,7 @@ export function TimePicker({ value, onChange, id, label = 'Horário', className 
             label="Horas"
             items={HOURS}
             selected={parsed.h}
-            onPick={(h) => onChange(`${pad(h)}:${pad(parsed.m)}`)}
+            onPick={(h) => pick(`${pad(h)}:${pad(parsed.m)}`)}
           />
           <div className="w-px self-stretch bg-border" />
           <Column
@@ -154,7 +189,7 @@ export function TimePicker({ value, onChange, id, label = 'Horário', className 
             items={minutes}
             selected={parsed.m}
             onPick={(m) => {
-              onChange(`${pad(parsed.h)}:${pad(m)}`)
+              pick(`${pad(parsed.h)}:${pad(m)}`)
               setOpen(false)
             }}
           />

@@ -189,14 +189,7 @@ export interface RunRecord extends RunSummary {
   emailError?: string
 }
 
-export type RunPhase =
-  | 'queued'
-  | 'scanning'
-  | 'copying'
-  | 'verifying'
-  | 'pruning'
-  | 'notifying'
-  | 'done'
+export type RunPhase = 'queued' | 'scanning' | 'copying' | 'verifying' | 'pruning' | 'notifying' | 'done'
 
 export interface RunProgress {
   runId: ID
@@ -228,14 +221,7 @@ export type ThemePreference = 'light' | 'dark' | 'system'
 export type SmtpSecurity = 'ssl' | 'starttls' | 'none'
 
 export type SmtpPreset =
-  | 'gmail'
-  | 'office365'
-  | 'hostinger'
-  | 'locaweb'
-  | 'uol'
-  | 'kinghost'
-  | 'hostgator'
-  | 'custom'
+  'gmail' | 'office365' | 'hostinger' | 'locaweb' | 'uol' | 'kinghost' | 'hostgator' | 'custom'
 
 export interface SmtpSettings {
   preset: SmtpPreset

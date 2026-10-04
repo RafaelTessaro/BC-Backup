@@ -48,7 +48,10 @@ describe('walk com pontos de reanálise do Windows', () => {
     const issues: never[] = []
     const stats = emptyWalkStats()
     const rels: string[] = []
-    const filter = makeFilter({ include: [], exclude: [], skipHiddenAndSystem: false, maxFileSizeMB: null }, 'linux')
+    const filter = makeFilter(
+      { include: [], exclude: [], skipHiddenAndSystem: false, maxFileSizeMB: null },
+      'linux'
+    )
     for await (const f of walk(join(dir, 'src'), filter, issues, stats)) rels.push(f.rel)
     expect(rels.sort()).toEqual(['local.txt', 'nuvem-pasta/contrato.pdf', 'nuvem-planilha.xlsx'])
     expect(stats.links).toBe(1)
