@@ -71,9 +71,11 @@ Clique em **Nova rotina**. O editor tem 6 etapas; use **Continuar** e **Voltar**
 
 **1. Origem — "O que você quer copiar?"**
 
-- Dê um **nome** para a rotina (ex.: "Financeiro diário"). Ele vira o nome da pasta no destino.
-- Clique em **Adicionar pastas** ou **Adicionar arquivos** (ou arraste do Explorer). Pode misturar várias pastas e
-  arquivos; cada um vira uma subpasta dentro do backup.
+- Dê um **nome** para a rotina (ex.: "Financeiro diário"). Ele serve para você reconhecer a rotina na lista, nos
+  avisos e nos e-mails — **não** vira pasta no destino.
+- Clique em **Adicionar pastas** ou **Adicionar arquivos** (ou arraste do Explorer). Com **uma** pasta de origem, o
+  conteúdo dela vai direto na pasta do backup; com várias pastas e arquivos, cada um vira uma subpasta dentro do
+  backup.
 - Em **Avançado** ficam os filtros. Já vêm excluídos arquivos que não precisam de backup (`Thumbs.db`,
   `desktop.ini`, temporários `*.tmp`, arquivos `~$` do Office aberto, lixeira). Exemplo de inclusão: só `*.xml`.
 
@@ -81,6 +83,11 @@ Clique em **Nova rotina**. O editor tem 6 etapas; use **Continuar** e **Voltar**
 
 - Clique em **Adicionar destino** e escolha o HD externo, o pendrive, outra unidade ou uma pasta de rede
   (`\\SERVIDOR\backup`). O programa mostra o espaço livre e quanto o backup deve ocupar.
+- **Dica:** crie uma pasta, por exemplo `E:\Backups`, e escolha ela como destino. Cada backup é gravado **direto**
+  nessa pasta, como uma pasta com o dia e a hora (`E:\Backups\2026-10-04_18-00-00\`). Se escolher a raiz do disco
+  (`E:\`), as pastas datadas ficam soltas na raiz — o editor mostra essa dica.
+- A mesma pasta pode receber backups de **várias rotinas** e até de **outro computador**: cada backup tem um nome
+  único (se dois começarem no mesmo segundo, o segundo ganha `_2`), e cada rotina só apaga os próprios backups.
 - Se o destino estiver no **mesmo disco** da origem, aparece um aviso: se esse disco quebrar, perde-se o original
   **e** o backup. Prefira outro disco.
 - Pode adicionar mais de um destino — veja a [seção 4](#4-vários-destinos).
@@ -245,16 +252,17 @@ O BC Backup não usa formato próprio: restaurar é **copiar e colar**.
 
 **Backup em pasta (padrão)**
 
-1. No BC Backup, abra **Histórico**, clique na execução desejada e em **Abrir pasta** — ou, no Explorer, vá até o
-   destino: `E:\BC Backup\<nome da rotina>\`.
+1. No BC Backup, abra **Histórico**, clique na execução desejada e em **Abrir pasta** — ou, no Explorer, abra a
+   pasta escolhida como destino (ex.: `E:\Backups\`).
 2. Entre na pasta com a **data e hora** desejada (ex.: `2026-10-03_18-00-02` = 03/10/2026 às 18:00).
-3. Dentro dela há uma subpasta para cada origem (ex.: `Documentos`, `Planilhas`). Encontre o arquivo e **copie**.
+3. Lá dentro estão os arquivos. Com uma origem só, o conteúdo dela está direto ali; com várias, há uma subpasta para
+   cada origem (ex.: `Documentos`, `Planilhas`). Encontre o arquivo e **copie**.
 4. Cole em uma pasta de trabalho (ex.: Área de Trabalho) e confira. Só então substitua o original, se for o caso.
 
 **Backup em ZIP**
 
-1. Vá até `E:\BC Backup\<nome da rotina>\` e abra o arquivo com a data desejada (ex.: `2026-10-03_18-00-02.zip`) —
-   o Windows abre ZIP com dois cliques.
+1. Vá até a pasta de destino (ex.: `E:\Backups\`) e abra o arquivo com a data desejada
+   (ex.: `2026-10-03_18-00-02.zip`) — o Windows abre ZIP com dois cliques.
 2. Arraste os arquivos para fora, ou clique com o botão direito no ZIP › **Extrair tudo…**
 
 Dicas: nunca trabalhe direto dentro da pasta de backup (a retenção pode apagá-la no prazo); e, para restaurar um
@@ -262,28 +270,36 @@ sistema inteiro (ex.: banco de dados de um programa), feche o programa antes de 
 
 ## 9. Como as pastas ficam no destino
 
+Exemplo: o destino escolhido é a pasta `E:\Backups`. A rotina "Financeiro diário" copia **uma** pasta
+(`D:\Financeiro`); a rotina "Contabilidade" copia **duas** (`Documentos` e `Planilhas`) em ZIP.
+
 ```
-E:\
-└─ BC Backup\
-   └─ Financeiro diário\                     ← uma pasta por rotina
-      ├─ .bcbackup-rotina.json               ← identifica a rotina (não apague)
-      ├─ 2026-10-03_18-00-02\                ← um backup (pasta datada: AAAA-MM-DD_HH-MM-SS)
-      │  ├─ bcbackup-manifesto.json          ← resumo do backup (data, arquivos, tamanho, status)
-      │  ├─ Documentos\…                     ← uma subpasta por origem
-      │  └─ Planilhas\…
-      ├─ 2026-10-04_18-00-05\
-      ├─ 2026-10-05_18-00-01.zip             ← (modo ZIP) um arquivo por backup…
-      ├─ 2026-10-05_18-00-01.zip.manifesto.json   …com o manifesto ao lado
-      └─ 2026-10-06_18-00-03.em-andamento\   ← backup sendo feito agora (ou interrompido)
+E:\Backups\                                   ← a pasta que você escolheu (pode ter outras coisas)
+├─ 2026-10-03_18-00-02\                       ← um backup: pasta com dia e hora (AAAA-MM-DD_HH-MM-SS)
+│  ├─ bcbackup-manifesto.json                 ← resumo do backup (rotina, data, arquivos, tamanho, status)
+│  ├─ Contas a pagar.xlsx                     ← uma origem só: o conteúdo dela, direto aqui
+│  └─ Notas fiscais\…
+├─ 2026-10-04_18-00-05\
+├─ 2026-10-04_18-00-05_2.zip                  ← outra rotina no mesmo segundo: "_2" (nada é sobrescrito)
+├─ 2026-10-04_18-00-05_2.zip.manifesto.json   …com o manifesto ao lado (dentro do ZIP: Documentos\, Planilhas\)
+├─ 2026-10-06_18-00-03.em-andamento\          ← backup sendo feito agora (ou interrompido)
+│  └─ bcbackup-em-andamento.json              ← de qual rotina e de qual computador é a cópia
+└─ Minhas coisas\                             ← seus arquivos: o BC Backup nunca mexe
 ```
 
-- **`bcbackup-manifesto.json`** diz que aquela pasta é um backup completo e válido. É por ele que a retenção sabe o
-  que pode apagar.
+- **O nome da rotina não vira pasta.** Com **uma** origem, o conteúdo dela fica direto na pasta datada (um arquivo
+  de origem → o próprio arquivo); com **várias**, uma subpasta por origem.
+- **`bcbackup-manifesto.json`** diz que aquela pasta é um backup completo e válido, e de qual rotina. É por ele que a
+  retenção sabe o que pode apagar: só backups com o manifesto **da própria rotina**. Pastas de outras rotinas, de
+  outro computador ou suas nunca são apagadas.
 - **`.em-andamento`**: o backup ainda não terminou. Só quando tudo foi copiado e verificado a pasta recebe o nome
-  final. Se o computador desligou no meio, a sobra é limpa no próximo backup — **não use** essas pastas para
-  restaurar.
+  final. Se o computador desligou no meio, a sobra é limpa no próximo backup **dessa rotina neste computador**
+  (de outro computador, só depois de 12 horas parada; sem o `bcbackup-em-andamento.json`, nunca). **Não use**
+  essas pastas para restaurar.
 - **`.excluindo`**: backup antigo que a retenção está apagando.
 - Os horários são os do computador no início do backup; os nomes são em ordem cronológica no Explorer.
+- **Backups de versões anteriores** ficavam em `E:\BC Backup\<nome da rotina>\<data>\`. Eles continuam lá, valem
+  para restaurar e saem normalmente pela retenção quando passarem do prazo; nada novo é gravado nessa pasta.
 
 ## 10. Perguntas frequentes
 
@@ -291,6 +307,13 @@ E:\
 Programas abertos podem travar arquivos (ex.: Outlook com o `.pst`, sistemas com banco Firebird/Access). O BC Backup
 pula o arquivo, termina o resto e marca o backup como **Com avisos**, listando o arquivo no e-mail. Solução: agende o
 backup para quando o programa estiver fechado (ex.: no almoço ou depois do expediente) ou peça para fechá-lo antes.
+
+**Apareceu "Arquivo alterado durante a cópia".**
+Algum programa gravou no arquivo **enquanto** ele era copiado. Uma cópia assim pode misturar a versão antiga e a
+nova, então o BC Backup confere o tamanho e as datas do arquivo antes e depois de ler: se mudou, copia de novo; se
+mudar outra vez, deixa o arquivo de fora (backup **Com avisos**) em vez de guardar uma cópia que não confere. Todo
+arquivo que entra no backup é relido do destino e comparado com o original (sha256). Solução: a mesma do arquivo em
+uso — agende para quando o programa estiver parado.
 
 **A letra do pendrive/HD externo mudou (era E:, virou F:).**
 O Windows dá a letra livre na hora em que o disco é conectado. O backup acusa **Destino indisponível** e você recebe

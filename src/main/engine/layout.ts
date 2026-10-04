@@ -14,10 +14,15 @@
 // LEGADO: versões anteriores gravavam em "<destino>/BC Backup/<rotina>/<carimbo>" (pasta marcada com
 // ".bcbackup-rotina.json"). Nada novo é criado lá; a retenção só continua contando os backups antigos.
 
-import { lstat, mkdir, readdir, rmdir } from 'node:fs/promises'
+import { lstat, mkdir, readdir, rm, rmdir } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import type { BackupMode } from '@shared/types'
-import { DELETING_SUFFIX, IN_PROGRESS_SUFFIX, LEGACY_ROOT_DIR } from '@shared/defaults'
+import {
+  DELETING_SUFFIX,
+  IN_PROGRESS_MARKER_FILE,
+  IN_PROGRESS_SUFFIX,
+  LEGACY_ROOT_DIR
+} from '@shared/defaults'
 import { DestinationError, destinationErrorMessage } from './copy'
 import { errCode } from './fsutil'
 import { readRoutineMarker, writeInProgressMarker, type InProgressMarker } from './manifest'
@@ -125,14 +130,17 @@ export async function claimOutput(
     }
     // Reservado. Se outro computador terminou um backup com este nome entre a checagem e o mkdir,
     // devolve a reserva (a pasta está vazia: rmdir nunca apaga conteúdo) e tenta o próximo.
-    if (await anyOccupied([join(destDir, name), join(destDir, `${name}.zip`)])) {
-      await rmdir(workDir).catch(() => {})
-      continue
-    }
     try {
+      if (await anyOccupied([join(destDir, name), join(destDir, `${name}.zip`)])) {
+        await rmdir(workDir).catch(() => {})
+        continue
+      }
       await writeInProgressMarker(workDir, marker)
     } catch (e) {
+      // Devolve a reserva: o marcador (se saiu pela metade, ex.: disco cheio) e a pasta, ambos nossos.
+      await rm(join(workDir, IN_PROGRESS_MARKER_FILE), { force: true }).catch(() => {})
       await rmdir(workDir).catch(() => {})
+      if (e instanceof DestinationError) throw e
       fail(e)
     }
     return {
@@ -159,8 +167,13 @@ export async function legacyRoutineDirs(destPath: string, routineId: string): Pr
       // A raiz informada pelo usuário (destPath) pode ser um link; "BC Backup" dentro dela, não.
       if (root !== destPath && !(await lstat(root)).isDirectory()) continue
       for (const ent of await readdir(root, { withFileTypes: true })) {
-        if (!ent.isDirectory()) continue // links/junções aparecem como link: ignorados
         const dir = join(root, ent.name)
+        // No Windows o readdir marca qualquer ponto de reanálise como link (ex.: OneDrive): o lstat decide.
+        // Links/junções de verdade nunca são seguidos.
+        if (ent.isSymbolicLink()) {
+          const st = await lstat(dir).catch(() => null)
+          if (!st || st.isSymbolicLink() || !st.isDirectory()) continue
+        } else if (!ent.isDirectory()) continue
         if ((await readRoutineMarker(dir))?.routineId === routineId && !out.includes(dir)) out.push(dir)
       }
     } catch {
