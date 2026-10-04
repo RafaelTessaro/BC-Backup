@@ -31,7 +31,10 @@ export interface Destination {
 
 export type BackupMode = 'copy' | 'zip'
 
-/** none = sem verificação · quick = tamanho + data · full = hash relendo o destino. */
+/**
+ * none = sem verificação · quick = tamanho + data · full = hash relendo o destino.
+ * Desde a beta 3 o app SEMPRE usa 'full' (o campo continua por compatibilidade).
+ */
 export type VerifyMode = 'none' | 'quick' | 'full'
 
 export type ScheduleKind = 'manual' | 'daily' | 'weekly' | 'interval' | 'startup'

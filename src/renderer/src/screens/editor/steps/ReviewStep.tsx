@@ -32,7 +32,6 @@ function Row({ label, children, onEdit }: { label: string; children: ReactNode; 
   )
 }
 
-const VERIFY = { none: 'sem verificação', quick: 'verificação rápida', full: 'verificação completa' }
 const zipLabel = (level: number): string =>
   (ZIP_LEVELS.find((z) => Number(z.value) === level)?.label ?? 'Equilibrada').toLowerCase()
 const ATTACH = { never: '', onFailure: ' · log anexado se falhar', always: ' · log sempre anexado' }
@@ -148,7 +147,7 @@ export function ReviewStep({
             {draft.mode === 'zip'
               ? `Compactar em ZIP (compressão ${zipLabel(draft.zipLevel)})`
               : 'Pastas (cópia simples)'}{' '}
-            · {VERIFY[draft.verify]}
+            · verificação completa de cada arquivo
           </p>
         </Row>
         <Row label="Agendamento" onEdit={() => goTo('agendamento')}>

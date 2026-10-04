@@ -73,12 +73,11 @@ function PhaseSteps({ p, routine }: { p: RunProgress; routine?: Routine }) {
         p.destinationCount > 1 ? `Destino ${p.destinationIndex + 1} de ${p.destinationCount}` : undefined
     }
   ]
-  if (!routine || routine.verify !== 'none')
-    steps.push({
-      phase: 'verifying',
-      label: 'Verificando a cópia',
-      detail: routine?.verify === 'full' ? 'Completa' : 'Rápida'
-    })
+  steps.push({
+    phase: 'verifying',
+    label: 'Verificando a cópia',
+    detail: 'Relendo e comparando cada arquivo'
+  })
   if (!routine || routine.retention.enabled)
     steps.push({ phase: 'pruning', label: 'Limpando cópias antigas' })
   if (routine?.notification.enabled) steps.push({ phase: 'notifying', label: 'Enviando e-mail' })

@@ -14,7 +14,7 @@ import { useEffect, useRef, useState, type Ref } from 'react'
 import type { RoutineInput, ValidationIssue } from '@shared/api'
 import { BACKUP_ROOT_DIR } from '@shared/defaults'
 import { backupStamp, formatBytes } from '@shared/format'
-import type { Destination, DiskSpace, DriveInfo, VerifyMode } from '@shared/types'
+import type { Destination, DiskSpace, DriveInfo } from '@shared/types'
 import { Button, IconButton } from '@renderer/components/ui/Button'
 import { Callout } from '@renderer/components/ui/Callout'
 import { DiskUsageBar } from '@renderer/components/ui/DiskUsageBar'
@@ -28,7 +28,6 @@ import {
   MenuTrigger
 } from '@renderer/components/ui/Menu'
 import { PathText } from '@renderer/components/ui/PathText'
-import { Segmented } from '@renderer/components/ui/Segmented'
 import { Select } from '@renderer/components/ui/Select'
 import { Switch } from '@renderer/components/ui/Switch'
 import { bc, errorMessage } from '@renderer/lib/bc'
@@ -40,12 +39,6 @@ import { notify } from '@renderer/lib/toast'
 import { ZIP_LEVELS, folderName, joinPath, newId, pathKey, type Update } from '../model'
 import type { SourceSizes } from '../sizes'
 import { IssueList, SectionTitle } from './shared'
-
-const VERIFY_TEXT: Record<VerifyMode, string> = {
-  none: 'Mais rápido, porém sem garantia de que a cópia ficou íntegra.',
-  quick: 'Confere tamanho e data de cada arquivo copiado. Rápido e recomendado.',
-  full: 'Relê os arquivos no destino e compara o conteúdo. Mais seguro, porém mais lento.'
-}
 
 function driveIcon(path: string, drive?: DriveInfo): LucideIcon {
   if (isNetworkPath(path) || drive?.network) return Server
@@ -572,21 +565,6 @@ export function DestinationsStep({
             )}
           </Field>
         )}
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <SectionTitle title="Verificar cópia" description={VERIFY_TEXT[draft.verify]} />
-        <Segmented<VerifyMode>
-          label="Verificar cópia"
-          value={draft.verify}
-          onChange={(v) => update((d) => ({ ...d, verify: v }))}
-          className="w-[360px]"
-          options={[
-            { value: 'none', label: 'Não verificar' },
-            { value: 'quick', label: 'Rápida' },
-            { value: 'full', label: 'Completa' }
-          ]}
-        />
       </section>
     </div>
   )

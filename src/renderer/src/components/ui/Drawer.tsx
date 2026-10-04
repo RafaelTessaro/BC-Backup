@@ -32,7 +32,7 @@ export function Drawer({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-x-0 top-10 bottom-0 z-40 bg-overlay/50 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-x-0 top-[56px] bottom-0 z-40 bg-overlay/50 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <Dialog.Content
           aria-describedby={undefined}
           tabIndex={-1}
@@ -43,7 +43,7 @@ export function Drawer({
             ;(e.currentTarget as HTMLElement | null)?.focus()
           }}
           className={cn(
-            'no-drag fixed top-10 right-0 bottom-0 z-40 flex w-[480px] max-w-[calc(100vw-64px)] flex-col',
+            'no-drag fixed top-[56px] right-0 bottom-0 z-40 flex w-[480px] max-w-[calc(100vw-64px)] flex-col',
             'rounded-tl-xl border-t border-l border-border bg-surface-raised shadow-dialog',
             'data-[state=open]:animate-drawer-in data-[state=closed]:animate-drawer-out focus:outline-none'
           )}

@@ -56,7 +56,7 @@ export function Titlebar({ platform }: { platform: string }) {
   const queuedOnly = active.length > 0 && active.every(isQueued)
 
   return (
-    <div className="titlebar drag flex h-10 shrink-0 items-center">
+    <div className="titlebar drag flex h-[56px] shrink-0 items-center">
       <div
         className="mx-auto flex w-full max-w-[1080px] min-w-0 items-center gap-3 px-8"
         style={{ paddingRight: overlayPadding(platform) }}

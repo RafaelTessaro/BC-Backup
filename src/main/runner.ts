@@ -236,7 +236,8 @@ export class RunManager {
 
     const spec: JobSpec = {
       runId: item.runId,
-      routine: structuredClone(routine),
+      // Toda execução relê e compara o conteúdo no destino, qualquer que seja o valor gravado.
+      routine: { ...structuredClone(routine), verify: 'full' },
       trigger: item.trigger,
       startedAt,
       appVersion: this.d.info.version,

@@ -44,7 +44,7 @@ export function createDefaultRoutine(): RoutineInput {
     mode: 'copy',
     zipLevel: 6,
     filters: { include: [], exclude: [...DEFAULT_EXCLUDES], skipHiddenAndSystem: true, maxFileSizeMB: null },
-    verify: 'quick',
+    verify: 'full',
     schedule: {
       kind: 'daily',
       times: ['18:00'],

@@ -51,7 +51,7 @@ describe('migração (campos ausentes / legados)', () => {
     expect(r.enabled).toBe(true)
     expect(r.mode).toBe('copy')
     expect(r.zipLevel).toBe(6)
-    expect(r.verify).toBe('quick')
+    expect(r.verify).toBe('full') // verificação sempre completa
     expect(r.sources[0]).toMatchObject({ path: 'C:\\Dados', kind: 'folder' })
     expect(r.sources[0].id).toBeTruthy()
     expect(r.destinations[0]).toMatchObject({ path: 'E:\\', enabled: true })

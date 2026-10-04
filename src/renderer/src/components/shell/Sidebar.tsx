@@ -85,17 +85,17 @@ export function Sidebar({ collapsed, platform }: { collapsed: boolean; platform:
         collapsed ? 'w-16' : 'w-[232px]'
       )}
     >
-      {/* Cabeçalho = parte da barra de título (arrastável) */}
+      {/* Cabeçalho = parte da barra de título (arrastável). 56 px para o logo respirar longe da borda. */}
       <div
         className={cn(
-          'titlebar drag flex h-10 shrink-0 items-center',
+          'titlebar drag flex h-[56px] shrink-0 items-center',
           collapsed ? 'justify-center' : 'px-4',
           mac && !collapsed && 'pl-[78px]'
         )}
       >
         {!(mac && collapsed) &&
           (collapsed ? (
-            <BrandMark size={22} />
+            <BrandMark size={24} />
           ) : (
             <button
               type="button"
@@ -103,12 +103,12 @@ export function Sidebar({ collapsed, platform }: { collapsed: boolean; platform:
               onClick={() => navigate(ROUTES.dashboard)}
               aria-label="BC Backup — Painel"
             >
-              <Wordmark size={15} />
+              <Wordmark size={16} />
             </button>
           ))}
       </div>
 
-      <div className={cn('pt-3 pb-4', collapsed ? 'px-3' : 'px-3')}>
+      <div className={cn('pt-1 pb-4', collapsed ? 'px-3' : 'px-3')}>
         {collapsed ? (
           <Tooltip
             label={

@@ -10,7 +10,10 @@ interface SwitchProps {
   className?: string
 }
 
-/** Switch (§8): 36 × 20, thumb 16 px; off com contorno text-tertiary. */
+/**
+ * Switch (§8): trilho 36 × 20; bolinha de 14 px com 3 px de folga em todos os lados (estilo Windows 11),
+ * para nunca encostar na borda do trilho em nenhuma escala de tela.
+ */
 export function Switch({ checked, onCheckedChange, disabled, id, label, className }: SwitchProps) {
   return (
     <S.Root
@@ -29,8 +32,8 @@ export function Switch({ checked, onCheckedChange, disabled, id, label, classNam
     >
       <S.Thumb
         className={cn(
-          'block size-4 translate-x-0.5 rounded-full bg-white shadow-[0_1px_2px_rgb(16_17_20/0.2),0_0_0_0.5px_rgb(16_17_20/0.08)]',
-          'transition-transform duration-[120ms] ease-out data-[state=checked]:translate-x-[18px]'
+          'pointer-events-none block size-3.5 translate-x-[3px] rounded-full bg-white shadow-[0_1px_2px_rgb(16_17_20/0.25)]',
+          'transition-transform duration-[120ms] ease-out data-[state=checked]:translate-x-[19px]'
         )}
       />
     </S.Root>

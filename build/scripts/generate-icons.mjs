@@ -364,16 +364,25 @@ const geistFace = () => {
 
 /** Barra lateral das telas de boas-vindas/conclusão: 164 × 314. */
 function sidebarHtml() {
-  const glyph = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="6 6 20 20" width="84" height="84" fill="none"><g stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="${ARC}"/><path d="${HEAD}"/><path d="${CHECK}"/></g></svg>`
+  // Tudo centralizado na coluna de 164 px. O enquadramento do ícone é calculado no próprio navegador
+  // (getBBox) para que a seta + o check fiquem visualmente no centro, e não só o quadro do SVG.
+  const glyph = `<svg id="g" xmlns="http://www.w3.org/2000/svg" viewBox="6 6 20 20" width="84" height="84" fill="none"><g stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="${ARC}"/><path d="${HEAD}"/><path d="${CHECK}"/></g></svg>`
   return `<!doctype html><style>${geistFace()}
   html,body{margin:0}
-  .s{width:164px;height:314px;box-sizing:border-box;padding:40px 22px 0;position:relative;overflow:hidden;
+  .s{width:164px;height:314px;box-sizing:border-box;padding:56px 14px 0;position:relative;overflow:hidden;
+     display:flex;flex-direction:column;align-items:center;text-align:center;
      background:linear-gradient(160deg,#5674FF 0%,#3254F0 45%,#2843D6 100%);font-family:Geist,sans-serif;color:#fff}
-  .ring{position:absolute;right:-70px;bottom:-70px;width:220px;height:220px;border-radius:50%;border:28px solid rgba(255,255,255,.06)}
-  .w{margin-top:26px;font-size:21px;letter-spacing:-.02em;line-height:1.1}
+  .ring{position:absolute;left:50%;bottom:-120px;width:240px;height:240px;margin-left:-120px;border-radius:50%;border:28px solid rgba(255,255,255,.06)}
+  #g{display:block;position:relative}
+  .w{margin-top:24px;font-size:21px;letter-spacing:-.02em;line-height:1.1;position:relative}
   .w b{font-weight:600}.w span{font-weight:400;opacity:.8}
-  .t{margin-top:10px;font-size:12px;line-height:1.45;opacity:.78}
-  </style><div class="s"><div class="ring"></div>${glyph}<div class="w"><b>BC</b> <span>Backup</span></div><div class="t">Cópias automáticas dos seus arquivos, com aviso por e-mail.</div></div>`
+  .t{margin-top:10px;font-size:12px;line-height:1.45;opacity:.82;max-width:128px;position:relative}
+  </style><div class="s"><div class="ring"></div>${glyph}<div class="w"><b>BC</b> <span>Backup</span></div><div class="t">Cópias automáticas dos seus arquivos, com aviso por e-mail.</div></div>
+  <script>
+    const svg = document.getElementById('g'), b = svg.querySelector('g').getBBox(), pad = 2.1
+    const size = Math.max(b.width, b.height) + pad * 2, cx = b.x + b.width / 2, cy = b.y + b.height / 2
+    svg.setAttribute('viewBox', [cx - size / 2, cy - size / 2, size, size].join(' '))
+  </script>`
 }
 
 /** Cabeçalho das páginas internas (fica à direita, fundo branco): 150 × 57. */

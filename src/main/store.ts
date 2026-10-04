@@ -28,8 +28,7 @@ import type {
   SmtpSettings,
   SourceItem,
   ThemePreference,
-  TimeWindow,
-  VerifyMode
+  TimeWindow
 } from '@shared/types'
 import {
   DEFAULT_EXCLUDES,
@@ -186,7 +185,6 @@ export function migrateSettings(raw: unknown): AppSettings {
 
 const COLORS: readonly RoutineColor[] = ['blue', 'sky', 'emerald', 'amber', 'rose', 'violet', 'slate']
 const KINDS: readonly ScheduleKind[] = ['manual', 'daily', 'weekly', 'interval', 'startup']
-const VERIFY: readonly VerifyMode[] = ['none', 'quick', 'full']
 const ATTACH: readonly AttachLog[] = ['never', 'onFailure', 'always']
 const ROUTINE_KEYS = [
   'id',
@@ -334,7 +332,8 @@ export function migrateRoutine(raw: unknown, now: Date = new Date()): StoredRout
     mode,
     zipLevel: int(r.zipLevel, d.zipLevel, 0, 9),
     filters: migrateFilters(r.filters),
-    verify: oneOf(r.verify, VERIFY, d.verify),
+    // Verificação sempre completa (decisão do dono): rotinas antigas com 'none'/'quick' passam a 'full'.
+    verify: 'full',
     schedule: migrateSchedule(r.schedule),
     retention: migrateRetention(r.retention),
     notification: migrateNotification(r.notification),
