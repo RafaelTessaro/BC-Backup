@@ -3,7 +3,7 @@
 // Protocolo: main → { type:'start', spec } | { type:'cancel' }
 //            worker → progress | log | { type:'done', result } | { type:'crashed', message }
 
-import { runJob } from './job'
+import { e2eJobOptions, runJob } from './job'
 import type { FromWorker, ToWorker } from './types'
 
 const ac = new AbortController()
@@ -19,7 +19,7 @@ process.parentPort.on('message', (e: { data: ToWorker }) => {
   }
   if (msg.type !== 'start' || started) return
   started = true
-  runJob(msg.spec, (ev) => post(ev), ac.signal).then(
+  runJob(msg.spec, (ev) => post(ev), ac.signal, e2eJobOptions()).then(
     (result) => post({ type: 'done', result }),
     (err: unknown) => post({ type: 'crashed', message: err instanceof Error ? err.message : String(err) })
   )

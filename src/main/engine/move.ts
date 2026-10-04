@@ -7,8 +7,7 @@
 // Pastas nunca são apagadas (não existe rmdir aqui) e a exclusão é permanente (unlink).
 
 import { createHash } from 'node:crypto'
-import { createReadStream } from 'node:fs'
-import { constants as fsConstants } from 'node:fs'
+import { constants as fsConstants, createReadStream } from 'node:fs'
 import { lstat, open, unlink } from 'node:fs/promises'
 import { Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'

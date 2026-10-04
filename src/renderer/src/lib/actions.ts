@@ -106,7 +106,9 @@ export function toastRunFinished(r: RunSummary): void {
       break
     case 'warning':
       notify.warning(
-        r.notice && !r.filesCopied ? 'Nenhum backup novo' : `Concluído com ${plural(r.warnings, 'aviso', 'avisos')}`,
+        r.notice && !r.filesCopied
+          ? 'Nenhum backup novo'
+          : `Concluído com ${plural(r.warnings, 'aviso', 'avisos')}`,
         {
           description: r.notice ? `${r.routineName}: ${r.notice}` : r.routineName,
           action: details

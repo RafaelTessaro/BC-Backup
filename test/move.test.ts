@@ -984,3 +984,13 @@ describe('validate.ts: pastas bloqueadas e avisos', () => {
     expect(issues.some((i) => /desmarque/.test(i.message))).toBe(false)
   })
 })
+
+describe('e2eJobOptions (ajuste de relógio só para E2E)', () => {
+  it('sem BC_E2E=1 nunca altera o relógio do "Mover"', async () => {
+    const { e2eJobOptions } = await import('../src/main/engine/job')
+    expect(e2eJobOptions({ BC_E2E_MOVE_SKEW_MIN: '120' })).toEqual({})
+    expect(e2eJobOptions({ BC_E2E: '0', BC_E2E_MOVE_SKEW_MIN: '120' })).toEqual({})
+    expect(e2eJobOptions({ BC_E2E: '1' })).toEqual({})
+    expect(e2eJobOptions({ BC_E2E: '1', BC_E2E_MOVE_SKEW_MIN: '120' })).toEqual({ moveAgeSkewMs: 7_200_000 })
+  })
+})

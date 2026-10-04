@@ -156,6 +156,62 @@ test('destino indisponível falha a execução e registra o motivo', async () =>
   await l.app.close()
 })
 
+test('"Mover": arquivos recém-gravados ficam na origem (Atenção, sem backup novo, nada apagado)', async () => {
+  const l = await launch()
+  const page = await mainWindow(l)
+  const source = makeDir('bcb-erp-backup-')
+  writeFileSync(join(source, 'ERP_hoje.fbk'), 'backup que o ERP acabou de gravar')
+  mkdirSync(join(source, 'Diario'))
+  writeFileSync(join(source, 'Diario', 'NFE_hoje.zip'), 'zip recente')
+  const destA = makeDir('bcb-move-a-')
+  const destB = makeDir('bcb-move-b-')
+  const input: RoutineInput = {
+    ...routineInput('Backup do ERP', source, [destA, destB]),
+    moveSources: { enabled: true, minAgeMinutes: 30, warnIfEmpty: true }
+  }
+  // Validação e prévia passam pela ponte IPC real.
+  const issues = await page.evaluate((i) => (globalThis as unknown as G).bc.routines.validate(i), {
+    ...input,
+    sources: [{ id: 's1', path: '/', kind: 'folder' as const }]
+  })
+  expect(issues.some((i) => i.level === 'error' && i.topic === 'move')).toBe(true)
+  const preview = await page.evaluate(
+    (i) => (globalThis as unknown as G).bc.system.previewMove([i.sources[0].path], i.filters, i.moveSources!),
+    input
+  )
+  expect(preview).toMatchObject({ files: 0, waiting: 2 })
+
+  const saved = await page.evaluate((i) => (globalThis as unknown as G).bc.routines.save(i), input)
+  expect(saved.moveSources).toEqual({ enabled: true, minAgeMinutes: 30, warnIfEmpty: true })
+  const finished = page.evaluate(
+    (id) =>
+      new Promise<string>((resolve) => {
+        const off = (globalThis as unknown as G).bc.on.runFinished((r) => {
+          if (r.routineId === id) {
+            off()
+            resolve(r.id)
+          }
+        })
+      }),
+    saved.id
+  )
+  await page.evaluate((id) => (globalThis as unknown as G).bc.routines.runNow(id), saved.id)
+  const runId = await finished
+  const record = await page.evaluate((id) => (globalThis as unknown as G).bc.runs.get(id), runId)
+  expect(record?.status).toBe('warning')
+  expect(record?.move?.nothingNew).toBe(true)
+  expect(record?.move?.postponedCount).toBe(2)
+  expect(record?.filesMoved).toBe(0)
+  expect(record?.notice).toMatch(/2 arquivos ainda em gravação\/em uso/)
+  // Nada apagado, nada copiado: nem a pasta "BC Backup" foi criada nos destinos.
+  expect(existsSync(join(source, 'ERP_hoje.fbk'))).toBe(true)
+  expect(existsSync(join(source, 'Diario', 'NFE_hoje.zip'))).toBe(true)
+  expect(existsSync(join(destA, BACKUP_ROOT_DIR))).toBe(false)
+  expect(existsSync(join(destB, BACKUP_ROOT_DIR))).toBe(false)
+  expect(l.errors).toEqual([])
+  await l.app.close()
+})
+
 test('inicia oculto na bandeja e fechar a janela só esconde', async () => {
   const l = await launch(['--hidden'])
   await new Promise((r) => setTimeout(r, 2000))

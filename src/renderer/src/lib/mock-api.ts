@@ -858,7 +858,7 @@ export function createMockApi(): BcApi {
   }
 
   const summaryOf = (r: RunRecord): RunSummary => {
-    const { destinations: _d, log: _l, emailError: _e, ...summary } = r
+    const { destinations: _d, log: _l, emailError: _e, move: _m, ...summary } = r
     return summary
   }
 

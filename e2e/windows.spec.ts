@@ -40,7 +40,9 @@ test.beforeAll(async () => {
   // BC_E2E=1: gancho __bcTrayToggle (simula o clique no ícone da bandeja).
   app = await electron.launch({
     executablePath: exe!,
-    env: { ...process.env, BC_USER_DATA_DIR: userData, BC_E2E: '1' }
+    // BC_E2E_MOVE_SKEW_MIN: adianta só o relógio da regra de idade do "Mover" (o Windows não deixa
+    // "envelhecer" o ChangeTime de um arquivo recém-criado).
+    env: { ...process.env, BC_USER_DATA_DIR: userData, BC_E2E: '1', BC_E2E_MOVE_SKEW_MIN: '120' }
   })
   // Pela URL (index.html): o painel da bandeja (tray.html) também é uma janela do app.
   page = await mainPage(app)
@@ -81,7 +83,10 @@ function makeSource(): string {
   return root
 }
 
-async function runRoutine(input: RoutineInput): Promise<{ status: string; runId: string }> {
+async function runRoutine(
+  input: RoutineInput & { id?: string }
+): Promise<{ status: string; runId: string; id: string }> {
+  // Com id: roda de novo a mesma rotina (salvar outra com o mesmo nome seria recusado).
   const saved = await page.evaluate((i) => (globalThis as unknown as G).bc.routines.save(i), input)
   const finished = page.evaluate(
     (id) =>
@@ -96,7 +101,7 @@ async function runRoutine(input: RoutineInput): Promise<{ status: string; runId:
     saved.id
   )
   await page.evaluate((id) => (globalThis as unknown as G).bc.routines.runNow(id), saved.id)
-  return finished
+  return { ...(await finished), id: saved.id }
 }
 
 function routine(
@@ -233,6 +238,59 @@ test('painel da bandeja abre junto do ícone e fecha com Esc', async () => {
     )
     .toBe(false)
   expect(errors).toEqual([])
+})
+
+test('"Mover": move o que está pronto e deixa na origem o arquivo que o sistema ainda está gravando', async () => {
+  const source = mkdtempSync(join(tmpdir(), 'bcb-win-erp-'))
+  const pronto = join(source, 'erp-2026-10-04.fbk')
+  const gravando = join(source, 'erp-em-gravacao.fbk')
+  writeFileSync(pronto, Buffer.alloc(2 * 1024 * 1024, 7))
+  writeFileSync(gravando, Buffer.alloc(512 * 1024, 9))
+  const a = mkdtempSync(join(tmpdir(), 'bcb-win-mova-'))
+  const b = mkdtempSync(join(tmpdir(), 'bcb-win-movb-'))
+  const input = routine('Backup do ERP', source, [a, b], {
+    moveSources: { enabled: true, minAgeMinutes: 30, warnIfEmpty: true }
+  })
+
+  // Um "ERP" ainda gravando: handle aberto COM compartilhamento de leitura (o caso difícil: copiar
+  // funcionaria, mas o teste de uso exclusivo do BC Backup precisa perceber e adiar).
+  const fd = openSync(gravando, 'r+')
+  let first: { status: string; runId: string; id: string }
+  try {
+    first = await runRoutine(input)
+  } finally {
+    closeSync(fd)
+  }
+  const rec1 = await page.evaluate((id) => (globalThis as unknown as G).bc.runs.get(id), first.runId)
+  expect(first.status, JSON.stringify(rec1?.log.slice(-12))).toBe('warning')
+  // O pronto saiu da origem e está nos dois destinos; o que estava em uso ficou e não foi copiado.
+  expect(existsSync(pronto)).toBe(false)
+  expect(existsSync(gravando)).toBe(true)
+  for (const dest of [a, b]) {
+    const files = readdirSync(join(dest, BACKUP_ROOT_DIR), { recursive: true }).map(String)
+    expect(
+      files.some((f) => f.endsWith('erp-2026-10-04.fbk')),
+      `em ${dest}`
+    ).toBe(true)
+    expect(
+      files.some((f) => f.endsWith('erp-em-gravacao.fbk')),
+      `em ${dest}`
+    ).toBe(false)
+  }
+  const move1 = (
+    rec1 as unknown as {
+      move?: { removed: { path: string }[]; postponed: { path: string; reason: string }[] }
+    }
+  ).move
+  expect(move1?.removed.map((r) => r.path).some((p) => p.endsWith('erp-2026-10-04.fbk'))).toBe(true)
+  expect(move1?.postponed.find((p) => p.path.endsWith('erp-em-gravacao.fbk'))?.reason ?? '').toMatch(/uso/i)
+
+  // O "ERP" terminou (handle fechado): a próxima execução leva o restante.
+  const second = await runRoutine({ ...input, id: first.id })
+  expect(second.status).toBe('success')
+  expect(existsSync(gravando)).toBe(false)
+  expect(existsSync(source)).toBe(true) // a pasta de origem nunca é apagada
+  await page.screenshot({ path: join(shots, '03-mover.png') })
 })
 
 test('log do app sem erros', async () => {

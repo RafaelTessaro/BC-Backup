@@ -86,6 +86,19 @@ export interface JobOptions {
   probeRetryMs?: number
   /** "Mover": plataforma do teste de uso exclusivo (padrão: process.platform; testes). */
   platform?: NodeJS.Platform
+  /** "Mover": desloca o relógio SÓ da regra de idade mínima (E2E no Windows; ver e2eJobOptions). */
+  moveAgeSkewMs?: number
+}
+
+/**
+ * Opções vindas do ambiente, só para testes E2E (BC_E2E=1): BC_E2E_MOVE_SKEW_MIN adianta o relógio da
+ * regra de idade do "Mover", já que no Windows não dá para "envelhecer" o ChangeTime de um arquivo novo.
+ * Fora do modo E2E nunca tem efeito.
+ */
+export function e2eJobOptions(env: NodeJS.ProcessEnv = process.env): JobOptions {
+  if (env.BC_E2E !== '1') return {}
+  const min = Number(env.BC_E2E_MOVE_SKEW_MIN)
+  return Number.isFinite(min) && min > 0 ? { moveAgeSkewMs: min * 60_000 } : {}
 }
 
 /** Limite de entradas de log por execução (o resto é resumido). */
@@ -371,7 +384,7 @@ export async function runJob(
     const stats = emptyWalkStats()
     let totalBytes = 0
     /** "Mover": `now` fixo no início da varredura. */
-    const scanNow = now().getTime()
+    const scanNow = now().getTime() + (opts.moveAgeSkewMs ?? 0)
     for (const [i, slot] of slots.entries()) {
       for await (const f of walk(slot.source.path, filter, issues, stats, signal)) {
         const rel = slot.folder || isDir[i] ? `${slot.name}/${f.rel}` : slot.name
@@ -444,10 +457,11 @@ export async function runJob(
           destinationId: dest.id,
           path: dest.path,
           label: dest.label,
-          status: ok ? 'success' : 'failed',
+          status: ok ? (walkSkipped.length ? 'warning' : 'success') : 'failed',
           filesCopied: 0,
           bytesCopied: 0,
-          skipped: [],
+          // Pastas que não puderam ser lidas: podem esconder o backup que o sistema gerou.
+          skipped: walkSkipped.slice(0, MAX_SKIPPED_LISTED),
           pruned: []
         }
         if (!ok) {
@@ -475,10 +489,11 @@ export async function runJob(
         status = 'warning'
         report.notice = `Nenhum arquivo novo em ${where}. O sistema pode não ter gerado o backup.`
       } else {
-        status = 'success'
+        status = walkSkipped.length ? 'warning' : 'success'
         report.notice = 'Nada novo para mover.'
       }
-      result.warnings = status === 'warning' ? Math.max(1, report.postponedCount) : 0
+      result.filesSkipped = walkSkipped.length
+      result.warnings = status === 'warning' ? Math.max(1, report.postponedCount + walkSkipped.length) : 0
       L(status === 'warning' ? 'warn' : 'info', `${report.notice} Nenhum backup novo foi criado.`)
       return finish(status)
     }

@@ -4,7 +4,7 @@
 
 import { utilityProcess } from 'electron'
 import enginePath from './engine/worker?modulePath'
-import { runJob } from './engine/job'
+import { e2eJobOptions, runJob } from './engine/job'
 import type { EngineEvent, FromWorker, JobResult, JobSpec, ToWorker } from './engine/types'
 import { log } from './logger'
 
@@ -16,7 +16,7 @@ export interface EngineJob {
 function inProcess(spec: JobSpec, onEvent: (e: EngineEvent) => void): EngineJob {
   const ac = new AbortController()
   return {
-    result: runJob(spec, onEvent, ac.signal),
+    result: runJob(spec, onEvent, ac.signal, e2eJobOptions()),
     cancel: () => ac.abort(Object.assign(new Error('Execução cancelada.'), { name: 'AbortError' }))
   }
 }
