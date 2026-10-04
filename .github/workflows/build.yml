@@ -23,7 +23,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
+  # Disparos manuais (pré-lançamentos) têm grupo próprio: um push na mesma branch não cancela a publicação.
+  group: build-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && 'release' || 'ci' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -32,6 +33,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # Falha cedo (antes de 5 min de build) se a versão pedida for inválida ou já existir em outro commit.
+      - name: Conferir a versão do pré-lançamento
+        if: github.event_name == 'workflow_dispatch' && inputs.prerelease != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.prerelease }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Versão inválida: $TAG (use algo como v0.1.0-beta.2)"; exit 1
+          fi
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha 2>/dev/null || true)
+          if [ -n "$sha" ] && [ "$sha" != "$GITHUB_SHA" ]; then
+            echo "::error::A tag $TAG já existe no commit $sha. Use uma nova versão."; exit 1
+          fi
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
@@ -102,9 +118,14 @@ jobs:
         run: npm ci
 
       - name: Gerar instalador NSIS (x64)
-        run: npm run dist:win
+        shell: bash
+        # Num pré-lançamento, o app e o instalador levam a versão pedida (ex.: 0.1.0-beta.2).
+        run: |
+          V="${PRERELEASE#v}"
+          if [ -n "$V" ]; then npm run dist:win -- -c.extraMetadata.version="$V"; else npm run dist:win; fi
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false' # sem assinatura por enquanto
+          PRERELEASE: ${{ inputs.prerelease }}
 
       - name: Publicar o instalador como artefato
         uses: actions/upload-artifact@v7
@@ -114,12 +135,24 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # O app empacotado roda de verdade no Windows: unidades (PowerShell), caminhos com acento, pasta datada
+      # Instala o MESMO .exe que vai para a Release (modo silencioso) e testa o app instalado.
+      - name: Instalar o setup em modo silencioso
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist\BC-Backup-Setup-*.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'BCBackupInstalado'
+          $p = Start-Process $setup -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "O instalador terminou com código $($p.ExitCode)" }
+          if (-not (Test-Path (Join-Path $dir 'BCBackup.exe'))) { throw 'BCBackup.exe não foi instalado' }
+          Get-ChildItem $dir | Select-Object Name, Length | Format-Table -AutoSize
+
+      # O app instalado roda de verdade no Windows: unidades (PowerShell), caminhos com acento, pasta datada
       # e ZIP com verificação completa, arquivo bloqueado → aviso, iniciar com o Windows, telas e log sem erros.
-      - name: Teste no Windows (app empacotado)
+      - name: Teste no Windows (app instalado)
         run: npx playwright test e2e/windows.spec.ts
         env:
-          BC_E2E_EXE: dist/win-unpacked/BCBackup.exe
+          BC_E2E_EXE: ${{ runner.temp }}\BCBackupInstalado\BCBackup.exe
+          BC_E2E_EXPECT_VERSION: ${{ inputs.prerelease }}
 
       - name: Screenshots e relatório do teste no Windows
         if: always()
@@ -157,7 +190,6 @@ jobs:
           files: dist/*.exe
           fail_on_unmatched_files: true
           generate_release_notes: true
-          append_body: true
           body: |
             ## Como instalar
             1. Baixe o arquivo **BC-Backup-Setup-….exe** logo abaixo, em *Assets*.

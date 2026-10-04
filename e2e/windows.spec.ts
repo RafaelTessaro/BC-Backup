@@ -3,7 +3,17 @@
 // inicialização com o Windows (login item), ZIP e verificação completa, e o log sem erros.
 // Uso: BC_E2E_EXE=dist\win-unpacked\BCBackup.exe npx playwright test e2e/windows.spec.ts
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BcApi, RoutineInput } from '../src/shared/api'
@@ -41,6 +51,9 @@ test.afterAll(async () => {
 
 test('é o app empacotado, com a janela visível', async () => {
   expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
+  // Num pré-lançamento, a versão do app precisa ser a publicada (ex.: v0.1.0-beta.2 → 0.1.0-beta.2).
+  const expected = process.env.BC_E2E_EXPECT_VERSION?.replace(/^v/, '')
+  if (expected) expect(await app.evaluate(({ app }) => app.getVersion())).toBe(expected)
   await expect(page.getByText('Vamos proteger seus arquivos').first()).toBeVisible()
   await page.screenshot({ path: join(shots, '01-primeira-abertura.png') })
 })
@@ -132,26 +145,19 @@ test('arquivo aberto com bloqueio vira aviso, não falha', async () => {
   const locked = join(source, 'banco-em-uso.mdb')
   writeFileSync(locked, 'dados')
   const dest = mkdtempSync(join(tmpdir(), 'bcb-win-lock-'))
-  // Abre o arquivo com acesso exclusivo num processo à parte (PowerShell) enquanto o backup roda.
-  const { spawn } = await import('node:child_process')
-  const holder = spawn(
-    'powershell.exe',
-    [
-      '-NoProfile',
-      '-Command',
-      `$f=[System.IO.File]::Open('${locked.replace(/'/g, "''")}','Open','ReadWrite','None'); Start-Sleep -Seconds 60; $f.Close()`
-    ],
-    { stdio: 'ignore' }
-  )
+  // Abre com compartilhamento 0 (UV_FS_O_EXLOCK do libuv → CreateFileW com dwShareMode 0), como um
+  // banco de dados ou um .pst aberto: qualquer outra leitura recebe EBUSY enquanto o fd estiver aberto.
+  const UV_FS_O_EXLOCK = 0x10000000
+  const fd = openSync(locked, constants.O_RDWR | UV_FS_O_EXLOCK)
   try {
-    await new Promise((r) => setTimeout(r, 2500))
+    expect(() => readFileSync(locked)).toThrow(/EBUSY/) // o bloqueio está mesmo ativo
     const res = await runRoutine(routine('Arquivo em uso', source, [dest]))
     expect(res.status).toBe('warning')
     const record = await page.evaluate((id) => (globalThis as unknown as G).bc.runs.get(id), res.runId)
     const skipped = record?.destinations[0].skipped ?? []
     expect(skipped.some((s) => s.path.endsWith('banco-em-uso.mdb'))).toBe(true)
   } finally {
-    holder.kill()
+    closeSync(fd)
   }
 })
 

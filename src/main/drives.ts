@@ -15,18 +15,21 @@ interface WinMeta {
 }
 
 function winMeta(): Promise<Map<string, WinMeta>> {
+  // O Windows PowerShell 5.1 escreve na página de código OEM (850 no Brasil): forçamos UTF-8 para que
+  // rótulos como "Mídia" ou "Cópias" não cheguem embaralhados.
   const cmd =
+    '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false; ' +
     'Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID,VolumeName,DriveType | ConvertTo-Json -Compress'
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', cmd],
-      { windowsHide: true, timeout: 8_000 },
+      { windowsHide: true, timeout: 8_000, encoding: 'utf8' },
       (err, out) => {
         const map = new Map<string, WinMeta>()
         if (!err) {
           try {
-            const rows = [JSON.parse(String(out))].flat() as Array<{
+            const rows = [JSON.parse(String(out).replace(/^\uFEFF/, ''))].flat() as Array<{
               DeviceID: string
               VolumeName: string | null
               DriveType: number

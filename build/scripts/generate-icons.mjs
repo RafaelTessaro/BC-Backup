@@ -416,6 +416,7 @@ async function main() {
   const icoImages = []
   for (const size of icoSizes) icoImages.push({ size, png: await render(page, winIcon(size), size) })
   write(join(BUILD, 'icon.ico'), encodeIco(icoImages))
+  write(join(RES, 'icon.ico'), encodeIco(icoImages)) // ícone da janela no Windows (src/main/window.ts)
   // Instalador assistido (electron-builder procura estes nomes em build/ automaticamente).
   write(join(BUILD, 'installerSidebar.bmp'), encodeBmp24(await renderOpaque(page, sidebarHtml(), 164, 314)))
   write(join(BUILD, 'installerHeader.bmp'), encodeBmp24(await renderOpaque(page, headerHtml(), 150, 57)))
