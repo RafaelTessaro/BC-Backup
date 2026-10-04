@@ -1,6 +1,8 @@
 # BC Backup — CI
 # - Toda PR / push na main: typecheck, lint, testes (2 fusos), E2E com Electron sob xvfb e o instalador do Windows.
 # - Tag v* (ex.: v0.2.0): além disso, cria/atualiza a Release do GitHub com o instalador anexado.
+# - Disparo manual (Actions → build → Run workflow) com "prerelease" preenchido: publica um pré-lançamento
+#   com link direto para o instalador (só se o teste no Windows passar).
 # Versões das actions conferidas em 04/10/2026: checkout v7, setup-node v7, cache v6, upload-artifact v7,
 # download-artifact v8, softprops/action-gh-release v3 (runtime Node 24).
 name: build
@@ -11,6 +13,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Publicar um pré-lançamento com esta versão (ex.: v0.1.0-beta.1). Vazio = só o artefato.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -107,9 +114,27 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # O app empacotado roda de verdade no Windows: unidades (PowerShell), caminhos com acento, pasta datada
+      # e ZIP com verificação completa, arquivo bloqueado → aviso, iniciar com o Windows, telas e log sem erros.
+      - name: Teste no Windows (app empacotado)
+        run: npx playwright test e2e/windows.spec.ts
+        env:
+          BC_E2E_EXE: dist/win-unpacked/BCBackup.exe
+
+      - name: Screenshots e relatório do teste no Windows
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-teste
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
   release:
     name: Release do GitHub
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.prerelease != '')
     needs: windows
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -125,8 +150,19 @@ jobs:
       - name: Criar/atualizar a Release com o instalador
         uses: softprops/action-gh-release@v3
         with:
+          # Tag enviada (push) ou, no disparo manual, a versão informada (a tag é criada neste commit).
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: BC Backup ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || github.ref_name }}
           files: dist/*.exe
           fail_on_unmatched_files: true
           generate_release_notes: true
+          append_body: true
+          body: |
+            ## Como instalar
+            1. Baixe o arquivo **BC-Backup-Setup-….exe** logo abaixo, em *Assets*.
+            2. Abra o instalador. Como ele ainda não tem assinatura digital, o Windows pode mostrar
+               "O Windows protegeu o computador": clique em **Mais informações → Executar assim mesmo**.
+            3. Siga o assistente. O BC Backup abre sozinho e passa a iniciar com o Windows (na bandeja, perto do relógio).
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }} # v1.0.0-beta.1 → pré-lançamento
+          prerelease: ${{ github.event_name == 'workflow_dispatch' || contains(github.ref_name, '-') }} # v1.0.0-beta.1 → pré-lançamento
