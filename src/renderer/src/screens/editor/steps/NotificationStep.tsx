@@ -4,18 +4,23 @@ import type { AttachLog } from '@shared/types'
 import { Button } from '@renderer/components/ui/Button'
 import { Callout } from '@renderer/components/ui/Callout'
 import { Card } from '@renderer/components/ui/Card'
-import { ChipInput } from '@renderer/components/ui/ChipInput'
 import { Field, Input } from '@renderer/components/ui/Input'
 import { Segmented } from '@renderer/components/ui/Segmented'
 import { Select } from '@renderer/components/ui/Select'
 import { Switch } from '@renderer/components/ui/Switch'
 import { useNow } from '@renderer/lib/clock'
-import { EMAIL_RE, formatTime } from '@renderer/lib/format'
+import { formatDayMonth, formatTime } from '@renderer/lib/format'
 import { smtpConfigured, useApp } from '@renderer/lib/store'
 import type { Update } from '../model'
+import { EmailChips, isEmail } from './EmailChips'
 import { IssueList, OptionRow } from './shared'
 
-const emailError = (v: string): string | null => (EMAIL_RE.test(v) ? null : 'E-mail inválido')
+function invalidText(bad: string[]): string | null {
+  if (!bad.length) return null
+  return bad.length === 1
+    ? `E-mail inválido: ${bad[0]}. Corrija ou remova.`
+    : `E-mails inválidos: ${bad.join(', ')}. Corrija ou remova.`
+}
 
 export function NotificationStep({
   draft,
@@ -36,26 +41,53 @@ export function NotificationStep({
   const set = (patch: Partial<RoutineInput['notification']>): void =>
     update((d) => ({ ...d, notification: { ...d.notification, ...patch } }))
 
-  const client = n.clientName?.trim() || settings?.clientName || 'Cliente'
-  const computer = settings?.computerAlias || info?.hostname || 'Computador'
-  const date = `${now.toLocaleDateString('pt-BR')} ${formatTime(now)}`
-  const subject = `[BC Backup] SUCESSO – ${draft.name.trim() || 'Rotina'} – ${client} (${computer}) – ${date}`
-  const shownIssues = issues.filter((i) => !(i.level === 'warning' && !configured))
+  // Erros mostrados junto do campo (o resto da validação fica na lista do fim da etapa).
+  const badTo = n.recipients.filter((v) => !isEmail(v))
+  const badBcc = n.bcc.filter((v) => !isEmail(v))
+  const missing = issues.find((i) => i.level === 'error' && /destinat/i.test(i.message))
+  const toError = invalidText(badTo) ?? missing?.message ?? null
+  const bccError = invalidText(badBcc)
+  const covered = (i: ValidationIssue): boolean =>
+    /e-mails? inválido|destinat/i.test(i.message) ||
+    (!configured && /SMTP|servidor de e-mail/i.test(i.message))
+  const rest = issues.filter((i) => !covered(i))
+
+  // Igual ao assunto montado pelo main (src/main/mail/template.ts → buildRunSubject).
+  const routine = draft.name.trim() || 'Rotina sem nome'
+  const client = n.clientName?.trim() || settings?.clientName?.trim() || ''
+  const computer = settings?.computerAlias?.trim() || info?.hostname || ''
+  const who = client
+    ? computer
+      ? `${routine} – ${client} (${computer})`
+      : `${routine} – ${client}`
+    : computer
+      ? `${routine} (${computer})`
+      : routine
+  const subject = `[BC Backup] Concluído – ${who} – ${formatDayMonth(now)} ${formatTime(now)}`
+
+  const toggle = (enabled: boolean): void =>
+    // Ao desligar, endereços inválidos (que não poderiam ser usados) saem junto com o campo.
+    set(
+      enabled
+        ? { enabled }
+        : { enabled, recipients: n.recipients.filter(isEmail), bcc: n.bcc.filter(isEmail) }
+    )
 
   return (
     <div className="flex flex-col gap-6">
       {!configured && (
         <Callout
-          tone="warning"
+          tone={n.enabled ? 'warning' : 'info'}
           title="E-mail ainda não configurado"
           action={
             <Button variant="link" size="sm" iconRight={ArrowRight} onClick={onConfigureEmail}>
-              Configurar em Configurações → E-mail
+              Configurar e-mail
             </Button>
           }
         >
-          Configure o servidor de envio (SMTP) uma vez e todas as rotinas poderão avisar seus clientes. Seu
-          rascunho fica guardado enquanto isso.
+          {n.enabled
+            ? 'Nada será enviado até o servidor de envio (SMTP) ser configurado em Configurações → E-mail. Seu rascunho fica guardado enquanto isso.'
+            : 'Configure o servidor de envio (SMTP) uma vez em Configurações → E-mail e todas as rotinas poderão avisar seus clientes.'}
         </Callout>
       )}
 
@@ -64,44 +96,44 @@ export function NotificationStep({
           title="Enviar e-mail ao terminar"
           description="Com o resultado, os destinos e o espaço livre. Ótimo para o cliente saber que está tudo bem."
         >
-          <Switch
-            label="Enviar e-mail ao terminar"
-            checked={n.enabled}
-            onCheckedChange={(enabled) => set({ enabled })}
-          />
+          <Switch label="Enviar e-mail ao terminar" checked={n.enabled} onCheckedChange={toggle} />
         </OptionRow>
         {n.enabled && (
           <div className="flex flex-col gap-5 px-5 py-5">
-            <Field
-              label="Destinatários"
-              description="Digite e tecle Enter ou vírgula. Pode colar vários de uma vez."
-            >
-              {(id) => (
-                <ChipInput
-                  id={id}
-                  values={n.recipients}
-                  splitOnWhitespace
-                  normalize={(v) => v.trim().toLowerCase()}
-                  validate={emailError}
-                  invalid={n.recipients.length === 0 && issues.some((i) => i.level === 'error')}
-                  placeholder="cliente@empresa.com.br"
-                  onChange={(recipients) => set({ recipients })}
-                />
-              )}
-            </Field>
-            <Field label="Cópia oculta (Cco)" description="Opcional. Ex.: o e-mail do técnico responsável.">
-              {(id) => (
-                <ChipInput
-                  id={id}
-                  values={n.bcc}
-                  splitOnWhitespace
-                  normalize={(v) => v.trim().toLowerCase()}
-                  validate={emailError}
-                  placeholder="tecnico@empresa.com.br"
-                  onChange={(bcc) => set({ bcc })}
-                />
-              )}
-            </Field>
+            <div data-invalid={toError ? '' : undefined}>
+              <Field
+                label="Destinatários"
+                error={toError}
+                description="Digite e tecle Enter ou vírgula. Pode colar vários de uma vez."
+              >
+                {(id) => (
+                  <EmailChips
+                    id={id}
+                    values={n.recipients}
+                    invalid={!!toError}
+                    placeholder="cliente@empresa.com.br"
+                    onChange={(recipients) => set({ recipients })}
+                  />
+                )}
+              </Field>
+            </div>
+            <div data-invalid={bccError ? '' : undefined}>
+              <Field
+                label="Cópia oculta (Cco)"
+                error={bccError}
+                description="Opcional. Ex.: o e-mail do técnico responsável."
+              >
+                {(id) => (
+                  <EmailChips
+                    id={id}
+                    values={n.bcc}
+                    invalid={!!bccError}
+                    placeholder="tecnico@empresa.com.br"
+                    onChange={(bcc) => set({ bcc })}
+                  />
+                )}
+              </Field>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Quando enviar">
                 {() => (
@@ -134,13 +166,18 @@ export function NotificationStep({
             </div>
             <Field
               label="Nome do cliente no e-mail"
-              description="Em branco, usa o nome definido em Configurações."
+              description={
+                settings?.clientName?.trim()
+                  ? `Em branco, usa “${settings.clientName.trim()}”, definido em Configurações.`
+                  : 'Opcional. Aparece no assunto e no texto do e-mail.'
+              }
             >
               {(id) => (
                 <Input
                   id={id}
                   value={n.clientName ?? ''}
-                  placeholder={settings?.clientName || 'Ex.: Padaria Pão Quente'}
+                  maxLength={80}
+                  placeholder={settings?.clientName?.trim() || 'Ex.: Padaria Pão Quente'}
                   onChange={(e) => set({ clientName: e.target.value })}
                   className="max-w-[360px]"
                 />
@@ -148,16 +185,16 @@ export function NotificationStep({
             </Field>
             <div className="flex flex-col gap-1.5 rounded-md bg-surface-hover/70 px-3 py-2.5">
               <span className="flex items-center gap-1.5 text-caption text-fg-subtle">
-                <Mail className="size-3.5" strokeWidth={1.75} /> Assunto do e-mail
+                <Mail className="size-3.5" strokeWidth={1.75} aria-hidden /> Exemplo de assunto
               </span>
-              <span className="truncate font-mono text-mono text-fg-muted" data-selectable>
+              <span className="font-mono text-mono break-words text-fg-muted" data-selectable>
                 {subject}
               </span>
             </div>
           </div>
         )}
       </Card>
-      <IssueList issues={shownIssues} />
+      <IssueList issues={rest} />
     </div>
   )
 }

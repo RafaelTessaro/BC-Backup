@@ -60,6 +60,13 @@ export function toInput(r: Routine): RoutineInput {
   return structuredClone(rest)
 }
 
+/** Níveis de compressão do ZIP oferecidos no editor. */
+export const ZIP_LEVELS = [
+  { value: '1', label: 'Rápida', description: 'Arquivo maior, termina antes' },
+  { value: '6', label: 'Equilibrada', description: 'Padrão recomendado' },
+  { value: '9', label: 'Máxima', description: 'Arquivo menor, mais demorado' }
+]
+
 /** Limite de caracteres do nome (o main recusa acima disso). */
 export const NAME_MAX = 60
 
@@ -85,7 +92,11 @@ export function folderName(name: string, fallback = 'Rotina'): string {
   // eslint-disable-next-line no-control-regex
   let s = name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim()
   s = s.replace(/[. ]+$/, '').trim()
-  if (s.length > 80) s = s.slice(0, 80).replace(/[. ]+$/, '').trim()
+  if (s.length > 80)
+    s = s
+      .slice(0, 80)
+      .replace(/[. ]+$/, '')
+      .trim()
   if (!s) s = fallback
   if (/^(con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³]) *(\..*)?$/i.test(s)) s = `_${s}`
   return s

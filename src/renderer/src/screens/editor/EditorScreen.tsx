@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Check, FileQuestion, Play } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, FileQuestion, Play, Upload } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RoutineInput, ValidationIssue } from '@shared/api'
 import { createDefaultRoutine } from '@shared/defaults'
@@ -13,11 +13,22 @@ import { Tooltip } from '@renderer/components/ui/Tooltip'
 import { runNow } from '@renderer/lib/actions'
 import { bc, errorMessage } from '@renderer/lib/bc'
 import { cn } from '@renderer/lib/cn'
+import { baseName } from '@renderer/lib/format'
 import { useDebounced, useHotkey } from '@renderer/lib/hooks'
 import { navigate, useRouter } from '@renderer/lib/router'
 import { refreshRoutines, useApp } from '@renderer/lib/store'
 import { notify } from '@renderer/lib/toast'
-import { STEPS, clearStash, peekStash, stashDraft, tidyForSave, toInput, type StepId } from './model'
+import { useFileDrop, type DropResult } from './drop'
+import {
+  STEPS,
+  clearStash,
+  peekStash,
+  stashDraft,
+  tidyForSave,
+  toInput,
+  withSources,
+  type StepId
+} from './model'
 import { useSourceSizes } from './sizes'
 import { Stepper, type StepState } from './Stepper'
 import { DestinationsStep } from './steps/DestinationsStep'
@@ -93,7 +104,10 @@ function Editor({ existing }: { existing?: Routine }) {
   const [issues, setIssues] = useState<ValidationIssue[]>([])
   const [saving, setSaving] = useState<'save' | 'run' | null>(null)
   const [focusReq, setFocusReq] = useState<{ to: 'heading' | 'error'; n: number } | null>(null)
+  const [dropNote, setDropNote] = useState<string | null>(null)
   const setBlocker = useRouter((s) => s.setBlocker)
+  const platform = useApp((s) => s.info?.platform)
+  const caseInsensitive = platform !== 'linux'
   const draftRef = useRef(draft)
   const sectionRef = useRef<HTMLElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -134,6 +148,29 @@ function Editor({ existing }: { existing?: Routine }) {
     setBlocker(dirty ? () => true : null)
     return () => setBlocker(null)
   }, [dirty, setBlocker])
+
+  const onDropped = (r: DropResult): void => {
+    if (r.unsupported) {
+      notify.info('Use os botões para adicionar', {
+        description: 'Arrastar arquivos para cá não está disponível nesta versão.'
+      })
+      return
+    }
+    const before = draftRef.current
+    const added = withSources(before, r.found, caseInsensitive).sources.length - before.sources.length
+    if (added) setDraft((d) => withSources(d, r.found, caseInsensitive))
+    const notes: string[] = []
+    if (r.unreadable.length) notes.push(`Não foi possível ler: ${r.unreadable.map(baseName).join(', ')}.`)
+    if (r.withoutPath)
+      notes.push(
+        `Só dá para soltar pastas e arquivos do computador — ${
+          r.withoutPath === 1 ? '1 item foi ignorado' : `${r.withoutPath} itens foram ignorados`
+        }.`
+      )
+    if (!added && r.found.length && !notes.length) notes.push('Esses itens já estão na lista.')
+    setDropNote(notes.length ? notes.join(' ') : null)
+  }
+  const drop = useFileDrop(step === 'origem', onDropped)
 
   const sizes = useSourceSizes(draft.sources, draft.filters)
   const idx = STEPS.findIndex((s) => s.id === step)
@@ -233,7 +270,19 @@ function Editor({ existing }: { existing?: Routine }) {
   const update = (fn: (d: RoutineInput) => RoutineInput): void => setDraft((d) => fn(d))
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="relative flex flex-1 flex-col" {...drop.handlers}>
+      {drop.dragging && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-20">
+          <div className="sticky top-0 flex h-[calc(100vh-40px)] max-h-full p-3">
+            <div className="flex flex-1 items-end justify-center rounded-xl border-2 border-dashed border-accent bg-accent-soft/40 pb-24">
+              <span className="flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-small font-medium text-accent-foreground shadow-pop">
+                <Upload className="size-4" strokeWidth={1.75} />
+                Solte para adicionar à origem
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
       <Page className="flex-1 pb-10">
         <header className="mb-8 flex items-end justify-between gap-6">
           <div className="min-w-0">
@@ -280,6 +329,10 @@ function Editor({ existing }: { existing?: Routine }) {
                   sizes={sizes}
                   issues={issuesFor('origem')}
                   autoFocus={isNew}
+                  dragging={drop.dragging}
+                  dropNote={dropNote}
+                  caseInsensitive={caseInsensitive}
+                  onPicked={() => setDropNote(null)}
                 />
               )}
               {step === 'destinos' && (

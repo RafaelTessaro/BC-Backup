@@ -86,9 +86,11 @@ describe('validateRoutine (sem disco, Windows)', () => {
       }),
       ctx
     )
-    expect(a.find((i) => i.step === 'destinos' && i.level === 'error')?.message).toMatch(
-      /^O destino não pode ficar dentro da origem/
+    const inside = a.find((i) => i.step === 'destinos' && i.level === 'error')
+    expect(inside?.message).toBe(
+      'O destino c:\\dados\\Backup fica dentro da origem C:\\Dados. Escolha outra pasta.'
     )
+    expect(inside?.destinationId).toBe('d')
     const b = await validateRoutine(
       input({
         sources: [{ id: 's', path: 'E:\\BC\\Docs', kind: 'folder' }],
@@ -96,7 +98,32 @@ describe('validateRoutine (sem disco, Windows)', () => {
       }),
       ctx
     )
-    expect(b.some((i) => i.message.startsWith('O destino não pode ficar dentro da origem'))).toBe(true)
+    expect(b.find((i) => i.destinationId === 'd')?.message).toBe(
+      'O destino E:\\ contém a origem E:\\BC\\Docs. Escolha outra pasta.'
+    )
+  })
+
+  it('e-mails só são validados com o aviso ligado (campos ocultos não bloqueiam o salvamento)', async () => {
+    const base = {
+      sources: [{ id: 's', path: 'C:\\Dados', kind: 'folder' as const }],
+      destinations: [{ id: 'd', path: 'E:\\' }]
+    }
+    const off = await validateRoutine(
+      input({
+        ...base,
+        notification: { ...createDefaultRoutine().notification, enabled: false, recipients: ['x@y'] }
+      }),
+      ctx
+    )
+    expect(msgs(off)).not.toContain('E-mail inválido: x@y')
+    const on = await validateRoutine(
+      input({
+        ...base,
+        notification: { ...createDefaultRoutine().notification, enabled: true, recipients: ['x@y'] }
+      }),
+      ctx
+    )
+    expect(msgs(on)).toContain('E-mail inválido: x@y')
   })
 
   it('agenda, retenção e notificação', async () => {
@@ -140,10 +167,9 @@ describe('validateRoutine (com disco)', () => {
       }),
       { existing: [], smtpConfigured: true, platform: 'linux' }
     )
-    const same = issues.find(
-      (i) => i.message === 'Origem e destino no mesmo disco: se o disco falhar, perde os dois.'
-    )
+    const same = issues.find((i) => i.message.includes('no mesmo disco da origem'))
     expect(same?.level).toBe('warning')
+    expect(same?.destinationId).toBe('d')
     const unavailable = issues.find((i) => i.message.startsWith('Destino indisponível agora: HD azul'))
     expect(unavailable?.level).toBe('warning')
     expect(issues.some((i) => i.level === 'error')).toBe(false)

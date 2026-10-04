@@ -1,6 +1,6 @@
 import { CalendarClock, Plus, X } from 'lucide-react'
 import type { RoutineInput, ValidationIssue } from '@shared/api'
-import { describeSchedule, isClockSchedule, upcomingRuns } from '@shared/schedule'
+import { describeSchedule, isClockSchedule, parseTime, upcomingRuns } from '@shared/schedule'
 import type { Schedule, ScheduleKind } from '@shared/types'
 import { Button, IconButton } from '@renderer/components/ui/Button'
 import { Callout } from '@renderer/components/ui/Callout'
@@ -10,12 +10,13 @@ import { Select } from '@renderer/components/ui/Select'
 import { Switch } from '@renderer/components/ui/Switch'
 import { TimePicker } from '@renderer/components/ui/TimePicker'
 import { WeekdayPicker } from '@renderer/components/ui/WeekdayPicker'
+import { cn } from '@renderer/lib/cn'
 import { useNow } from '@renderer/lib/clock'
 import { formatWhen } from '@renderer/lib/format'
 import { navigate } from '@renderer/lib/router'
 import { useApp } from '@renderer/lib/store'
 import { ROUTES } from '@shared/routes'
-import type { Update } from '../model'
+import { duplicateTimes, type Update } from '../model'
 import { IssueList, OptionRow, SectionTitle } from './shared'
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
@@ -48,12 +49,26 @@ function nextFreeTime(times: string[]): string {
   return `${String(nh).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-function SchedulePreview({ schedule }: { schedule: Schedule }) {
+const minutesOf = (t: string): number => {
+  const p = parseTime(t)
+  return p ? p.h * 60 + p.m : 0
+}
+
+/** Por que um agendamento por relógio não tem nenhuma execução? */
+function emptyReason(s: Schedule): string {
+  if (s.kind === 'weekly' && s.weekdays.length === 0) return 'Nenhum dia escolhido: a rotina não roda.'
+  if (s.kind === 'interval' && s.window && minutesOf(s.window.end) < minutesOf(s.window.start))
+    return 'Nenhuma execução com essa faixa de horário.'
+  return 'Escolha os dias e os horários para ver as próximas execuções.'
+}
+
+function SchedulePreview({ schedule, paused }: { schedule: Schedule; paused: boolean }) {
   const now = useNow()
   const runs = upcomingRuns(schedule, now, 4)
   const [first, ...rest] = runs
+  const delay = schedule.startupDelayMinutes
   return (
-    <div className="flex gap-3 rounded-lg bg-accent-soft p-4">
+    <div className="flex gap-3 rounded-lg bg-accent-soft p-4" role="status">
       <CalendarClock className="mt-0.5 size-4 shrink-0 text-accent-text" strokeWidth={1.75} />
       <div className="flex min-w-0 flex-col gap-1">
         {first ? (
@@ -66,19 +81,29 @@ function SchedulePreview({ schedule }: { schedule: Schedule }) {
                 Depois: {rest.map((d) => formatWhen(d, now)).join(' · ')}
               </p>
             )}
+            <p className="text-caption text-fg-subtle">{describeSchedule(schedule)}</p>
           </>
         ) : schedule.kind === 'manual' ? (
-          <p className="text-small font-medium text-fg">
-            Sem horário fixo: a rotina roda quando você clicar em “Executar agora”.
-          </p>
+          <>
+            <p className="text-small font-medium text-fg">Sem horário fixo.</p>
+            <p className="text-caption text-fg-muted">
+              A rotina só roda quando você clicar em “Executar agora” — aqui no aplicativo ou no ícone do BC
+              Backup perto do relógio.
+            </p>
+          </>
         ) : schedule.kind === 'startup' ? (
-          <p className="text-small font-medium text-fg">{describeSchedule(schedule)}.</p>
-        ) : (
           <p className="text-small font-medium text-fg">
-            Escolha os dias e horários para ver as próximas execuções.
+            Roda {delay > 0 ? `${delay} ${delay === 1 ? 'minuto' : 'minutos'} depois` : 'assim'} que o
+            computador ligar e o BC Backup abrir.
+          </p>
+        ) : (
+          <p className="text-small font-medium text-fg">{emptyReason(schedule)}</p>
+        )}
+        {paused && (
+          <p className="text-caption text-warning">
+            A rotina está pausada: nada roda até você ativá-la de novo.
           </p>
         )}
-        {first && <p className="text-caption text-fg-subtle">{describeSchedule(schedule)}</p>}
       </div>
     </div>
   )
@@ -97,6 +122,9 @@ export function ScheduleStep({
   const launchAtLogin = useApp((st) => st.settings?.launchAtLogin ?? true)
   const set = (patch: Partial<Schedule>): void =>
     update((d) => ({ ...d, schedule: { ...d.schedule, ...patch } }))
+  const hasError = issues.some((i) => i.level === 'error')
+  const dups = duplicateTimes(s.times)
+  const windowInvalid = !!s.window && minutesOf(s.window.end) < minutesOf(s.window.start)
 
   const setKind = (kind: ScheduleKind): void => {
     const patch: Partial<Schedule> = { kind }
@@ -110,23 +138,27 @@ export function ScheduleStep({
     <section className="flex flex-col gap-3">
       <SectionTitle title="Horários" description={`Até ${MAX_TIMES} por dia, no formato 24 h.`} />
       <div className="flex flex-wrap items-center gap-2">
-        {s.times.map((t, i) => (
-          <div key={i} className="group flex items-center">
-            <TimePicker
-              value={t}
-              label={`Horário ${i + 1}`}
-              onChange={(v) => set({ times: s.times.map((x, j) => (j === i ? v : x)) })}
-            />
-            {s.times.length > 1 && (
-              <IconButton
-                icon={X}
-                label="Remover horário"
-                className="ml-0.5 size-6"
-                onClick={() => set({ times: s.times.filter((_, j) => j !== i) })}
+        {s.times.map((t, i) => {
+          const repeated = dups.includes(t) && s.times.indexOf(t) !== i
+          return (
+            <div key={i} className="group flex items-center">
+              <TimePicker
+                value={t}
+                label={`Horário ${i + 1}`}
+                className={cn(repeated && '[&_input]:border-warning')}
+                onChange={(v) => set({ times: s.times.map((x, j) => (j === i ? v : x)) })}
               />
-            )}
-          </div>
-        ))}
+              {s.times.length > 1 && (
+                <IconButton
+                  icon={X}
+                  label={`Remover ${t}`}
+                  className="ml-0.5 size-6"
+                  onClick={() => set({ times: s.times.filter((_, j) => j !== i) })}
+                />
+              )}
+            </div>
+          )
+        })}
         {s.times.length < MAX_TIMES && (
           <Button
             variant="ghost"
@@ -137,6 +169,12 @@ export function ScheduleStep({
           </Button>
         )}
       </div>
+      {dups.length > 0 && (
+        <p className="text-caption text-warning" role="status">
+          {dups.join(', ')} {dups.length === 1 ? 'aparece' : 'aparecem'} mais de uma vez — o backup roda uma
+          vez só nesse horário. Mude ou remova o repetido.
+        </p>
+      )}
     </section>
   )
 
@@ -150,14 +188,17 @@ export function ScheduleStep({
         options={[
           { value: 'daily', label: 'Diariamente' },
           { value: 'weekly', label: 'Dias da semana' },
-          { value: 'interval', label: 'A cada N horas' },
-          { value: 'startup', label: 'Ao iniciar' },
+          { value: 'interval', label: 'Intervalo' },
+          { value: 'startup', label: 'Ao ligar o PC' },
           { value: 'manual', label: 'Manual' }
         ]}
       />
 
       {s.kind === 'weekly' && (
-        <section className="flex flex-col gap-3">
+        <section
+          className="flex flex-col gap-3"
+          data-invalid={hasError && s.weekdays.length === 0 ? '' : undefined}
+        >
           <SectionTitle title="Dias" />
           <WeekdayPicker value={s.weekdays} onChange={(weekdays) => set({ weekdays })} />
         </section>
@@ -169,7 +210,7 @@ export function ScheduleStep({
         <>
           <section className="flex flex-col gap-3">
             <SectionTitle title="Frequência" />
-            <div className="flex flex-wrap items-center gap-3 text-small text-fg-muted">
+            <div className="flex items-center gap-3 text-small text-fg-muted">
               <span>A cada</span>
               <Select
                 className="w-[160px]"
@@ -178,28 +219,12 @@ export function ScheduleStep({
                 onChange={(v) => set({ intervalMinutes: Number(v) })}
                 options={INTERVALS}
               />
-              {s.window && (
-                <>
-                  <span>das</span>
-                  <TimePicker
-                    label="Início"
-                    value={s.window.start}
-                    onChange={(start) => set({ window: { ...s.window!, start } })}
-                  />
-                  <span>às</span>
-                  <TimePicker
-                    label="Fim"
-                    value={s.window.end}
-                    onChange={(end) => set({ window: { ...s.window!, end } })}
-                  />
-                </>
-              )}
             </div>
           </section>
-          <Card>
+          <Card className="divide-y divide-border">
             <OptionRow
               title="Só em um horário do dia"
-              description="Ex.: apenas no expediente, para não pesar à noite ou na madrugada."
+              description="Ex.: apenas no expediente, para não pesar à noite ou de madrugada."
             >
               <Switch
                 label="Só em um horário do dia"
@@ -207,12 +232,41 @@ export function ScheduleStep({
                 onCheckedChange={(v) => set({ window: v ? { start: '08:00', end: '18:00' } : null })}
               />
             </OptionRow>
+            {s.window && (
+              <div
+                className="flex flex-col gap-1.5 px-5 py-4"
+                data-invalid={hasError && windowInvalid ? '' : undefined}
+              >
+                <div className="flex flex-wrap items-center gap-3 text-small text-fg-muted">
+                  <span>Das</span>
+                  <TimePicker
+                    label="Início"
+                    value={s.window.start}
+                    className={cn(windowInvalid && '[&_input]:border-danger')}
+                    onChange={(start) => set({ window: { ...s.window!, start } })}
+                  />
+                  <span>às</span>
+                  <TimePicker
+                    label="Fim"
+                    value={s.window.end}
+                    className={cn(windowInvalid && '[&_input]:border-danger')}
+                    onChange={(end) => set({ window: { ...s.window!, end } })}
+                  />
+                </div>
+                {windowInvalid && (
+                  <p className="text-caption text-danger" role="alert">
+                    O horário final precisa ser depois do inicial.
+                  </p>
+                )}
+              </div>
+            )}
           </Card>
           <section className="flex flex-col gap-3">
             <SectionTitle title="Dias" />
             <WeekdayPicker
               value={s.weekdays.length ? s.weekdays : ALL_DAYS}
-              onChange={(days) => set({ weekdays: days.length === 7 ? [] : days })}
+              // Vazio significa "todos os dias": desmarcar o último dia não pode virar "todos".
+              onChange={(days) => days.length > 0 && set({ weekdays: days.length === 7 ? [] : days })}
             />
           </section>
         </>
@@ -247,11 +301,9 @@ export function ScheduleStep({
         </section>
       )}
 
-      {s.kind === 'manual' && (
-        <Callout tone="neutral">
-          A rotina só roda quando você clicar em “Executar agora” — aqui no aplicativo ou no menu da bandeja.
-        </Callout>
-      )}
+      <IssueList
+        issues={windowInvalid ? issues.filter((i) => !/final|fim da janela/i.test(i.message)) : issues}
+      />
 
       {isClockSchedule(s) && (
         <Card>
@@ -260,7 +312,7 @@ export function ScheduleStep({
             description="Se o computador estiver desligado no horário, o backup roda uma vez quando ele ligar."
           >
             <Switch
-              label="Executar backups atrasados"
+              label="Executar backups atrasados ao ligar o computador"
               checked={s.catchUpMissed}
               onCheckedChange={(catchUpMissed) => set({ catchUpMissed })}
             />
@@ -268,8 +320,7 @@ export function ScheduleStep({
         </Card>
       )}
 
-      <SchedulePreview schedule={s} />
-      <IssueList issues={issues} />
+      <SchedulePreview schedule={s} paused={!draft.enabled} />
     </div>
   )
 }

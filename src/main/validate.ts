@@ -93,9 +93,16 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
   const platform = ctx.platform ?? process.platform
   const checkFs = ctx.checkFs ?? true
   const issues: ValidationIssue[] = []
-  const add = (level: ValidationIssue['level'], step: ValidationIssue['step'], message: string) => {
-    if (!issues.some((i) => i.message === message && i.step === step)) issues.push({ level, step, message })
+  const add = (
+    level: ValidationIssue['level'],
+    step: ValidationIssue['step'],
+    message: string,
+    destinationId?: string
+  ) => {
+    if (!issues.some((i) => i.message === message && i.step === step))
+      issues.push(destinationId ? { level, step, message, destinationId } : { level, step, message })
   }
+  const destName = (d: { label?: string; path: string }) => (d.label ? `${d.label} (${d.path})` : d.path)
 
   /* Nome + origens */
   const name = (input.name ?? '').trim()
@@ -148,18 +155,26 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
       continue
     }
     const key = normalizeForCompare(d.path, platform)
-    if (seenDests.has(key)) add('error', 'destinos', `Destino repetido: ${d.path}`)
+    if (seenDests.has(key)) add('error', 'destinos', `Destino repetido: ${d.path}`, d.id)
     seenDests.add(key)
   }
   for (const d of dests) {
     if (!d.path || !isAbsolutePath(d.path, platform)) continue
     for (const s of sources) {
       if (!s.path || !isAbsolutePath(s.path, platform)) continue
-      if (isInside(d.path, s.path, platform) || isInside(s.path, d.path, platform)) {
+      if (isInside(d.path, s.path, platform)) {
         add(
           'error',
           'destinos',
-          'O destino não pode ficar dentro da origem (nem a origem dentro do destino).'
+          `O destino ${destName(d)} fica dentro da origem ${s.path}. Escolha outra pasta.`,
+          d.id
+        )
+      } else if (isInside(s.path, d.path, platform)) {
+        add(
+          'error',
+          'destinos',
+          `O destino ${destName(d)} contém a origem ${s.path}. Escolha outra pasta.`,
+          d.id
         )
       }
     }
@@ -172,14 +187,21 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
         add(
           'warning',
           'destinos',
-          `Destino indisponível agora: ${d.label ? `${d.label} (${d.path})` : d.path}. Conecte o disco antes do horário do backup.`
+          `Destino indisponível agora: ${destName(d)}. Conecte o disco antes do horário do backup.`,
+          d.id
         )
       }
       for (const s of sources) {
         if (!s.path || !isAbsolutePath(s.path, platform)) continue
         if (isInside(d.path, s.path, platform) || isInside(s.path, d.path, platform)) continue
         if (await sameDisk(s.path, d.path, platform)) {
-          add('warning', 'destinos', 'Origem e destino no mesmo disco: se o disco falhar, perde os dois.')
+          add(
+            'warning',
+            'destinos',
+            `O destino ${destName(d)} está no mesmo disco da origem: se o disco falhar, perde os dois.`,
+            d.id
+          )
+          break
         }
       }
     }
@@ -227,11 +249,12 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
 
   /* Notificação */
   const n = input.notification
-  if (n) {
+  // Com o aviso desligado os campos ficam ocultos: não bloqueia o salvamento por e-mail inválido.
+  if (n?.enabled) {
     for (const e of [...(n.recipients ?? []), ...(n.bcc ?? [])]) {
       if (!isValidEmail(e)) add('error', 'notificacao', `E-mail inválido: ${e}`)
     }
-    if (n.enabled) {
+    {
       if (!(n.recipients ?? []).length && !(n.bcc ?? []).length) {
         add('error', 'notificacao', 'Informe pelo menos um destinatário para os avisos por e-mail.')
       }

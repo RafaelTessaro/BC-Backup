@@ -44,6 +44,8 @@ export interface ValidationIssue {
   step: 'origem' | 'destinos' | 'agendamento' | 'retencao' | 'notificacao'
   /** Mensagem em pt-BR pronta para exibir. */
   message: string
+  /** Destino a que o problema se refere (para destacar o cartão certo no editor). */
+  destinationId?: ID
 }
 
 export interface SizeEstimate {

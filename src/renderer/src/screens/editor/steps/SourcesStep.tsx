@@ -6,15 +6,16 @@ import {
   FolderPlus,
   LoaderCircle,
   RotateCcw,
+  TriangleAlert,
   Upload,
   X
 } from 'lucide-react'
 import { Collapsible } from 'radix-ui'
-import { useState, type DragEvent } from 'react'
+import { useState } from 'react'
 import type { RoutineInput, ValidationIssue } from '@shared/api'
 import { DEFAULT_EXCLUDES } from '@shared/defaults'
 import { formatBytes } from '@shared/format'
-import type { SourceItem, SourceKind } from '@shared/types'
+import type { SourceKind } from '@shared/types'
 import { Button, IconButton } from '@renderer/components/ui/Button'
 import { ChipInput } from '@renderer/components/ui/ChipInput'
 import { Field, Input } from '@renderer/components/ui/Input'
@@ -26,16 +27,9 @@ import { bc, errorMessage } from '@renderer/lib/bc'
 import { cn } from '@renderer/lib/cn'
 import { baseName, formatNumber, plural } from '@renderer/lib/format'
 import { notify } from '@renderer/lib/toast'
-import { NAME_MAX, newId, type Update } from '../model'
+import { NAME_MAX, withSources, type Update } from '../model'
 import type { SourceSizes } from '../sizes'
 import { IssueList } from './shared'
-
-type PathForFile = (file: File) => string
-
-function pathForFile(): PathForFile | null {
-  const fn = (window as unknown as { bc?: { pathForFile?: PathForFile } }).bc?.pathForFile
-  return typeof fn === 'function' ? fn : null
-}
 
 /** Pasta onde o item está ("C:\Users\Ana\Desktop"); raízes devolvem o próprio caminho. */
 function parentPath(path: string): string {
@@ -53,16 +47,25 @@ export function SourcesStep({
   update,
   sizes,
   issues,
-  autoFocus
+  autoFocus,
+  dragging,
+  dropNote,
+  caseInsensitive,
+  onPicked
 }: {
   draft: RoutineInput
   update: Update
   sizes: SourceSizes
   issues: ValidationIssue[]
   autoFocus: boolean
+  /** Algo do sistema de arquivos está sendo arrastado sobre o editor. */
+  dragging: boolean
+  /** Aviso do último "soltar" (ex.: itens que não puderam ser lidos). */
+  dropNote: string | null
+  caseInsensitive: boolean
+  /** Origens adicionadas pelos botões (limpa o aviso do último "soltar"). */
+  onPicked: () => void
 }) {
-  const [nameTouched, setNameTouched] = useState(draft.name.trim().length > 0)
-  const [dragging, setDragging] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const nameIssues = issues.filter((i) => /\bnome\b/i.test(i.message))
   const nameError = nameIssues.find((i) => i.level === 'error')
@@ -70,50 +73,35 @@ export function SourcesStep({
   const otherIssues = issues.filter((i) => !nameIssues.includes(i))
   const sourcesError = otherIssues.some((i) => i.level === 'error')
 
-  const addPaths = (paths: string[], kind: SourceKind | ((p: string) => SourceKind)): void => {
-    update((d) => {
-      const existing = new Set(d.sources.map((s) => s.path.toLowerCase()))
-      const added: SourceItem[] = paths
-        .filter((p) => !existing.has(p.toLowerCase()))
-        .map((p) => ({ id: newId('src'), path: p, kind: typeof kind === 'function' ? kind(p) : kind }))
-      const next = { ...d, sources: [...d.sources, ...added] }
-      if (!nameTouched && !d.name.trim() && added[0]) next.name = baseName(added[0].path)
-      return next
-    })
-  }
-
   const pick = async (kind: SourceKind): Promise<void> => {
     try {
       const r =
         kind === 'folder'
           ? await bc.system.pickFolders({ multi: true, title: 'Escolha as pastas para copiar' })
           : await bc.system.pickFiles({ title: 'Escolha os arquivos para copiar' })
-      if (!r.canceled && r.paths.length) addPaths(r.paths, kind)
+      if (!r.canceled && r.paths.length) {
+        onPicked()
+        update((d) =>
+          withSources(
+            d,
+            r.paths.map((path) => ({ path, kind })),
+            caseInsensitive
+          )
+        )
+      }
     } catch (err) {
       notify.error('Não foi possível abrir o seletor', { description: errorMessage(err) })
     }
   }
 
-  const onDrop = (e: DragEvent): void => {
-    e.preventDefault()
-    setDragging(false)
-    const toPath = pathForFile()
-    if (!toPath) {
-      notify.info('Use os botões para adicionar', {
-        description: 'Arrastar arquivos para cá ainda não está disponível nesta versão.'
-      })
-      return
-    }
-    const items = [...e.dataTransfer.items]
-    const entries: { path: string; kind: SourceKind }[] = []
-    items.forEach((item, i) => {
-      const file = e.dataTransfer.files[i]
-      if (!file) return
-      const entry = item.webkitGetAsEntry?.()
-      entries.push({ path: toPath(file), kind: entry?.isDirectory ? 'folder' : 'file' })
-    })
-    const kinds = new Map(entries.map((x) => [x.path, x.kind]))
-    addPaths(entries.map((x) => x.path).filter(Boolean), (p) => kinds.get(p) ?? 'folder')
+  const remove = (id: string, index: number): void => {
+    update((d) => ({ ...d, sources: d.sources.filter((x) => x.id !== id) }))
+    // O botão clicado some: o foco vai para o item seguinte (ou para "Adicionar pastas").
+    setTimeout(() => {
+      const buttons = document.querySelectorAll<HTMLElement>('[data-source-remove]')
+      const target = buttons[Math.min(index, buttons.length - 1)] ?? document.getElementById('add-folders')
+      target?.focus()
+    }, 0)
   }
 
   const f = draft.filters
@@ -122,18 +110,13 @@ export function SourcesStep({
   const excludeCount = f.exclude.length
 
   // Os botões acima fazem o mesmo para teclado e leitor de tela; a área é só um atalho para o mouse.
+  // O "soltar" é tratado pela página inteira do editor (EditorScreen).
   const dropZone = (
     <button
       type="button"
       tabIndex={-1}
       aria-hidden
       onClick={() => void pick('folder')}
-      onDragOver={(e) => {
-        e.preventDefault()
-        setDragging(true)
-      }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={onDrop}
       className={cn(
         'flex w-full items-center justify-center gap-3 rounded-lg border border-dashed text-small transition-[background-color,border-color,color] duration-[120ms]',
         empty ? 'h-36 flex-col' : 'h-14',
@@ -145,14 +128,19 @@ export function SourcesStep({
       <span
         className={cn(
           'flex items-center justify-center rounded-lg',
-          empty ? 'size-10 bg-surface-hover text-fg-muted' : 'size-auto'
+          empty ? 'size-10' : 'size-auto',
+          empty && (dragging ? 'bg-surface-raised text-accent-text' : 'bg-surface-hover text-fg-muted')
         )}
       >
         <Upload className={empty ? 'size-5' : 'size-4'} strokeWidth={1.75} />
       </span>
       <span className="flex flex-col items-center gap-0.5">
-        <span className={cn(empty && 'font-medium text-fg')}>Arraste pastas ou arquivos para cá</span>
-        {empty && <span className="text-caption text-fg-subtle">ou clique para escolher uma pasta</span>}
+        <span className={cn(empty && 'font-medium', empty && !dragging && 'text-fg')}>
+          {dragging ? 'Solte para adicionar' : 'Arraste pastas ou arquivos para cá'}
+        </span>
+        {empty && !dragging && (
+          <span className="text-caption text-fg-subtle">ou clique para escolher uma pasta</span>
+        )}
       </span>
     </button>
   )
@@ -179,7 +167,6 @@ export function SourcesStep({
             invalid={!!nameError}
             placeholder="Ex.: Documentos do escritório"
             onChange={(e) => {
-              setNameTouched(true)
               const name = e.target.value
               update((d) => ({ ...d, name }))
             }}
@@ -215,7 +202,7 @@ export function SourcesStep({
 
         {!empty && (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface-raised shadow-card">
-            {draft.sources.map((s) => {
+            {draft.sources.map((s, index) => {
               const est = sizes.get(s.path)
               const Icon = s.kind === 'folder' ? Folder : File
               return (
@@ -224,10 +211,7 @@ export function SourcesStep({
                     <Icon className="size-4" strokeWidth={1.75} />
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <Tooltip
-                      label={<span className="font-mono text-[11.5px]">{s.path}</span>}
-                      align="start"
-                    >
+                    <Tooltip label={<span className="font-mono text-[11.5px]">{s.path}</span>} align="start">
                       <span className="truncate text-small font-medium text-fg">{baseName(s.path)}</span>
                     </Tooltip>
                     <PathText path={parentPath(s.path)} className="text-fg-subtle" tooltip="never" />
@@ -253,7 +237,8 @@ export function SourcesStep({
                   <IconButton
                     icon={X}
                     label={`Remover ${baseName(s.path)}`}
-                    onClick={() => update((d) => ({ ...d, sources: d.sources.filter((x) => x.id !== s.id) }))}
+                    data-source-remove
+                    onClick={() => remove(s.id, index)}
                   />
                 </li>
               )
@@ -262,7 +247,7 @@ export function SourcesStep({
         )}
 
         <div className="flex items-center gap-2" data-invalid={sourcesError && empty ? '' : undefined}>
-          <Button icon={FolderPlus} onClick={() => void pick('folder')}>
+          <Button id="add-folders" icon={FolderPlus} onClick={() => void pick('folder')}>
             Adicionar pastas
           </Button>
           <Button icon={FilePlus} onClick={() => void pick('file')}>
@@ -270,7 +255,13 @@ export function SourcesStep({
           </Button>
         </div>
         {dropZone}
-        <IssueList issues={otherIssues} />
+        {dropNote && (
+          <p className="-mt-1 flex items-start gap-1.5 text-caption text-warning" role="status">
+            <TriangleAlert className="mt-px size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+            <span className="min-w-0 break-words">{dropNote}</span>
+          </p>
+        )}
+        <IssueList issues={otherIssues} paths={draft.sources.map((x) => x.path)} />
       </section>
 
       <Collapsible.Root open={advancedOpen} onOpenChange={setAdvancedOpen} className="flex flex-col">

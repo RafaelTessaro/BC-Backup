@@ -8,8 +8,9 @@ import { Card } from '@renderer/components/ui/Card'
 import { PathText } from '@renderer/components/ui/PathText'
 import { Switch } from '@renderer/components/ui/Switch'
 import { useNow } from '@renderer/lib/clock'
+import { cn } from '@renderer/lib/cn'
 import { formatWhen, plural } from '@renderer/lib/format'
-import { STEPS, type StepId } from '../model'
+import { STEPS, ZIP_LEVELS, shortenPaths, type StepId } from '../model'
 import type { SourceSizes } from '../sizes'
 import { OptionRow } from './shared'
 
@@ -18,7 +19,13 @@ function Row({ label, children, onEdit }: { label: string; children: ReactNode; 
     <div className="grid grid-cols-[132px_minmax(0,1fr)_auto] items-start gap-4 px-5 py-3.5">
       <span className="pt-px text-small text-fg-subtle">{label}</span>
       <div className="min-w-0 text-small text-fg">{children}</div>
-      <Button variant="ghost" size="sm" className="-my-1 h-7" onClick={onEdit}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-my-1 h-7"
+        aria-label={`Editar ${label.toLowerCase()}`}
+        onClick={onEdit}
+      >
         Editar
       </Button>
     </div>
@@ -26,6 +33,8 @@ function Row({ label, children, onEdit }: { label: string; children: ReactNode; 
 }
 
 const VERIFY = { none: 'sem verificação', quick: 'verificação rápida', full: 'verificação completa' }
+const zipLabel = (level: number): string =>
+  (ZIP_LEVELS.find((z) => Number(z.value) === level)?.label ?? 'Equilibrada').toLowerCase()
 const ATTACH = { never: '', onFailure: ' · log anexado se falhar', always: ' · log sempre anexado' }
 
 export function ReviewStep({
@@ -51,6 +60,8 @@ export function ReviewStep({
   const warnings = issues.filter((i) => i.level === 'warning')
   const n = draft.notification
   const stepLabel = (id: StepId): string => STEPS.find((s) => s.id === id)?.label ?? id
+  const paths = [...draft.sources.map((s) => s.path), ...draft.destinations.map((d) => d.path)]
+  const text = (i: ValidationIssue): string => shortenPaths(i.message, paths)
 
   return (
     <div className="flex flex-col gap-6">
@@ -62,7 +73,7 @@ export function ReviewStep({
           <ul className="mt-1 flex flex-col gap-1">
             {errors.map((e) => (
               <li key={e.message} className="flex items-baseline justify-between gap-3">
-                <span className="text-fg">{e.message}</span>
+                <span className="min-w-0 break-words text-fg">{text(e)}</span>
                 <Button variant="link" size="sm" onClick={() => goTo(e.step)}>
                   Ir para {stepLabel(e.step)}
                 </Button>
@@ -75,8 +86,8 @@ export function ReviewStep({
         <Callout tone="warning" title="Vale conferir">
           <ul className="mt-1 flex flex-col gap-1">
             {warnings.map((e) => (
-              <li key={e.message} className="text-fg">
-                {e.message}
+              <li key={e.message} className="break-words text-fg">
+                {text(e)}
               </li>
             ))}
           </ul>
@@ -115,36 +126,50 @@ export function ReviewStep({
             <div className="flex flex-col gap-0.5">
               {draft.destinations.map((d) => (
                 <span key={d.id} className="flex min-w-0 items-baseline gap-2">
+                  {d.label?.trim() && <span className="shrink-0">{d.label.trim()}</span>}
                   <span
-                    className="min-w-0 truncate font-mono text-mono text-fg"
+                    className={cn(
+                      'min-w-0 truncate font-mono text-mono',
+                      d.label?.trim() ? 'text-fg-subtle' : 'text-fg'
+                    )}
                     title={d.path}
                     data-selectable
                   >
                     {d.path}
                   </span>
-                  {d.label && <span className="truncate text-fg-subtle">{d.label}</span>}
-                  {d.enabled === false && <span className="text-caption text-fg-subtle">(desativado)</span>}
+                  {d.enabled === false && (
+                    <span className="shrink-0 text-caption text-fg-subtle">(desligado)</span>
+                  )}
                 </span>
               ))}
             </div>
           )}
           <p className="mt-1 text-fg-muted">
-            {draft.mode === 'zip' ? `Arquivo ZIP (nível ${draft.zipLevel})` : 'Pasta datada'} ·{' '}
-            {VERIFY[draft.verify]}
+            {draft.mode === 'zip'
+              ? `Compactar em ZIP (compressão ${zipLabel(draft.zipLevel)})`
+              : 'Pastas (cópia simples)'}{' '}
+            · {VERIFY[draft.verify]}
           </p>
         </Row>
         <Row label="Agendamento" onEdit={() => goTo('agendamento')}>
           <p>{describeSchedule(draft.schedule)}</p>
-          {next && <p className="text-fg-muted">Próxima: {formatWhen(next, now)}</p>}
+          {!draft.enabled ? (
+            <p className="text-warning">Pausada: não roda até você ativar a rotina.</p>
+          ) : (
+            next && <p className="text-fg-muted">Próxima execução: {formatWhen(next, now)}</p>
+          )}
         </Row>
         <Row label="Retenção" onEdit={() => goTo('retencao')}>
           {draft.retention.enabled ? (
             <p>
-              Apagar cópias com mais de {plural(draft.retention.days, 'dia', 'dias')}
-              <span className="text-fg-muted"> · manter ao menos {draft.retention.minKeep}</span>
+              Guardar por {plural(draft.retention.days, 'dia', 'dias')}
+              <span className="text-fg-muted">
+                {' '}
+                · no mínimo {plural(draft.retention.minKeep, 'backup', 'backups')}
+              </span>
             </p>
           ) : (
-            <p className="text-fg-muted">Desligada — nada é apagado</p>
+            <p className="text-fg-muted">Desligada: nenhum backup é apagado</p>
           )}
         </Row>
         <Row label="Notificação" onEdit={() => goTo('notificacao')}>
@@ -153,8 +178,8 @@ export function ReviewStep({
               E-mail para{' '}
               {n.recipients.length ? n.recipients.join(', ') : <span className="text-danger">ninguém</span>}
               <span className="text-fg-muted">
-                {' '}
-                · {n.onSuccess ? 'sempre' : 'só com avisos ou falhas'}
+                {n.bcc.length > 0 && ` · Cco: ${n.bcc.join(', ')}`} ·{' '}
+                {n.onSuccess ? 'sempre' : 'só com avisos ou falhas'}
                 {ATTACH[n.attachLog]}
               </span>
             </p>

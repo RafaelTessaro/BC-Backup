@@ -24,7 +24,7 @@ function pathsOf(list: FileList): { paths: string[]; withoutPath: number } | nul
   const paths: string[] = []
   let withoutPath = 0
   for (const file of Array.from(list)) {
-    let p = ''
+    let p: string
     try {
       p = toPath(file)
     } catch {
