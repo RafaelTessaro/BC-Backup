@@ -63,11 +63,11 @@ export function Stepper({
                   )}
                   {st.issue && (
                     <span
+                      aria-hidden
                       className={cn(
                         'absolute -top-0.5 -right-0.5 size-2 rounded-full ring-2 ring-bg',
                         st.issue === 'error' ? 'bg-danger' : 'bg-warning-bar'
                       )}
-                      aria-label={st.issue === 'error' ? 'Precisa de correção' : 'Tem avisos'}
                     />
                   )}
                 </span>
@@ -83,6 +83,15 @@ export function Stepper({
                   )}
                 >
                   {step.label}
+                </span>
+                <span className="sr-only">
+                  {st.issue === 'error'
+                    ? ' (precisa de correção)'
+                    : st.issue === 'warning'
+                      ? ' (tem avisos)'
+                      : !isCurrent && st.status === 'done'
+                        ? ' (concluída)'
+                        : ''}
                 </span>
               </button>
             </li>

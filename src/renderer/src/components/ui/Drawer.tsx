@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { Dialog } from 'radix-ui'
 import type { ReactNode } from 'react'
 import { cn } from '@renderer/lib/cn'
+import { useReturnFocus } from '@renderer/lib/hooks'
 import { IconButton } from './Button'
 
 interface DrawerProps {
@@ -27,6 +28,7 @@ export function Drawer({
   footer,
   description
 }: DrawerProps) {
+  const returnFocus = useReturnFocus(open)
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -34,6 +36,7 @@ export function Drawer({
         <Dialog.Content
           aria-describedby={undefined}
           tabIndex={-1}
+          onCloseAutoFocus={returnFocus}
           onOpenAutoFocus={(e) => {
             // foca o painel (não o botão Fechar, que abriria o Tooltip)
             e.preventDefault()

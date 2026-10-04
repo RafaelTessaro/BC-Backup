@@ -1,4 +1,4 @@
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from 'react'
+import { forwardRef, useId, useLayoutEffect, type InputHTMLAttributes, type ReactNode } from 'react'
 import { CircleAlert, type LucideIcon } from 'lucide-react'
 import { cn } from '@renderer/lib/cn'
 
@@ -64,6 +64,17 @@ interface FieldProps {
 /** Label → controle 6 px; descrição small; erro caption danger com ícone. */
 export function Field({ label, description, error, children, className, aside }: FieldProps) {
   const id = useId()
+  const hintId = `${id}-hint`
+  const hasHint = !!error || !!description
+  // Liga descrição/erro ao controle (aria-describedby) sem exigir nada de quem usa o Field.
+  useLayoutEffect(() => {
+    const el = document.getElementById(id)
+    if (!el) return
+    const current = (el.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean)
+    const next = hasHint ? [...new Set([...current, hintId])] : current.filter((x) => x !== hintId)
+    if (next.length) el.setAttribute('aria-describedby', next.join(' '))
+    else el.removeAttribute('aria-describedby')
+  }, [id, hintId, hasHint])
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {(label || aside) && (
@@ -78,12 +89,14 @@ export function Field({ label, description, error, children, className, aside }:
       )}
       {children(id)}
       {error ? (
-        <p className="flex items-center gap-1.5 text-caption text-danger" role="alert">
+        <p id={hintId} className="flex items-center gap-1.5 text-caption text-danger" role="alert">
           <CircleAlert className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
           {error}
         </p>
       ) : description ? (
-        <p className="text-caption text-fg-subtle">{description}</p>
+        <p id={hintId} className="text-caption text-fg-subtle">
+          {description}
+        </p>
       ) : null}
     </div>
   )

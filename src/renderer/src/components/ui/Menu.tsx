@@ -29,7 +29,12 @@ export function MenuContent({
           'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out',
           className
         )}
-        onCloseAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => {
+          // Esc/fechar devolve o foco ao gatilho (Radix). Se um item já levou o foco para outro
+          // lugar (dialog, campo com autofoco), não o roubamos de volta.
+          const a = document.activeElement
+          if (a && a !== document.body) e.preventDefault()
+        }}
       >
         {children}
       </M.Content>

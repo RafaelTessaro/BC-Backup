@@ -26,7 +26,7 @@ import { bc, errorMessage } from '@renderer/lib/bc'
 import { cn } from '@renderer/lib/cn'
 import { baseName, formatNumber, plural } from '@renderer/lib/format'
 import { notify } from '@renderer/lib/toast'
-import { newId, type Update } from '../model'
+import { NAME_MAX, newId, type Update } from '../model'
 import type { SourceSizes } from '../sizes'
 import { IssueList } from './shared'
 
@@ -35,6 +35,17 @@ type PathForFile = (file: File) => string
 function pathForFile(): PathForFile | null {
   const fn = (window as unknown as { bc?: { pathForFile?: PathForFile } }).bc?.pathForFile
   return typeof fn === 'function' ? fn : null
+}
+
+/** Pasta onde o item está ("C:\Users\Ana\Desktop"); raízes devolvem o próprio caminho. */
+function parentPath(path: string): string {
+  const clean = path.replace(/[\\/]+$/, '')
+  const unc = /^\\\\[^\\]+\\[^\\]+$/.test(clean)
+  const cut = Math.max(clean.lastIndexOf('\\'), clean.lastIndexOf('/'))
+  if (unc || cut < 0 || /^[A-Za-z]:$/.test(clean)) return path
+  const parent = clean.slice(0, cut)
+  if (/^[A-Za-z]:$/.test(parent)) return `${parent}\\`
+  return parent || '/'
 }
 
 export function SourcesStep({
@@ -53,8 +64,11 @@ export function SourcesStep({
   const [nameTouched, setNameTouched] = useState(draft.name.trim().length > 0)
   const [dragging, setDragging] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
-  const nameError = issues.find((i) => i.level === 'error' && /nome/i.test(i.message))
-  const otherIssues = issues.filter((i) => i !== nameError)
+  const nameIssues = issues.filter((i) => /\bnome\b/i.test(i.message))
+  const nameError = nameIssues.find((i) => i.level === 'error')
+  const nameWarning = nameError ? undefined : nameIssues.find((i) => i.level === 'warning')
+  const otherIssues = issues.filter((i) => !nameIssues.includes(i))
+  const sourcesError = otherIssues.some((i) => i.level === 'error')
 
   const addPaths = (paths: string[], kind: SourceKind | ((p: string) => SourceKind)): void => {
     update((d) => {
@@ -107,9 +121,12 @@ export function SourcesStep({
   const empty = draft.sources.length === 0
   const excludeCount = f.exclude.length
 
+  // Os botões acima fazem o mesmo para teclado e leitor de tela; a área é só um atalho para o mouse.
   const dropZone = (
     <button
       type="button"
+      tabIndex={-1}
+      aria-hidden
       onClick={() => void pick('folder')}
       onDragOver={(e) => {
         e.preventDefault()
@@ -145,14 +162,20 @@ export function SourcesStep({
       <Field
         label="Nome da rotina"
         error={nameError?.message}
-        description="Aparece na lista, no histórico e nos e-mails."
+        description={
+          nameWarning ? (
+            <span className="text-warning">{nameWarning.message}</span>
+          ) : (
+            'Aparece na lista, no histórico e nos e-mails.'
+          )
+        }
       >
         {(id) => (
           <Input
             id={id}
             autoFocus={autoFocus}
             value={draft.name}
-            maxLength={80}
+            maxLength={NAME_MAX}
             invalid={!!nameError}
             placeholder="Ex.: Documentos do escritório"
             onChange={(e) => {
@@ -201,8 +224,13 @@ export function SourcesStep({
                     <Icon className="size-4" strokeWidth={1.75} />
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-small font-medium text-fg">{baseName(s.path)}</span>
-                    <PathText path={s.path} className="text-fg-subtle" />
+                    <Tooltip
+                      label={<span className="font-mono text-[11.5px]">{s.path}</span>}
+                      align="start"
+                    >
+                      <span className="truncate text-small font-medium text-fg">{baseName(s.path)}</span>
+                    </Tooltip>
+                    <PathText path={parentPath(s.path)} className="text-fg-subtle" tooltip="never" />
                   </div>
                   <span className="w-[120px] shrink-0 text-right text-caption text-fg-muted tnum">
                     {est === undefined ? (
@@ -214,15 +242,17 @@ export function SourcesStep({
                     ) : (
                       <>
                         {formatBytes(est.bytes)}
-                        <span className="block text-fg-subtle">
-                          {plural(est.files, 'arquivo', 'arquivos')}
-                        </span>
+                        {s.kind === 'folder' && (
+                          <span className="block text-fg-subtle">
+                            {plural(est.files, 'arquivo', 'arquivos')}
+                          </span>
+                        )}
                       </>
                     )}
                   </span>
                   <IconButton
                     icon={X}
-                    label="Remover"
+                    label={`Remover ${baseName(s.path)}`}
                     onClick={() => update((d) => ({ ...d, sources: d.sources.filter((x) => x.id !== s.id) }))}
                   />
                 </li>
@@ -231,7 +261,7 @@ export function SourcesStep({
           </ul>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-invalid={sourcesError && empty ? '' : undefined}>
           <Button icon={FolderPlus} onClick={() => void pick('folder')}>
             Adicionar pastas
           </Button>

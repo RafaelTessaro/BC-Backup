@@ -13,6 +13,7 @@ import type {
   FileResult,
   HistoryQuery,
   MailTestResult,
+  PathInfo,
   PickResult,
   RoutineInput,
   SizeEstimate,
@@ -609,6 +610,15 @@ interface ActiveRun {
 
 type Listener<T> = (v: T) => void
 
+/** Mesma regra do main (ipc.ts): servidor, porta ou usuário diferentes invalidam a senha salva. */
+function accountChanged(
+  saved: Pick<SmtpInput, 'host' | 'port' | 'user'>,
+  next: Pick<SmtpInput, 'host' | 'port' | 'user'>
+): boolean {
+  const norm = (v: string): string => v.trim().toLowerCase()
+  return norm(saved.host) !== norm(next.host) || saved.port !== next.port || norm(saved.user) !== norm(next.user)
+}
+
 export function createMockApi(): BcApi {
   const flags = readFlags()
   const now = new Date()
@@ -1053,6 +1063,8 @@ export function createMockApi(): BcApi {
         await delay(300)
         const { password, ...rest } = input
         if (password !== undefined) smtpPassword = password
+        // como o main: a senha salva só vale para o mesmo servidor/porta/usuário
+        else if (accountChanged(settings.smtp, rest)) smtpPassword = ''
         settings = { ...settings, smtp: { ...rest, hasPassword: smtpPassword.length > 0 } }
         emit(listeners.settingsChanged, clone(settings))
         return clone(settings)
@@ -1066,6 +1078,11 @@ export function createMockApi(): BcApi {
           (input.security === 'starttls' && input.port === 465)
         )
           return { ok: false, message: 'A porta e a segurança não combinam: 465 = SSL; 587 = STARTTLS.' }
+        if (input.password === undefined && settings.smtp.hasPassword && accountChanged(settings.smtp, input))
+          return {
+            ok: false,
+            message: 'Você mudou o servidor ou o usuário: digite a senha novamente para testar.'
+          }
         const pass = input.password ?? smtpPassword
         if (!input.user.trim() || !pass)
           return {
@@ -1102,6 +1119,14 @@ export function createMockApi(): BcApi {
       pickFiles: async (): Promise<PickResult> => {
         await delay(150)
         return { canceled: false, paths: [FILE_POOL[pickCursor++ % FILE_POOL.length]] }
+      },
+      pathForFile: (file: File): string => (file.name ? `C:\\Users\\Ana\\Documentos\\${file.name}` : ''),
+      inspectPaths: async (paths: string[]): Promise<PathInfo[]> => {
+        await delay(60)
+        return paths.map((path) => {
+          const name = path.split(/[\\/]/).filter(Boolean).pop() ?? ''
+          return { path, kind: /\.[^.\\/]+$/.test(name) ? ('file' as const) : ('folder' as const) }
+        })
       },
       stats: async () => stats(),
       estimateSize: async (sources: string[], filters?: Filters): Promise<SizeEstimate> => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 /** Media query reativa (sem setState em efeito). */
 export function useMediaQuery(query: string): boolean {
@@ -55,4 +55,32 @@ export function useTick(ms: number, enabled = true): Date {
     return () => clearInterval(t)
   }, [ms, enabled])
   return now
+}
+
+/** Elemento que abriu um overlay. Se o foco estava num item de menu, devolve o gatilho do menu. */
+function openerOf(el: Element | null): HTMLElement | null {
+  if (!(el instanceof HTMLElement) || el === document.body) return null
+  const menu = el.closest('[role="menu"]')
+  const triggerId = menu?.getAttribute('aria-labelledby')
+  if (triggerId) return document.getElementById(triggerId) ?? null
+  return el
+}
+
+/**
+ * Devolve o foco a quem abriu o overlay (drawer/dialog) ao fechar — mesmo quando ele foi aberto
+ * por um item de menu que já não existe mais. Use o retorno em `onCloseAutoFocus` do Radix.
+ */
+export function useReturnFocus(open: boolean): (e: Event) => void {
+  const opener = useRef<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    if (open) opener.current = openerOf(document.activeElement)
+  }, [open])
+  return (e: Event) => {
+    const el = opener.current
+    opener.current = null
+    if (el && el.isConnected) {
+      e.preventDefault()
+      el.focus({ preventScroll: true })
+    }
+  }
 }

@@ -1,3 +1,4 @@
+import { TriangleAlert } from 'lucide-react'
 import { formatBytes } from '@shared/format'
 import { cn } from '@renderer/lib/cn'
 import { formatPercent } from '@renderer/lib/format'
@@ -29,7 +30,7 @@ export function DiskUsageBar({ total, free, incoming, className, showLegend = tr
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(usedPct)}
-        aria-label={`${formatPercent(usedPct)} usado`}
+        aria-label={`${formatPercent(usedPct)} usado${tone === 'danger' ? ' — pouco espaço livre' : tone === 'warning' ? ' — espaço ficando curto' : ''}`}
       >
         <div
           className={cn(
@@ -49,7 +50,15 @@ export function DiskUsageBar({ total, free, incoming, className, showLegend = tr
           <span>
             {formatBytes(free)} livres de {formatBytes(total)}
           </span>
-          <span className={cn(tone === 'warning' && 'text-warning', tone === 'danger' && 'text-danger')}>
+          <span
+            className={cn(
+              'inline-flex items-center gap-1',
+              tone === 'warning' && 'font-medium text-warning',
+              tone === 'danger' && 'font-medium text-danger'
+            )}
+          >
+            {/* cor nunca sozinha (§3): ícone acompanha o alerta de espaço */}
+            {tone !== 'accent' && <TriangleAlert className="size-3 shrink-0" strokeWidth={2} aria-hidden />}
             {formatPercent(usedPct)} usado
           </span>
         </div>

@@ -7,6 +7,8 @@ interface ProgressBarProps {
   tone?: 'accent' | 'success' | 'warning' | 'danger'
   className?: string
   label?: string
+  /** Leitura humana para leitores de tela ("42% · ~3 min restantes"). */
+  valueText?: string
 }
 
 const FILL = {
@@ -17,7 +19,14 @@ const FILL = {
 }
 
 /** ProgressBar (§8): 6 px (8 no drawer), trilho surface-hover, radius-xs; largura 400 ms linear. */
-export function ProgressBar({ value, size = 'sm', tone = 'accent', className, label }: ProgressBarProps) {
+export function ProgressBar({
+  value,
+  size = 'sm',
+  tone = 'accent',
+  className,
+  label,
+  valueText
+}: ProgressBarProps) {
   const indeterminate = value === undefined
   return (
     <div
@@ -26,6 +35,8 @@ export function ProgressBar({ value, size = 'sm', tone = 'accent', className, la
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={indeterminate ? undefined : Math.round(value)}
+      aria-valuetext={valueText}
+      aria-busy={indeterminate || undefined}
       className={cn(
         'relative w-full overflow-hidden rounded-xs bg-surface-hover',
         size === 'sm' ? 'h-1.5' : 'h-2',

@@ -1,4 +1,4 @@
-import { Eye, EyeOff, MailCheck, Send } from 'lucide-react'
+import { Eye, EyeOff, MailCheck, Send, TriangleAlert } from 'lucide-react'
 import { RadioGroup } from 'radix-ui'
 import { useState } from 'react'
 import type { MailTestResult } from '@shared/api'
@@ -38,6 +38,12 @@ export function EmailTab() {
   const [result, setResult] = useState<MailTestResult | null>(null)
 
   const dirty = !same(draft, toInput(saved))
+  // A senha salva vale só para o mesmo servidor/porta/usuário (o main a descarta se mudarem).
+  const norm = (v: string): string => v.trim().toLowerCase()
+  const accountChanged =
+    norm(draft.host) !== norm(saved.host) || draft.port !== saved.port || norm(draft.user) !== norm(saved.user)
+  const keepsSavedPassword = saved.hasPassword && !accountChanged
+  const needsPassword = saved.hasPassword && accountChanged && !draft.password && !!draft.user.trim()
   const preset = SMTP_PRESETS.find((p) => p.id === draft.preset)
   const configured = smtpConfigured(settings)
   const set = <K extends keyof SmtpInput>(key: K, value: SmtpInput[K]): void => {
@@ -202,9 +208,14 @@ export function EmailTab() {
             <Field
               label="Senha"
               description={
-                draft.password === undefined && saved.hasPassword
-                  ? 'Deixe em branco para manter a senha salva.'
-                  : undefined
+                needsPassword ? (
+                  <span className="flex items-center gap-1.5 text-warning">
+                    <TriangleAlert className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+                    Digite a senha novamente para o novo servidor.
+                  </span>
+                ) : draft.password === undefined && keepsSavedPassword ? (
+                  'Deixe em branco para manter a senha salva.'
+                ) : undefined
               }
             >
               {(id) => (
@@ -214,9 +225,11 @@ export function EmailTab() {
                     type={showPass ? 'text' : 'password'}
                     autoComplete="new-password"
                     value={draft.password ?? ''}
-                    placeholder={saved.hasPassword ? '(senha salva)' : 'Senha ou senha de app'}
+                    placeholder={keepsSavedPassword ? '(senha salva)' : 'Senha ou senha de app'}
                     className="pr-9"
-                    onChange={(e) => set('password', e.target.value)}
+                    invalid={needsPassword && dirty}
+                    // apagar tudo volta a "manter a senha salva" (string vazia apagaria a senha)
+                    onChange={(e) => set('password', e.target.value === '' ? undefined : e.target.value)}
                   />
                   <button
                     type="button"
@@ -301,19 +314,25 @@ export function EmailTab() {
                   value={testTo}
                   placeholder="voce@empresa.com.br"
                   onChange={(e) => setTestTo(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && testValid && void test()}
+                  onKeyDown={(e) => e.key === 'Enter' && testValid && !needsPassword && void test()}
                 />
               )}
             </Field>
             <Button
               icon={Send}
               loading={testing}
-              disabled={!testValid || !draft.host}
+              disabled={!testValid || !draft.host || needsPassword}
               onClick={() => void test()}
             >
               Enviar e-mail de teste
             </Button>
           </div>
+          {needsPassword && !result && (
+            <p className="flex items-center gap-1.5 text-caption text-fg-subtle">
+              <TriangleAlert className="size-3.5 shrink-0 text-warning" strokeWidth={1.75} aria-hidden />
+              Digite a senha acima para testar com o novo servidor ou usuário.
+            </p>
+          )}
           {result && (
             <Callout
               tone={result.ok ? 'success' : 'danger'}
@@ -333,12 +352,26 @@ export function EmailTab() {
         aria-hidden={!dirty}
       >
         <Card className="flex items-center gap-3 px-4 py-3 shadow-pop">
-          <MailCheck className="size-4 text-fg-subtle" strokeWidth={1.75} />
-          <span className="flex-1 text-small text-fg-muted">Você tem alterações não salvas.</span>
+          {needsPassword ? (
+            <TriangleAlert className="size-4 shrink-0 text-warning" strokeWidth={1.75} aria-hidden />
+          ) : (
+            <MailCheck className="size-4 shrink-0 text-fg-subtle" strokeWidth={1.75} aria-hidden />
+          )}
+          <span className="flex-1 text-small text-fg-muted" role="status">
+            {needsPassword
+              ? 'Digite a senha novamente: ela só vale para o servidor e o usuário em que foi salva.'
+              : 'Você tem alterações não salvas.'}
+          </span>
           <Button variant="ghost" onClick={() => setDraft(toInput(saved))} tabIndex={dirty ? 0 : -1}>
             Descartar
           </Button>
-          <Button variant="primary" loading={saving} onClick={() => void save()} tabIndex={dirty ? 0 : -1}>
+          <Button
+            variant="primary"
+            loading={saving}
+            disabled={needsPassword}
+            onClick={() => void save()}
+            tabIndex={dirty ? 0 : -1}
+          >
             Salvar
           </Button>
         </Card>

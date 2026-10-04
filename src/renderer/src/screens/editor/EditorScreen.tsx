@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Check, FileQuestion, Play } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RoutineInput, ValidationIssue } from '@shared/api'
 import { createDefaultRoutine } from '@shared/defaults'
 import { ROUTES } from '@shared/routes'
@@ -17,7 +17,7 @@ import { useDebounced, useHotkey } from '@renderer/lib/hooks'
 import { navigate, useRouter } from '@renderer/lib/router'
 import { refreshRoutines, useApp } from '@renderer/lib/store'
 import { notify } from '@renderer/lib/toast'
-import { STEPS, clearStash, peekStash, stashDraft, toInput, type StepId } from './model'
+import { STEPS, clearStash, peekStash, stashDraft, tidyForSave, toInput, type StepId } from './model'
 import { useSourceSizes } from './sizes'
 import { Stepper, type StepState } from './Stepper'
 import { DestinationsStep } from './steps/DestinationsStep'
@@ -33,6 +33,22 @@ const isSaveKey = (e: KeyboardEvent): boolean => (e.ctrlKey || e.metaKey) && e.k
 function scrollTop(): void {
   document.getElementById('conteudo')?.scrollTo({ top: 0, behavior: 'smooth' })
 }
+
+/**
+ * Campos que só confirmam o valor ao perder o foco (horário, número, chips) seriam perdidos
+ * com Ctrl+Enter: tira o foco deles e espera o React aplicar a alteração.
+ */
+async function commitPendingInput(): Promise<void> {
+  const el = document.activeElement
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    el.blur()
+    await new Promise((r) => setTimeout(r, 0))
+  }
+}
+
+/** Primeiro controle com erro na etapa (ou a mensagem de erro). */
+const ERROR_TARGET =
+  '[aria-invalid="true"], [data-invalid] input, [data-invalid] button:not([disabled]), [data-error-focus]'
 
 export function EditorScreen({ routineId }: { routineId?: string }) {
   const existing = useApp((s) => (routineId ? s.routines.find((r) => r.id === routineId) : undefined))
@@ -76,7 +92,26 @@ function Editor({ existing }: { existing?: Routine }) {
   const [attempted, setAttempted] = useState<Set<StepId>>(() => new Set())
   const [issues, setIssues] = useState<ValidationIssue[]>([])
   const [saving, setSaving] = useState<'save' | 'run' | null>(null)
+  const [focusReq, setFocusReq] = useState<{ to: 'heading' | 'error'; n: number } | null>(null)
   const setBlocker = useRouter((s) => s.setBlocker)
+  const draftRef = useRef(draft)
+  const sectionRef = useRef<HTMLElement>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+
+  useLayoutEffect(() => {
+    draftRef.current = draft
+  })
+
+  // Troca de etapa: foco no título (leitor de tela anuncia; Tab segue para o formulário).
+  // Continuar bloqueado: foco no primeiro campo com erro.
+  useEffect(() => {
+    if (!focusReq) return
+    const target =
+      focusReq.to === 'error'
+        ? (sectionRef.current?.querySelector<HTMLElement>(ERROR_TARGET) ?? headingRef.current)
+        : headingRef.current
+    target?.focus({ preventScroll: focusReq.to === 'heading' })
+  }, [focusReq])
 
   useEffect(() => clearStash(key), [key])
 
@@ -119,35 +154,46 @@ function Editor({ existing }: { existing?: Routine }) {
     })
   ) as Record<StepId, StepState>
 
-  const goTo = (id: StepId): void => {
+  const goTo = (id: StepId, focus: 'heading' | 'error' = 'heading'): void => {
     setStep(id)
+    setFocusReq((f) => ({ to: focus, n: (f?.n ?? 0) + 1 }))
     scrollTop()
   }
 
   const next = async (): Promise<void> => {
-    const fresh = await bc.routines.validate(draft).catch(() => issues)
+    await commitPendingInput()
+    const current = draftRef.current
+    const fresh = await bc.routines.validate(current).catch(() => issues)
     setIssues(fresh)
     setAttempted((prev) => new Set(prev).add(step))
-    if (fresh.some((i) => i.level === 'error' && i.step === step)) return
+    if (fresh.some((i) => i.level === 'error' && i.step === step)) {
+      setFocusReq((f) => ({ to: 'error', n: (f?.n ?? 0) + 1 }))
+      return
+    }
     const ni = Math.min(idx + 1, STEPS.length - 1)
     setReached((r) => Math.max(r, ni))
     goTo(STEPS[ni].id)
   }
 
   const submit = async (run: boolean): Promise<void> => {
-    const fresh = await bc.routines.validate(draft).catch(() => issues)
+    await commitPendingInput()
+    const current = tidyForSave(draftRef.current)
+    const fresh = await bc.routines.validate(current).catch(() => issues)
     setIssues(fresh)
     const errors = fresh.filter((i) => i.level === 'error')
     if (errors.length) {
       setAttempted(new Set(STEPS.map((s) => s.id)))
       setReached(STEPS.length - 1)
-      goTo(errors[0].step)
-      notify.error('Revise a rotina antes de salvar', { description: errors[0].message })
+      goTo(errors[0].step, 'error')
+      notify.error('Revise a rotina antes de salvar', {
+        description:
+          errors.length === 1 ? errors[0].message : `${errors[0].message} (e mais ${errors.length - 1})`
+      })
       return
     }
     setSaving(run ? 'run' : 'save')
     try {
-      const saved = await bc.routines.save(isNew ? draft : { ...draft, id: existing!.id })
+      const saved = await bc.routines.save(isNew ? current : { ...current, id: existing!.id })
       await refreshRoutines()
       setBlocker(null)
       navigate(ROUTES.routines, { force: true })
@@ -204,17 +250,23 @@ function Editor({ existing }: { existing?: Routine }) {
 
         <div className="flex items-start gap-10">
           <aside className="sticky top-6 w-[220px] shrink-0">
-            <Stepper current={step} states={states} onSelect={goTo} />
+            <Stepper current={step} states={states} onSelect={(id) => goTo(id)} />
           </aside>
           <section
             key={step}
+            ref={sectionRef}
             className="max-w-[640px] min-w-0 flex-1 animate-step-in"
             aria-labelledby="step-title"
           >
             <p className="text-caption font-medium text-fg-subtle tnum">
               Etapa {idx + 1} de {STEPS.length}
             </p>
-            <h2 id="step-title" className="mt-1 text-section font-semibold text-fg">
+            <h2
+              id="step-title"
+              ref={headingRef}
+              tabIndex={-1}
+              className="mt-1 text-section font-semibold text-fg outline-none"
+            >
               {meta.title}
             </h2>
             <p className="mt-1 text-small text-fg-muted">
@@ -258,7 +310,7 @@ function Editor({ existing }: { existing?: Routine }) {
                   update={update}
                   sizes={sizes}
                   issues={isNew ? issues.filter((i) => i.level === 'warning' || attempted.size > 0) : issues}
-                  goTo={goTo}
+                  goTo={(id) => goTo(id)}
                   isNew={isNew}
                 />
               )}
