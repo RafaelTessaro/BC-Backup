@@ -8,7 +8,8 @@
 
 import { createHash } from 'node:crypto'
 import { constants as fsConstants, createReadStream } from 'node:fs'
-import { lstat, open, unlink } from 'node:fs/promises'
+import { lstat, open, realpath, unlink } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import picomatch from 'picomatch'
@@ -17,6 +18,7 @@ import type { Filters, MoveSources } from '@shared/types'
 import { MOVE_MIN_AGE_RANGE, MOVE_NEVER } from '@shared/defaults'
 import type { EngineHooks } from './copy'
 import { errCode, sleep } from './fsutil'
+import { isInside } from '../validate'
 import { emptyWalkStats, makeFilter, walk, type FileFilter, type FileItem, type WalkIssue } from './walk'
 
 /** `UV_FS_O_EXLOCK`: no Windows o libuv abre com share = 0 (falha com EBUSY se alguém usa o arquivo). */
@@ -39,11 +41,16 @@ export function clampMinAge(n: number): number {
 export interface MoveFilter extends FileFilter {
   /** Arquivos ignorados por MOVE_NEVER (programas, atalhos, temporários). */
   readonly neverCount: number
+  /** Arquivos vazios (0 bytes) ignorados. */
+  readonly emptyCount: number
 }
 
 /**
  * Filtros da rotina + MOVE_NEVER (sempre sem diferenciar maiúsculas: "SETUP.EXE" também fica de fora).
  * Pastas que combinam com MOVE_NEVER (ex.: "~temp") também são ignoradas — não mover é o lado seguro.
+ * Arquivo vazio (0 bytes) também fica: não é backup de nada (gbak/SQL que falhou, marcador) e, se
+ * entrasse, viraria um "backup novo" por dia e a retenção apagaria os backups reais de um sistema
+ * que parou de gerar backups (doc 04 §2, item 8) — com status Sucesso.
  */
 export function makeMoveFilter(
   filters: Partial<Filters> | undefined,
@@ -52,15 +59,23 @@ export function makeMoveFilter(
   const base = makeFilter(filters, platform)
   const never = picomatch(MOVE_NEVER, { dot: true, nocase: true })
   let neverCount = 0
+  let emptyCount = 0
   return {
     get neverCount() {
       return neverCount
+    },
+    get emptyCount() {
+      return emptyCount
     },
     dirExcluded: (rel, name) => never(rel) || base.dirExcluded(rel, name),
     fileVerdict: (rel, name, size) => {
       const v = base.fileVerdict(rel, name, size)
       if (v === 'ok' && never(rel)) {
         neverCount++
+        return 'excluded'
+      }
+      if (v === 'ok' && size === 0) {
+        emptyCount++
         return 'excluded'
       }
       return v
@@ -151,10 +166,11 @@ export function probeReason(code: string): string {
 /* Hash e exclusão                                                     */
 /* ------------------------------------------------------------------ */
 
-/** sha256 do arquivo (releitura da origem quando há um destino só). */
+/** sha256 do arquivo (releitura da origem quando há um destino só). `onChunk` a cada bloco lido. */
 export async function sha256File(
   path: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onChunk?: (bytes: number) => void
 ): Promise<{ hash: string; bytes: number }> {
   const h = createHash('sha256')
   let bytes = 0
@@ -164,6 +180,7 @@ export async function sha256File(
       write(chunk: Buffer, _e, cb) {
         h.update(chunk)
         bytes += chunk.length
+        onChunk?.(chunk.length)
         cb()
       }
     }),
@@ -182,6 +199,25 @@ export async function unchangedSinceScan(item: FileItem): Promise<'same' | 'chan
   } catch (e) {
     const code = errCode(e)
     return code === 'ENOENT' ? 'gone' : code || 'EUNKNOWN'
+  }
+}
+
+/**
+ * A pasta do arquivo, pelo caminho REAL, continua dentro de `realRoot` (caminho real da origem)?
+ * O unlink segue links nas pastas do caminho: uma subpasta trocada por link/junção depois da
+ * varredura levaria a exclusão para fora da origem. 'gone' = a pasta não existe mais.
+ * `realRoot` null = o sistema de arquivos não informa o caminho real da origem (alguns
+ * redirecionadores de rede): vale só a conferência pelo texto do caminho, feita antes.
+ */
+export async function realParentInside(
+  item: FileItem,
+  realRoot: string | null
+): Promise<'inside' | 'outside' | 'gone'> {
+  if (!realRoot) return 'inside'
+  try {
+    return isInside(await realpath(dirname(item.abs)), realRoot) ? 'inside' : 'outside'
+  } catch (e) {
+    return errCode(e) === 'ENOENT' ? 'gone' : 'outside'
   }
 }
 

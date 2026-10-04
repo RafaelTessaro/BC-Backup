@@ -41,6 +41,8 @@ export interface ImportPlan {
   routines: StoredRoutine[]
   /** Configurações a aplicar (sem senha, sem apelido do computador). */
   settings: Partial<AppSettings> | null
+  /** Rotinas que vieram com "Mover" ligado e chegam com ele desligado. */
+  moveDisabled: number
 }
 
 /**
@@ -49,6 +51,8 @@ export interface ImportPlan {
  * arquivo foi exportado de outro PC que grava no mesmo destino de rede, manter o id faria as
  * duas rotinas dividirem a pasta — a limpeza de sobras de uma apagaria a cópia em andamento da
  * outra e a retenção de uma apagaria os backups da outra.
+ * "Mover" sempre chega DESLIGADO: apagar arquivos deste computador exige a confirmação do editor
+ * ("Apagar arquivos da origem?"), que mostra as pastas daqui — o arquivo pode ter vindo de outro PC.
  */
 export function planImport(raw: unknown, existing: StoredRoutine[], now = new Date()): ImportPlan {
   if (!isObj(raw) || raw.format !== EXPORT_FORMAT) {
@@ -61,11 +65,16 @@ export function planImport(raw: unknown, existing: StoredRoutine[], now = new Da
   }
   const names = new Set(existing.map((r) => r.name.trim().toLocaleLowerCase('pt-BR')))
   const routines: StoredRoutine[] = []
+  let moveDisabled = 0
   for (const item of Array.isArray(raw.routines) ? raw.routines : []) {
     if (!isObj(item)) continue
     const r = migrateRoutine(item, now)
     if (!r.name) continue
     r.id = newId()
+    if (r.moveSources?.enabled) {
+      r.moveSources = { ...r.moveSources, enabled: false }
+      moveDisabled++
+    }
     let name = r.name
     for (let n = 1; names.has(name.toLocaleLowerCase('pt-BR')); n++) {
       name = n === 1 ? `${r.name} (importada)` : `${r.name} (importada ${n})`
@@ -83,5 +92,5 @@ export function planImport(raw: unknown, existing: StoredRoutine[], now = new Da
     const { trayHintShown: _t, computerAlias: _c, ...rest } = s
     settings = { ...rest, smtp: { ...rest.smtp, hasPassword: false } }
   }
-  return { routines, settings }
+  return { routines, settings, moveDisabled }
 }

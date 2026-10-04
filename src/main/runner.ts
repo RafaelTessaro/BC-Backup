@@ -40,6 +40,8 @@ interface LiveRun {
   startedAt: string
   progress: RunProgress
   log: LogEntry[]
+  /** "Mover": arquivos já apagados da origem (contagem exata; o log ao vivo tem limite). */
+  moved: number
 }
 
 const MAX_LIVE_LOG = 5000
@@ -217,6 +219,7 @@ export class RunManager {
       routine,
       startedAt,
       log: [],
+      moved: 0,
       progress: {
         runId: item.runId,
         routineId: routine.id,
@@ -258,8 +261,15 @@ export class RunManager {
       if (ev.type === 'progress') {
         live.progress = { ...ev.progress, startedAt }
         this.d.emitProgress({ ...live.progress })
-      } else if (live.log.length < MAX_LIVE_LOG) {
-        live.log.push(ev.entry)
+      } else {
+        // "Mover": cada exclusão vai também para o log do aplicativo na hora. O histórico só é
+        // gravado no fim (depois do e-mail); se o motor, o app ou o PC caírem antes, ainda fica o
+        // registro do que saiu da origem.
+        if (ev.entry.message.startsWith('Movido: ')) {
+          live.moved++
+          log.info(`[${routine.name}] ${ev.entry.message}`)
+        }
+        if (live.log.length < MAX_LIVE_LOG) live.log.push(ev.entry)
       }
     })
     const onAbort = () => job.cancel()
@@ -318,10 +328,11 @@ export class RunManager {
       record.bytesMoved = result.bytesMoved ?? result.move.removedBytes
       if (result.move.notice) record.notice = result.move.notice
     } else if (routine.moveSources?.enabled) {
-      // O motor parou sem devolver o relatório: o log ao vivo diz o que já tinha sido apagado.
-      const moved = record.log.filter((l) => l.message.startsWith('Movido: ')).length
+      // O motor parou sem devolver o relatório: as linhas "Movido:" recebidas dizem o que já tinha
+      // sido apagado (contadas na chegada: o log ao vivo para em MAX_LIVE_LOG linhas).
+      const moved = live.moved
       record.notice = moved
-        ? `A execução parou antes de terminar; ${moved === 1 ? '1 arquivo já tinha sido apagado' : `${moved} arquivos já tinham sido apagados`} da origem (veja o log).`
+        ? `A execução parou antes de terminar; ${moved === 1 ? '1 arquivo já tinha sido apagado' : `${moved.toLocaleString('pt-BR')} arquivos já tinham sido apagados`} da origem (veja o log).`
         : 'Nada foi apagado da origem.'
     }
 

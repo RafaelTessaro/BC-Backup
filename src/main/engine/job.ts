@@ -18,7 +18,7 @@
 // idêntico na origem. Qualquer destino com falha ou cancelamento antes da fase → nada é apagado.
 
 import { mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import type {
   DestinationResult,
   FinalRunStatus,
@@ -63,6 +63,7 @@ import {
   makeMoveFilter,
   probeExclusive,
   probeReason,
+  realParentInside,
   removeFile,
   sha256File,
   unchangedSinceScan,
@@ -214,6 +215,36 @@ export async function resolveRoutineDir(
 /** Caminho real (resolve links/junções/unidades substituídas); se falhar, o caminho absoluto. */
 async function realPathOf(p: string, timeoutMs: number): Promise<string> {
   return withTimeout(realpath(p), timeoutMs).catch(() => resolve(p))
+}
+
+/** Identidade física (volume + número do arquivo); null se não existe ou o sistema não informa. */
+async function physicalId(p: string, timeoutMs: number): Promise<string | null> {
+  const st = await withTimeout(stat(p, { bigint: true }), timeoutMs).catch(() => null)
+  if (!st || st.ino === 0n) return null
+  return `${st.dev}:${st.ino}`
+}
+
+/**
+ * `inner` fica fisicamente dentro de `outer` (ou é ela), por qualquer grafia? Pega o que o caminho
+ * real não resolve: "\\PC\D$" x "D:\", unidade mapeada x compartilhamento, montagens. Sobe a partir
+ * de `inner` procurando uma pasta com a identidade de `outer` e confirma que `inner` aparece no
+ * caminho equivalente sob `outer` (discos clonados podem repetir volume + número de uma pasta).
+ */
+async function physicallyInside(inner: string, outer: string, timeoutMs: number): Promise<boolean> {
+  const outerId = await physicalId(outer, timeoutMs)
+  const innerId = outerId ? await physicalId(inner, timeoutMs) : null
+  if (!outerId || !innerId) return false
+  const start = resolve(inner)
+  let cur = start
+  for (let depth = 0; depth < 64; depth++) {
+    if ((await physicalId(cur, timeoutMs)) === outerId) {
+      if ((await physicalId(join(outer, relative(cur, start)), timeoutMs)) === innerId) return true
+    }
+    const parent = dirname(cur)
+    if (parent === cur) break
+    cur = parent
+  }
+  return false
 }
 
 const INSIDE_SOURCE_MESSAGE =
@@ -390,6 +421,9 @@ export async function runJob(
         const rel = slot.folder || isDir[i] ? `${slot.name}/${f.rel}` : slot.name
         const item: FileItem = { ...f, rel }
         if (report) {
+          // Progresso a cada arquivo examinado, não só a cada elegível: com muitos recentes ou em uso
+          // (cada um espera ~4 s no teste exclusivo) o vigia de travamento (30 min) mataria o motor.
+          tracker.scanned(items.length, totalBytes)
           // Não elegível nem é copiado: fica para a próxima execução.
           let reason = ageProblem(item, scanNow, minAge)
           if (!reason) {
@@ -433,6 +467,11 @@ export async function runJob(
         L(
           'info',
           `${moveFilter.neverCount} arquivo(s) de programa, atalho ou temporário ignorado(s) ("Mover" nunca os copia nem apaga).`
+        )
+      if (moveFilter.emptyCount)
+        L(
+          'warn',
+          `${moveFilter.emptyCount} arquivo(s) vazio(s) (0 bytes) ignorado(s): não contam como backup do sistema e ficam na origem.`
         )
       if (report.postponedCount) {
         L(
@@ -536,10 +575,34 @@ export async function runJob(
             'EUNAVAILABLE'
           )
         }
+        // 1a) "Mover": a mesma pasta de um destino anterior (outra grafia, link, unidade mapeada ou
+        // repetida numa configuração importada) não é um segundo lugar — "conferido em 2 destinos"
+        // seria uma cópia só. Confere se o backup que esta execução acabou de gravar lá aparece aqui.
+        if (move) {
+          for (const prev of result.destinations) {
+            if (!prev.outputPath) continue
+            const prevId = await physicalId(prev.outputPath, accessTimeout)
+            const here = join(dest.path, relative(prev.path, prev.outputPath))
+            if (prevId && (await physicalId(here, accessTimeout)) === prevId) {
+              throw new DestinationError(
+                `Este destino é a mesma pasta de ${prev.label || prev.path} (outra grafia, link ou unidade mapeada) e não conta como uma segunda cópia. Com "Mover", cada destino precisa ser um lugar diferente.`,
+                'ESAMEDEST'
+              )
+            }
+          }
+        }
         // 1b) destino dentro da origem? (antes de criar qualquer coisa no destino)
         const backupRoot = join(await realPathOf(dest.path, accessTimeout), BACKUP_ROOT_DIR)
         if (sourceDirs.some((src) => isInside(backupRoot, src) || isInside(src, backupRoot))) {
           throw new DestinationError(INSIDE_SOURCE_MESSAGE, 'EINSIDE')
+        }
+        // …também por outra grafia que o caminho real não resolve (\\PC\D$, unidade mapeada).
+        for (const src of sourceDirs) {
+          if (
+            (await physicallyInside(dest.path, src, accessTimeout)) ||
+            (await physicallyInside(src, backupRoot, accessTimeout))
+          )
+            throw new DestinationError(INSIDE_SOURCE_MESSAGE, 'EINSIDE')
         }
         // 2) pasta da rotina, marcador e sobras de execuções anteriores (libera espaço antes da checagem)
         const routineDir = await resolveRoutineDir(dest.path, routine, L)
@@ -598,7 +661,8 @@ export async function runJob(
             tracker,
             signal,
             hooks: opts.hooks,
-            manifest: (files, bytes, skipped) => manifest(files, bytes, skipped + walkSkipped.length)
+            manifest: (files, bytes, skipped) => manifest(files, bytes, skipped + walkSkipped.length),
+            durable: move
           })
           skippedAll = [...walkSkipped, ...z.skipped]
           if (!z.added.length) throw new DestinationError(nothingCopiedMessage(), 'ENOFILES')
@@ -635,7 +699,9 @@ export async function runJob(
           })
           const c = await copyTree(items, work, tracker, signal, {
             hash: verify === 'full',
-            hooks: opts.hooks
+            hooks: opts.hooks,
+            // "Mover": cada cópia vai para o disco antes de a origem ser apagada (queda de energia).
+            durable: move
           })
           skippedAll = [...walkSkipped, ...c.skipped]
           if (!c.copied.length) throw new DestinationError(nothingCopiedMessage(), 'ENOFILES')
@@ -748,6 +814,8 @@ export async function runJob(
         L('info', `Removendo da origem o que foi copiado e conferido em ${plural(n, 'destino', 'destinos')}.`)
         const seen = new Set<string>()
         const gone = (it: FileItem) => L('info', `Já tinha sido removido por outro programa: ${it.abs}`)
+        /** Caminho real de cada pasta de origem (a raiz configurada pode ser um link). */
+        const realRoots = new Map<string, string | null>()
         const CANCELLED = 'Execução cancelada antes de apagar'
         for (let k = 0; k < items.length; k++) {
           const item = items[k]
@@ -787,7 +855,9 @@ export async function runJob(
             if (n === 1) {
               let again: { hash: string; bytes: number }
               try {
-                again = await sha256File(item.abs, signal)
+                // Progresso a cada bloco: um arquivo enorme pode levar mais que o vigia de
+                // travamento do motor (30 min sem eventos) e ele seria encerrado no meio da fase.
+                again = await sha256File(item.abs, signal, () => tracker.file(item.rel))
               } catch (e) {
                 if (signal.aborted) throw e
                 const code = errCode(e)
@@ -806,7 +876,26 @@ export async function runJob(
                 continue
               }
             }
-            // c) continua idêntico à varredura (arquivo comum, tamanho, mtime e ctime)
+            // d) Windows: ninguém com o arquivo aberto. ANTES do re-stat (c): o teste pode esperar
+            // até ~4 s entre tentativas (EBUSY) e, nesse meio-tempo, quem estava com o arquivo
+            // aberto pode gravar e fechar. Só depois de uma abertura exclusiva bem-sucedida as
+            // datas e o tamanho no disco refletem todas as gravações (NTFS atualiza ao fechar).
+            const busy = await probeExclusive(item, 'delete', {
+              hooks: opts.hooks,
+              signal,
+              retryMs: opts.probeRetryMs,
+              platform: opts.platform
+            })
+            if (busy === 'ENOENT') {
+              gone(item)
+              continue
+            }
+            if (busy) {
+              keep(item.abs, probeReason(busy))
+              continue
+            }
+            // c) continua idêntico à varredura (arquivo comum, tamanho, mtime e ctime) — o último
+            // passo antes do unlink: a janela que sobra é de microssegundos.
             const same = await unchangedSinceScan(item)
             if (same === 'gone') {
               gone(item)
@@ -821,19 +910,21 @@ export async function runJob(
               )
               continue
             }
-            // d) Windows: ninguém com o arquivo aberto
-            const busy = await probeExclusive(item, 'delete', {
-              hooks: opts.hooks,
-              signal,
-              retryMs: opts.probeRetryMs,
-              platform: opts.platform
-            })
-            if (busy === 'ENOENT') {
+            // …e o caminho REAL da pasta do arquivo continua dentro da origem: o unlink segue links
+            // nas pastas do caminho, e uma subpasta trocada por link/junção depois da varredura
+            // (move + mklink /J) levaria a exclusão para fora dela.
+            let realRoot = realRoots.get(root)
+            if (realRoot === undefined) {
+              realRoot = await realpath(root).catch(() => null)
+              realRoots.set(root, realRoot)
+            }
+            const where = await realParentInside(item, realRoot)
+            if (where === 'gone') {
               gone(item)
               continue
             }
-            if (busy) {
-              keep(item.abs, probeReason(busy))
+            if (where !== 'inside') {
+              keep(item.abs, 'Fora da pasta de origem (não apagado)')
               continue
             }
             if (signal.aborted) {

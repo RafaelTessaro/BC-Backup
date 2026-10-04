@@ -101,7 +101,7 @@ export const MOVE_NEVER = ['**/*.exe', '**/*.dll', '**/*.msi', '**/*.bat', '**/*
 ## 5. Algoritmo (em `runJob`, com `move = routine.moveSources?.enabled === true`)
 
 1. **Pré-checagem:** toda origem precisa ser uma pasta existente e não bloqueada (mesmas regras da §3). Senão é Falha: *"Mover" recusado: …*, e nada é copiado.
-2. **Varredura** (`scanning`), igual à de hoje (filtros, sem seguir links), mais `MOVE_NEVER`. Cada arquivo é classificado, com `now` fixo no início:
+2. **Varredura** (`scanning`), igual à de hoje (filtros, sem seguir links), mais `MOVE_NEVER` e arquivos vazios (0 bytes: um gbak/SQL que falhou ou um marcador não é backup e, se contasse, a retenção apagaria os backups reais de um sistema que parou de gerar backups). Cada arquivo é classificado, com `now` fixo no início:
    - `t = max(mtime, ctime, birthtime)`. Se `t > now + 5 min`, vai para **adiado** com *Data no futuro (confira o relógio)*.
    - Se `now − t < minAgeMinutes`, vai para **adiado** com *Alterado há X min, pode estar sendo gravado*.
    - Windows: teste exclusivo (3 tentativas, 2 s). `EBUSY` vai para **adiado** com *Em uso por outro programa*. `EPERM` ou `EACCES` também vão para **adiado** (*Sem permissão*). `ENOENT` é ignorado.
@@ -110,15 +110,15 @@ export const MOVE_NEVER = ['**/*.exe', '**/*.dll', '**/*.msi', '**/*.bat', '**/*
    - houve adiados: Atenção, com *N arquivo(s) ainda em gravação/em uso; serão movidos na próxima execução*;
    - pasta vazia com `warnIfEmpty`: Atenção, com *Nenhum arquivo novo em {origens}. O sistema pode não ter gerado o backup.*;
    - pasta vazia sem `warnIfEmpty`: Sucesso, com *Nada novo para mover*.
-4. **Destinos:** o fluxo atual (acessível, espaço, `.em-andamento`, cópia com sha256, verificação completa, manifesto com `moveSources: true`, rename, retenção protegendo o backup novo). Para cada arquivo aprovado guardamos `abs → {bytes, sha256}` no mapa do destino. Um destino concluído em Sucesso ou Atenção conta, inclusive o `keepWork` (backup completo com manifesto e nome provisório).
+4. **Destinos:** o fluxo atual (acessível, a mesma pasta de um destino anterior por outra grafia/link/unidade mapeada vira Falha — confere se o backup recém-gravado no outro aparece nele —, destino dentro da origem também pela identidade da pasta (volume + número), espaço, `.em-andamento`, cópia com sha256, verificação completa, manifesto com `moveSources: true`, rename, retenção protegendo o backup novo). Para cada arquivo aprovado guardamos `abs → {bytes, sha256}` no mapa do destino. Um destino concluído em Sucesso ou Atenção conta, inclusive o `keepWork` (backup completo com manifesto e nome provisório).
 5. **Porta de exclusão:** a fase `moving` só roda se `!signal.aborted` **e** todos os destinos ativos estiverem concluídos (`result.destinations.length === enabledDests.length`, todos em Sucesso ou Atenção). Senão, loga *Nada foi apagado da origem porque {destino} falhou.* e pula para o passo 7.
 6. **Exclusão** (`moving`), na ordem da varredura, conferindo `signal` a cada arquivo:
    a. o arquivo está no mapa de **todos** os destinos, com `bytes` e `sha256` iguais entre eles e `bytes === item.size`. Senão vai para **mantido**: *Não copiado para todos os destinos* ou *Alterado durante a cópia*;
    b. com 1 destino só, relê a origem e compara o sha256. Se diferir, vai para **mantido** (*Alterado durante a cópia*);
-   c. `lstat`: tem que ser arquivo comum (não link), com `size`, `mtimeMs` e `ctimeMs` iguais aos da varredura. Senão vai para **mantido**: *Alterado depois da cópia; será copiado de novo na próxima execução*;
-   d. Windows: novo teste exclusivo. Se der `EBUSY`, vai para **mantido** (*Em uso*);
+   c. Windows: novo teste exclusivo (3 tentativas). Se der `EBUSY`, vai para **mantido** (*Em uso*). Vem **antes** do `lstat`: entre as tentativas quem estava com o arquivo aberto pode gravar e fechar, e só depois de uma abertura exclusiva as datas no disco refletem tudo;
+   d. `lstat`: tem que ser arquivo comum (não link), com `size`, `mtimeMs` e `ctimeMs` iguais aos da varredura. Senão vai para **mantido**: *Alterado depois da cópia; será copiado de novo na próxima execução*. E o caminho **real** da pasta do arquivo tem que continuar dentro da origem (uma subpasta trocada por link/junção durante a execução levaria o `unlink` para fora): senão, **mantido** (*Fora da pasta de origem*);
    e. `unlink`. Sucesso entra em `removed` e no log *Movido: {caminho} ({tamanho}), conferido em {n} destino(s).* `ENOENT` é só informação (*Já tinha sido removido por outro programa*). `EBUSY`, `EPERM` e `EACCES` vão para **mantido**, com dica de permissão. Não chama `rmdir` em nenhum momento.
-   A janela entre (c/d) e (e) é de microssegundos e é aceitável. O handle exclusivo dura milissegundos, então o risco de atrapalhar o ERP é desprezível.
+   A janela entre (d) e (e) é de microssegundos e é aceitável. O handle exclusivo dura milissegundos, então o risco de atrapalhar o ERP é desprezível.
 7. **Resultado:** os mesmos cálculos de hoje, mais `move` e `filesMoved`/`bytesMoved`, com o status da §6.
 
 ## 6. Status e e-mail
@@ -161,7 +161,9 @@ export const MOVE_NEVER = ['**/*.exe', '**/*.dll', '**/*.msi', '**/*.bat', '**/*
 | Pasta do OneDrive/Dropbox | Aviso: a exclusão é sincronizada na nuvem |
 | Destino no mesmo volume da origem | Aviso: mover não libera espaço |
 | Modo ZIP | A mesma regra, com sha256 calculado durante a compactação |
-| Backup que não pôde receber o nome final (`keepWork`) | Conta como concluído (tem manifesto) e é finalizado na próxima execução |
+| Backup que não pôde receber o nome final (`keepWork`) | Conta como concluído (tem manifesto) e é finalizado na próxima execução. A limpeza de sobras só apaga um `.em-andamento` quando o manifesto **não existe**; manifesto ilegível no momento (antivírus) deixa a pasta como está |
+| Configuração importada com "Mover" ligado | Chega **desligado**: só o editor liga, com a confirmação que mostra as pastas deste computador |
+| Arquivo vazio (0 bytes) | Fica na origem e não conta como backup novo (aviso no log) |
 
 ## 8. Checklist de testes (vitest + `EngineHooks`; manual no Windows)
 

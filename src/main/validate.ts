@@ -36,10 +36,14 @@ export function isAbsolutePath(p: string, platform: NodeJS.Platform = process.pl
   return pathApi(platform).isAbsolute(p)
 }
 
-/** Normaliza para comparação: resolve, tira a barra final e ignora maiúsculas no Windows/macOS. */
+/**
+ * Normaliza para comparação: resolve, tira a barra final e ignora maiúsculas no Windows/macOS.
+ * No macOS também ignora a forma Unicode (APFS/HFS+ tratam "é" composto e decomposto como o mesmo
+ * nome; a pasta pessoal e o caminho escolhido no diálogo podem vir em formas diferentes).
+ */
 export function normalizeForCompare(p: string, platform: NodeJS.Platform = process.platform): string {
   const api = pathApi(platform)
-  let n = api.resolve(p)
+  let n = api.resolve(platform === 'darwin' ? p.normalize('NFC') : p)
   const root = api.parse(n).root
   if (n.length > root.length) n = n.replace(/[\\/]+$/, '')
   return platform === 'win32' || platform === 'darwin' ? n.toLowerCase() : n

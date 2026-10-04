@@ -18,9 +18,9 @@
 import { lstat, readFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Retention } from '@shared/types'
-import { DELETING_SUFFIX, IN_PROGRESS_SUFFIX } from '@shared/defaults'
+import { DELETING_SUFFIX, IN_PROGRESS_SUFFIX, MANIFEST_FILE } from '@shared/defaults'
 import { backupStamp, parseBackupStamp } from '@shared/format'
-import { errMessage, pathExists, renameRetry } from './fsutil'
+import { errCode, errMessage, pathExists, renameRetry } from './fsutil'
 import {
   readFolderManifest,
   readZipManifest,
@@ -147,10 +147,21 @@ export async function applyRetention(
   return pruned
 }
 
+/** true só quando o manifesto da pasta comprovadamente não existe (ENOENT). */
+async function manifestMissing(dir: string): Promise<boolean> {
+  try {
+    await lstat(join(dir, MANIFEST_FILE))
+    return false
+  } catch (e) {
+    return errCode(e) === 'ENOENT'
+  }
+}
+
 /**
  * Limpa sobras de execuções anteriores desta rotina (chamada no início de cada execução):
  *  - "<carimbo>.em-andamento" com manifesto válido desta rotina → finaliza (rename);
- *    sem manifesto → apaga (execução que caiu ou foi interrompida).
+ *    sem manifesto → apaga (execução que caiu ou foi interrompida); manifesto presente mas
+ *    ilegível → não mexe.
  *    Com manifesto de OUTRA rotina, ou se o nome final já existe → não mexe (é um backup completo).
  *  - "<carimbo>.zip.em-andamento" → apaga.
  *  - "<carimbo>(.zip).excluindo" → termina a exclusão.
@@ -181,6 +192,13 @@ export async function cleanupLeftovers(
         const manifest = await readFolderManifest(path)
         const finalPath = join(routineDir, inProgress[1])
         if (!manifest) {
+          // Só é sobra quando o manifesto NÃO existe (gravado por último, de forma atômica). Se ele
+          // existe mas não pôde ser lido agora (antivírus, rede instável), pode ser um backup
+          // completo que não recebeu o nome final — com "Mover", a única cópia neste destino.
+          if (!(await manifestMissing(path))) {
+            log('warn', `Backup deixado como está (o manifesto não pôde ser lido agora): ${name}.`)
+            continue
+          }
           await rm(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
           log('info', `Removida a sobra de uma execução interrompida: ${name}.`)
         } else if (manifest.routineId === routineId && !(await pathExists(finalPath))) {

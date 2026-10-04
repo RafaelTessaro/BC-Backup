@@ -37,7 +37,7 @@ import { sealSecret } from './secrets'
 import { computeStats } from './stats'
 import { newId, type StoredRoutine } from './store'
 import { hideTrayPanel } from './tray-panel'
-import { isValidEmail, validateRoutine } from './validate'
+import { isBlockedMoveSource, isValidEmail, validateRoutine } from './validate'
 import { applyTheme, getWindow, windowAction } from './window'
 
 type A = BcApi
@@ -409,7 +409,10 @@ export function registerIpc(ctx: AppContext): void {
         path: file,
         message:
           `Importada(s) ${plan.routines.length} rotina(s)${plan.settings ? ' e as configurações' : ''}. ` +
-          'A senha do e-mail não é exportada: digite-a em Configurações › E-mail.'
+          'A senha do e-mail não é exportada: digite-a em Configurações › E-mail.' +
+          (plan.moveDisabled
+            ? ` "Mover" foi desligado em ${plan.moveDisabled} rotina(s): ative de novo no editor para confirmar as pastas deste computador.`
+            : '')
       }
     } catch (e) {
       const msg = e instanceof SyntaxError ? 'O arquivo não é um JSON válido.' : errMessage(e)
@@ -469,9 +472,12 @@ export function registerIpc(ctx: AppContext): void {
       })
     )
   )
-  handle('systemPreviewMove', (sources, filters, move) =>
-    previewMove(asPathList(sources), asFilters(filters), asMoveSources(move), { timeoutMs: 4000 })
-  )
+  handle('systemPreviewMove', (sources, filters, move) => {
+    // Pastas proibidas para "Mover" (raiz de disco, sistema, perfil) nem são examinadas na prévia.
+    const guard = { dataPath: ctx.info?.dataPath }
+    const allowed = asPathList(sources).filter((p) => !isBlockedMoveSource(p, guard))
+    return previewMove(allowed, asFilters(filters), asMoveSources(move), { timeoutMs: 4000 })
+  })
 
   /* ------------------------- painel da bandeja ----------------------- */
   handle('trayOpenMain', (r) => {

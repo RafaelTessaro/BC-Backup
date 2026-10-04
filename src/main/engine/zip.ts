@@ -56,12 +56,14 @@ export async function zipTree(
     signal: AbortSignal
     hooks?: EngineHooks
     manifest?: (files: number, bytes: number, skipped: number) => BackupManifest
+    /** "Mover": força o .zip no disco (fsync) antes de fechar — a origem será apagada depois. */
+    durable?: boolean
   }
 ): Promise<ZipTreeResult> {
   const { tracker, signal } = opts
   const level = Math.max(0, Math.min(9, Math.round(opts.level)))
   const zip = new yazl.ZipFile()
-  const ws = createWriteStream(outPath, { flags: 'wx' })
+  const ws = createWriteStream(outPath, { flags: 'wx', flush: opts.durable === true })
   let writeErr: unknown = null
   ws.once('error', (e) => (writeErr ??= e))
   const out = pipeline(zip.outputStream, ws, { signal })

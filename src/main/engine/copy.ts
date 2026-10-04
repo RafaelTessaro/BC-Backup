@@ -85,7 +85,9 @@ export async function copyOne(
   signal: AbortSignal,
   hash: boolean,
   hooks?: EngineHooks,
-  madeDirs?: Set<string>
+  madeDirs?: Set<string>,
+  /** "Mover": força os dados no disco (fsync) antes de fechar — a origem será apagada depois. */
+  durable = false
 ): Promise<CopiedFile> {
   const dst = destPathFor(destRoot, item.rel)
   // Abre a origem primeiro: arquivo em uso/sem permissão é detectado aqui, antes de criar o destino.
@@ -110,7 +112,7 @@ export async function copyOne(
       throw Object.assign(e as Error, { side: 'dst' })
     }
     const rs = fh.createReadStream({ highWaterMark: 1 << 20, autoClose: false })
-    const ws = createWriteStream(dst, { flags: 'wx' })
+    const ws = createWriteStream(dst, { flags: 'wx', flush: durable })
     rs.once('error', () => (side ??= 'src'))
     ws.once('error', () => (side ??= 'dst'))
     const counter = new Transform({
@@ -145,7 +147,7 @@ export async function copyTree(
   destRoot: string,
   tracker: ProgressTracker,
   signal: AbortSignal,
-  opts: { hash: boolean; hooks?: EngineHooks }
+  opts: { hash: boolean; hooks?: EngineHooks; durable?: boolean }
 ): Promise<CopyTreeResult> {
   const copied: CopiedFile[] = []
   const skipped: SkippedFile[] = []
@@ -166,7 +168,8 @@ export async function copyTree(
         signal,
         opts.hash,
         opts.hooks,
-        madeDirs
+        madeDirs,
+        opts.durable
       )
       copied.push(r)
       bytes += r.bytes
