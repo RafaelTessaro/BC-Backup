@@ -31,7 +31,12 @@ import type {
   TimeWindow,
   VerifyMode
 } from '@shared/types'
-import { DEFAULT_EXCLUDES, DEFAULT_NOTIFICATION, DEFAULT_SETTINGS, createDefaultRoutine } from '@shared/defaults'
+import {
+  DEFAULT_EXCLUDES,
+  DEFAULT_NOTIFICATION,
+  DEFAULT_SETTINGS,
+  createDefaultRoutine
+} from '@shared/defaults'
 import { parseTime } from '@shared/schedule'
 import { errCode, writeJsonAtomic } from './engine/fsutil'
 
@@ -89,8 +94,14 @@ function int(v: unknown, def: number, min = -Infinity, max = Infinity): number {
 const oneOf = <T extends string>(v: unknown, list: readonly T[], def: T): T =>
   typeof v === 'string' && (list as readonly string[]).includes(v) ? (v as T) : def
 const strArr = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean) : []
-const isoOr = (v: unknown, def: string): string => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : def)
+  Array.isArray(v)
+    ? v
+        .filter((x): x is string => typeof x === 'string')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : []
+const isoOr = (v: unknown, def: string): string =>
+  typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : def
 
 /** Copia chaves desconhecidas com valores primitivos (compatibilidade com versões futuras). */
 function extraPrimitives(raw: Obj, known: readonly string[]): Obj {
@@ -109,7 +120,16 @@ export const newId = (): string => randomUUID()
 /* ------------------------------------------------------------------ */
 
 const THEMES: readonly ThemePreference[] = ['light', 'dark', 'system']
-const PRESETS: readonly SmtpPreset[] = ['gmail', 'office365', 'hostinger', 'locaweb', 'uol', 'kinghost', 'hostgator', 'custom']
+const PRESETS: readonly SmtpPreset[] = [
+  'gmail',
+  'office365',
+  'hostinger',
+  'locaweb',
+  'uol',
+  'kinghost',
+  'hostgator',
+  'custom'
+]
 const SECURITIES: readonly SmtpSecurity[] = ['ssl', 'starttls', 'none']
 const SETTINGS_KEYS = [
   'theme',
@@ -247,7 +267,9 @@ export function migrateSchedule(v: unknown): Schedule {
   const kind = oneOf(r.kind ?? r.type, KINDS, d.kind)
   const times = [...new Set(strArr(r.times).filter(validTime))].sort().slice(0, 6)
   const weekdays = Array.isArray(r.weekdays)
-    ? [...new Set(r.weekdays.filter((n): n is number => Number.isInteger(n) && n >= 0 && n <= 6))].sort((a, b) => a - b)
+    ? [...new Set(r.weekdays.filter((n): n is number => Number.isInteger(n) && n >= 0 && n <= 6))].sort(
+        (a, b) => a - b
+      )
     : [...d.weekdays]
   return {
     kind,
@@ -334,7 +356,8 @@ export function migrateConfig(raw: unknown): ConfigData {
     seen.add(routine.id)
     routines.push(routine)
   }
-  const smtpPassword = typeof secrets.smtpPassword === 'string' && secrets.smtpPassword ? secrets.smtpPassword : undefined
+  const smtpPassword =
+    typeof secrets.smtpPassword === 'string' && secrets.smtpPassword ? secrets.smtpPassword : undefined
   const settings = migrateSettings(r.settings)
   settings.smtp.hasPassword = !!smtpPassword
   return {
@@ -389,7 +412,11 @@ export class JsonFile<T> {
   ) {}
 
   /** Carrega e migra. Arquivo corrompido vira "*.corrupt-<ts>" e tentamos o "*.bak". */
-  static async load<T>(file: string, migrate: (raw: unknown) => T, opts: { backup?: boolean } = {}): Promise<JsonFile<T>> {
+  static async load<T>(
+    file: string,
+    migrate: (raw: unknown) => T,
+    opts: { backup?: boolean } = {}
+  ): Promise<JsonFile<T>> {
     let raw: unknown = undefined
     let loadedMain = false
     try {

@@ -83,6 +83,7 @@ export async function createContext(): Promise<AppContext> {
     const active = runner.active()
     const enabled = routines.filter((r) => r.enabled)
     const failing = enabled.filter((r) => latest.get(r.id)?.status === 'failed')
+    const warned = enabled.filter((r) => latest.get(r.id)?.status === 'warning')
     const nextRuns = scheduler.nextRuns()
     let next: { at: string; name: string } | null = null
     for (const r of routines) {
@@ -95,13 +96,25 @@ export async function createContext(): Promise<AppContext> {
     if (live) {
       state = 'running'
       const frac = live.bytesTotal > 0 ? live.bytesDone / live.bytesTotal : 0
-      const pct = Math.min(100, Math.floor(((live.destinationIndex + frac) / Math.max(1, live.destinationCount)) * 100))
+      const pct = Math.min(
+        100,
+        Math.floor(((live.destinationIndex + frac) / Math.max(1, live.destinationCount)) * 100)
+      )
       const busyText = live.phase === 'scanning' ? 'preparando…' : `${pct} %`
       statusLines.push(`Em execução: ${live.routineName} — ${busyText}`)
       tooltip = `Backup em andamento: ${live.routineName} (${busyText})`
     } else if (failing.length) {
       state = 'error'
-      tooltip = failing.length === 1 ? `O último backup de "${failing[0].name}" falhou` : `${failing.length} rotinas com falha`
+      tooltip =
+        failing.length === 1
+          ? `O último backup de "${failing[0].name}" falhou`
+          : `${failing.length} rotinas com falha`
+    } else if (warned.length) {
+      state = 'warning'
+      tooltip =
+        warned.length === 1
+          ? `O último backup de "${warned[0].name}" teve avisos`
+          : `${warned.length} rotinas com avisos`
     } else if (!routines.length) {
       tooltip = 'Nenhuma rotina criada'
     } else if (!enabled.length) {
@@ -157,7 +170,8 @@ export async function createContext(): Promise<AppContext> {
     enqueue: (id, trigger) => {
       runner.enqueue(id, trigger)
     },
-    onMissed: (r, slot) => log.info(`Backup atrasado não executado (recuperação desligada): "${r.name}" de ${slot.toISOString()}`)
+    onMissed: (r, slot) =>
+      log.info(`Backup atrasado não executado (recuperação desligada): "${r.name}" de ${slot.toISOString()}`)
   })
 
   const runner: RunManager = new RunManager({
@@ -194,13 +208,21 @@ export async function createContext(): Promise<AppContext> {
       errorMessage: (e) => smtpErrorMessage(e, store.settings.smtp),
       onSent: async (item) => {
         await history.update(item.runId, { email: 'sent', emailError: undefined }, [
-          { t: new Date().toISOString(), level: 'info', message: 'E-mail enviado (nova tentativa da fila de saída).' }
+          {
+            t: new Date().toISOString(),
+            level: 'info',
+            message: 'E-mail enviado (nova tentativa da fila de saída).'
+          }
         ])
         sendToRenderer(IPC_EVENTS.routinesChanged)
       },
       onExpired: async (item, lastError) => {
         await history.update(item.runId, { email: 'failed', emailError: lastError }, [
-          { t: new Date().toISOString(), level: 'error', message: `E-mail não enviado após 24 horas de tentativas: ${lastError}` }
+          {
+            t: new Date().toISOString(),
+            level: 'error',
+            message: `E-mail não enviado após 24 horas de tentativas: ${lastError}`
+          }
         ])
         sendToRenderer(IPC_EVENTS.routinesChanged)
       }
@@ -249,7 +271,8 @@ export async function createContext(): Promise<AppContext> {
     refreshTray
   }
 
-  if (weakSecretStorage()) log.warn('Sem chaveiro do sistema: a senha SMTP fica apenas ofuscada (basic_text).')
+  if (weakSecretStorage())
+    log.warn('Sem chaveiro do sistema: a senha SMTP fica apenas ofuscada (basic_text).')
   holder.ctx = ctx
   return ctx
 }

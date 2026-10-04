@@ -32,7 +32,8 @@ function winMeta(): Promise<Map<string, WinMeta>> {
               DriveType: number
             }>
             for (const r of rows) {
-              if (r?.DeviceID) map.set(r.DeviceID.toUpperCase(), { label: r.VolumeName ?? '', type: r.DriveType })
+              if (r?.DeviceID)
+                map.set(r.DeviceID.toUpperCase(), { label: r.VolumeName ?? '', type: r.DriveType })
             }
           } catch {
             // Sem metadados: testamos todas as letras só com statfs.

@@ -44,7 +44,8 @@ export class Outbox {
       const raw: unknown = JSON.parse(await readFile(d.file, 'utf8'))
       const items = isObj(raw) && Array.isArray(raw.items) ? raw.items : []
       o.list = items.filter(
-        (i): i is OutboxItem => isObj(i) && typeof i.id === 'string' && typeof i.runId === 'string' && isObj(i.mail)
+        (i): i is OutboxItem =>
+          isObj(i) && typeof i.id === 'string' && typeof i.runId === 'string' && isObj(i.mail)
       )
     } catch {
       o.list = []

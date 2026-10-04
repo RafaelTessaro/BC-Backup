@@ -127,7 +127,11 @@ export function sanitizeName(name: string, fallback = 'Rotina', maxLength = 80):
   // eslint-disable-next-line no-control-regex
   let s = name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim()
   s = s.replace(/[. ]+$/, '').trim()
-  if (s.length > maxLength) s = s.slice(0, maxLength).replace(/[. ]+$/, '').trim()
+  if (s.length > maxLength)
+    s = s
+      .slice(0, maxLength)
+      .replace(/[. ]+$/, '')
+      .trim()
   if (!s) s = fallback
   if (RESERVED_WIN.test(s)) s = `_${s}`
   return s

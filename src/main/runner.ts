@@ -2,7 +2,15 @@
 // e-mail consolidado (com fila de saída) e impedimento de suspensão durante o backup.
 
 import { powerSaveBlocker } from 'electron'
-import type { DestinationResult, ID, LogEntry, RunProgress, RunRecord, RunSummary, RunTrigger } from '@shared/types'
+import type {
+  DestinationResult,
+  ID,
+  LogEntry,
+  RunProgress,
+  RunRecord,
+  RunSummary,
+  RunTrigger
+} from '@shared/types'
 import { startEngineJob } from './engine-host'
 import { withTimeout, errMessage } from './engine/fsutil'
 import type { JobResult, JobSpec } from './engine/types'
@@ -87,7 +95,9 @@ export class RunManager {
       bytesDone: 0,
       speed: 0,
       destinationIndex: 0,
-      destinationCount: routine ? Math.max(1, routine.destinations.filter((x) => x.enabled !== false).length) : 1,
+      destinationCount: routine
+        ? Math.max(1, routine.destinations.filter((x) => x.enabled !== false).length)
+        : 1,
       startedAt: q.enqueuedAt
     }
   }
@@ -182,7 +192,8 @@ export class RunManager {
 
   /** Cancela tudo e espera terminar (ao sair do app). */
   async shutdown(timeoutMs = 8000): Promise<void> {
-    for (const q of this.queue.clearQueued()) log.info(`Execução na fila descartada ao sair: ${q.routineName}`)
+    for (const q of this.queue.clearQueued())
+      log.info(`Execução na fila descartada ao sair: ${q.routineName}`)
     const running = this.queue.running
     if (running) this.queue.cancel(running.runId)
     await withTimeout(this.queue.idle(), timeoutMs).catch(() => {})
@@ -330,12 +341,15 @@ export class RunManager {
     }
     if (decision.status !== 'send') {
       record.email = decision.status
-      if (decision.status === 'not_configured' && routine.notification.enabled) add('warn', `E-mail não enviado: ${decision.reason}`)
+      if (decision.status === 'not_configured' && routine.notification.enabled)
+        add('warn', `E-mail não enviado: ${decision.reason}`)
       return
     }
     if (this.live) this.d.emitProgress({ ...this.live.progress, phase: 'notifying' })
     const smtp = settings.smtp
-    const to = [...decision.mail.to, ...(decision.mail.bcc ?? []).map((b) => `${b} (cópia oculta)`)].join(', ')
+    const to = [...decision.mail.to, ...(decision.mail.bcc ?? []).map((b) => `${b} (cópia oculta)`)].join(
+      ', '
+    )
     try {
       const password = smtp.hasPassword ? await this.d.getSmtpPassword() : ''
       await withTimeout(sendMail(smtp, password, decision.mail), 120_000, 'Tempo esgotado ao enviar o e-mail')
@@ -347,7 +361,8 @@ export class RunManager {
       record.emailError = message
       add('warn', `Falha ao enviar o e-mail: ${message} Nova tentativa a cada 15 minutos por até 24 horas.`)
       const outbox = this.d.outbox()
-      if (outbox) await outbox.add(record.id, decision.mail, message).catch((err) => log.error('Fila de e-mail', err))
+      if (outbox)
+        await outbox.add(record.id, decision.mail, message).catch((err) => log.error('Fila de e-mail', err))
       else record.email = 'failed'
     }
   }

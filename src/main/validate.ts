@@ -40,7 +40,11 @@ export function normalizeForCompare(p: string, platform: NodeJS.Platform = proce
 }
 
 /** true se `child` é `parent` ou está dentro dele. */
-export function isInside(child: string, parent: string, platform: NodeJS.Platform = process.platform): boolean {
+export function isInside(
+  child: string,
+  parent: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
   const api = pathApi(platform)
   const c = normalizeForCompare(child, platform)
   const p = normalizeForCompare(parent, platform)
@@ -107,7 +111,8 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
   const sources = input.sources ?? []
   if (!sources.length) add('error', 'origem', 'Escolha pelo menos uma pasta ou arquivo para copiar.')
   for (const s of sources) {
-    if (!s.path?.trim() || !isAbsolutePath(s.path, platform)) add('error', 'origem', `Caminho de origem inválido: ${s.path || '(vazio)'}`)
+    if (!s.path?.trim() || !isAbsolutePath(s.path, platform))
+      add('error', 'origem', `Caminho de origem inválido: ${s.path || '(vazio)'}`)
   }
   const seenSources = new Set<string>()
   for (const s of sources) {
@@ -123,7 +128,12 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
           () => true,
           () => false
         )
-        if (!ok) add('warning', 'origem', `Origem não encontrada agora: ${s.path}. Conecte o disco ou confira o caminho.`)
+        if (!ok)
+          add(
+            'warning',
+            'origem',
+            `Origem não encontrada agora: ${s.path}. Conecte o disco ou confira o caminho.`
+          )
       }
     }
   }
@@ -146,7 +156,11 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
     for (const s of sources) {
       if (!s.path || !isAbsolutePath(s.path, platform)) continue
       if (isInside(d.path, s.path, platform) || isInside(s.path, d.path, platform)) {
-        add('error', 'destinos', 'O destino não pode ficar dentro da origem (nem a origem dentro do destino).')
+        add(
+          'error',
+          'destinos',
+          'O destino não pode ficar dentro da origem (nem a origem dentro do destino).'
+        )
       }
     }
   }
@@ -178,8 +192,10 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
       const valid = (sch.times ?? []).filter((t) => parseTime(t))
       if (!valid.length) add('error', 'agendamento', 'Informe pelo menos um horário (HH:MM).')
       if ((sch.times ?? []).length > 6) add('error', 'agendamento', 'Use no máximo 6 horários por dia.')
-      if (valid.length !== (sch.times ?? []).length) add('error', 'agendamento', 'Há um horário inválido. Use o formato HH:MM.')
-      if (sch.kind === 'weekly' && !(sch.weekdays ?? []).length) add('error', 'agendamento', 'Escolha pelo menos um dia da semana.')
+      if (valid.length !== (sch.times ?? []).length)
+        add('error', 'agendamento', 'Há um horário inválido. Use o formato HH:MM.')
+      if (sch.kind === 'weekly' && !(sch.weekdays ?? []).length)
+        add('error', 'agendamento', 'Escolha pelo menos um dia da semana.')
     }
     if (sch.kind === 'interval') {
       if (!(sch.intervalMinutes >= 5)) add('error', 'agendamento', 'O intervalo mínimo é de 5 minutos.')
@@ -187,7 +203,8 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
         const a = parseTime(sch.window.start)
         const b = parseTime(sch.window.end)
         if (!a || !b) add('error', 'agendamento', 'Janela de horário inválida. Use o formato HH:MM.')
-        else if (b.h * 60 + b.m < a.h * 60 + a.m) add('error', 'agendamento', 'O fim da janela precisa ser depois do início.')
+        else if (b.h * 60 + b.m < a.h * 60 + a.m)
+          add('error', 'agendamento', 'O fim da janela precisa ser depois do início.')
       }
     }
     if (sch.kind === 'startup' && !(sch.startupDelayMinutes >= 0)) {
@@ -200,7 +217,12 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
   if (ret?.enabled) {
     if (!(ret.days >= 1)) add('error', 'retencao', 'Mantenha os backups por pelo menos 1 dia.')
     if (!(ret.minKeep >= 0)) add('error', 'retencao', 'O mínimo de backups guardados não pode ser negativo.')
-    else if (ret.minKeep === 0) add('warning', 'retencao', 'Sem um mínimo garantido, um computador desligado por dias pode ficar sem backups antigos.')
+    else if (ret.minKeep === 0)
+      add(
+        'warning',
+        'retencao',
+        'Sem um mínimo garantido, um computador desligado por dias pode ficar sem backups antigos.'
+      )
   }
 
   /* Notificação */
@@ -217,7 +239,11 @@ export async function validateRoutine(input: RoutineInput, ctx: ValidateContext)
         add('warning', 'notificacao', 'Nenhuma situação marcada: nenhum e-mail será enviado.')
       }
       if (!ctx.smtpConfigured) {
-        add('warning', 'notificacao', 'Configure o servidor de e-mail (SMTP) em Configurações › E-mail para os avisos funcionarem.')
+        add(
+          'warning',
+          'notificacao',
+          'Configure o servidor de e-mail (SMTP) em Configurações › E-mail para os avisos funcionarem.'
+        )
       }
     }
   }

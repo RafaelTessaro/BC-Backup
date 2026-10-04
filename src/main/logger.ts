@@ -16,7 +16,13 @@ export function initLogger(logsDir: string): void {
 
 function write(level: string, args: unknown[]): void {
   const text = args
-    .map((a) => (a instanceof Error ? `${a.message}${a.stack ? `\n${a.stack}` : ''}` : typeof a === 'string' ? a : JSON.stringify(a)))
+    .map((a) =>
+      a instanceof Error
+        ? `${a.message}${a.stack ? `\n${a.stack}` : ''}`
+        : typeof a === 'string'
+          ? a
+          : JSON.stringify(a)
+    )
     .join(' ')
   const line = `${new Date().toISOString()} ${level.padEnd(5)} ${text}\n`
   if (level === 'ERROR') console.error(line.trimEnd())

@@ -128,7 +128,8 @@ export class HistoryStore {
     const cur = this.runs.get(id)
     if (!cur) return null
     const next: StoredRun = { ...cur, ...patch, id }
-    for (const [k, v] of Object.entries(patch)) if (v === undefined) delete (next as unknown as Record<string, unknown>)[k]
+    for (const [k, v] of Object.entries(patch))
+      if (v === undefined) delete (next as unknown as Record<string, unknown>)[k]
     this.runs.set(id, next)
     this.sorted = null
     await this.serial(async () => {

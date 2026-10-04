@@ -42,6 +42,4 @@ export type ToWorker = { type: 'start'; spec: JobSpec } | { type: 'cancel' }
 
 /** Mensagens worker → main. */
 export type FromWorker =
-  | EngineEvent
-  | { type: 'done'; result: JobResult }
-  | { type: 'crashed'; message: string }
+  EngineEvent | { type: 'done'; result: JobResult } | { type: 'crashed'; message: string }

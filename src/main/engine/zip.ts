@@ -12,7 +12,13 @@ import yauzl from 'yauzl'
 import type { SkippedFile } from '@shared/types'
 import { MANIFEST_FILE } from '@shared/defaults'
 import { errCode } from './fsutil'
-import { DestinationError, SKIPPABLE_SOURCE, destinationErrorMessage, type EngineHooks, type VerifyIssue } from './copy'
+import {
+  DestinationError,
+  SKIPPABLE_SOURCE,
+  destinationErrorMessage,
+  type EngineHooks,
+  type VerifyIssue
+} from './copy'
 import type { FileItem } from './walk'
 import { skipReason } from './walk'
 import type { ProgressTracker } from './progress'
@@ -109,7 +115,9 @@ export async function zipTree(
     }
     if (opts.manifest) {
       const m = opts.manifest(added.length, bytes, skipped.length)
-      zip.addBuffer(Buffer.from(JSON.stringify(m, null, 2), 'utf8'), MANIFEST_FILE, { compressionLevel: level })
+      zip.addBuffer(Buffer.from(JSON.stringify(m, null, 2), 'utf8'), MANIFEST_FILE, {
+        compressionLevel: level
+      })
     }
     zip.end()
     await Promise.race([out, failed])
@@ -130,7 +138,9 @@ export async function zipTree(
 
 function openZip(path: string): Promise<yauzl.ZipFile> {
   return new Promise((resolve, reject) =>
-    yauzl.open(path, { lazyEntries: true, autoClose: true }, (e, z) => (e || !z ? reject(e ?? new Error('zip')) : resolve(z)))
+    yauzl.open(path, { lazyEntries: true, autoClose: true }, (e, z) =>
+      e || !z ? reject(e ?? new Error('zip')) : resolve(z)
+    )
   )
 }
 
@@ -153,7 +163,12 @@ export async function verifyZip(
   try {
     zip = await openZip(zipPath)
   } catch (e) {
-    return [{ path: zipPath, reason: `O arquivo ZIP não pôde ser aberto (${e instanceof Error ? e.message : 'erro'})` }]
+    return [
+      {
+        path: zipPath,
+        reason: `O arquivo ZIP não pôde ser aberto (${e instanceof Error ? e.message : 'erro'})`
+      }
+    ]
   }
   const seen = new Set<string>()
   await new Promise<void>((resolve, reject) => {
@@ -201,7 +216,8 @@ export async function verifyZip(
           })
         ).then(
           () => {
-            if (crc >>> 0 !== entry.crc32 >>> 0) issues.push({ path: name, reason: 'CRC-32 inválido (conteúdo corrompido)' })
+            if (crc >>> 0 !== entry.crc32 >>> 0)
+              issues.push({ path: name, reason: 'CRC-32 inválido (conteúdo corrompido)' })
             tracker.fileDone()
             zip.readEntry()
           },

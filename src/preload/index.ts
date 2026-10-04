@@ -9,7 +9,8 @@ import { IPC_CHANNELS, IPC_EVENTS, type BcApi } from '@shared/api'
 type Channel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
 type EventChannel = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS]
 
-const invoke = <T>(channel: Channel, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>
+const invoke = <T>(channel: Channel, ...args: unknown[]): Promise<T> =>
+  ipcRenderer.invoke(channel, ...args) as Promise<T>
 
 function subscribe<T>(channel: EventChannel, cb: (payload: T) => void): () => void {
   if (typeof cb !== 'function') throw new TypeError('callback inválido')

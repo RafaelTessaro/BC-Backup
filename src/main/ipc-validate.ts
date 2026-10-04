@@ -15,7 +15,8 @@ export class IpcArgError extends Error {
 }
 
 export function asId(v: unknown, what = 'id'): string {
-  if (typeof v !== 'string' || !v.trim() || v.length > 200) throw new IpcArgError(`Parâmetro inválido: ${what}.`)
+  if (typeof v !== 'string' || !v.trim() || v.length > 200)
+    throw new IpcArgError(`Parâmetro inválido: ${what}.`)
   return v
 }
 
@@ -66,7 +67,8 @@ export function asHistoryQuery(v: unknown): HistoryQuery {
     q.status = o.status as RunStatus
   }
   if (o.limit !== undefined) {
-    if (typeof o.limit !== 'number' || !Number.isFinite(o.limit) || o.limit < 0) throw new IpcArgError('Parâmetro inválido: limit.')
+    if (typeof o.limit !== 'number' || !Number.isFinite(o.limit) || o.limit < 0)
+      throw new IpcArgError('Parâmetro inválido: limit.')
     q.limit = Math.floor(o.limit)
   }
   return q
@@ -93,11 +95,14 @@ export function asRoutineForValidation(v: unknown): RoutineInput & { id?: string
   if (sch) {
     out.schedule = {
       ...base.schedule,
-      times: Array.isArray(sch.times) ? sch.times.filter((t): t is string => typeof t === 'string') : base.schedule.times,
+      times: Array.isArray(sch.times)
+        ? sch.times.filter((t): t is string => typeof t === 'string')
+        : base.schedule.times,
       window: isObj(sch.window)
         ? { start: String(sch.window.start ?? ''), end: String(sch.window.end ?? '') }
         : base.schedule.window,
-      intervalMinutes: typeof sch.intervalMinutes === 'number' ? sch.intervalMinutes : base.schedule.intervalMinutes
+      intervalMinutes:
+        typeof sch.intervalMinutes === 'number' ? sch.intervalMinutes : base.schedule.intervalMinutes
     }
   }
   const ret = isObj(v.retention) ? v.retention : null
@@ -139,14 +144,16 @@ export function asSettingsPatch(v: unknown): SettingsPatch {
       if (typeof val !== t || (t === 'number' && !Number.isFinite(val as number))) {
         throw new IpcArgError(`Valor inválido para "${k}".`)
       }
-      if (t === 'string' && (val as string).length > 500) throw new IpcArgError(`Texto longo demais em "${k}".`)
+      if (t === 'string' && (val as string).length > 500)
+        throw new IpcArgError(`Texto longo demais em "${k}".`)
       out[k] = val
       continue
     }
     // Campo desconhecido (versão mais nova da interface): aceita só valores primitivos.
     if (val === null || ['string', 'number', 'boolean'].includes(typeof val)) out[k] = val
   }
-  if (typeof out.historyDays === 'number') out.historyDays = Math.min(3650, Math.max(7, Math.round(out.historyDays)))
+  if (typeof out.historyDays === 'number')
+    out.historyDays = Math.min(3650, Math.max(7, Math.round(out.historyDays)))
   return out as SettingsPatch
 }
 

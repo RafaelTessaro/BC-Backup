@@ -10,7 +10,14 @@
 
 import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { DestinationResult, FinalRunStatus, LogEntry, LogLevel, SkippedFile, SourceItem } from '@shared/types'
+import type {
+  DestinationResult,
+  FinalRunStatus,
+  LogEntry,
+  LogLevel,
+  SkippedFile,
+  SourceItem
+} from '@shared/types'
 import { BACKUP_ROOT_DIR, IN_PROGRESS_SUFFIX } from '@shared/defaults'
 import { formatBytes } from '@shared/format'
 import {
@@ -21,7 +28,16 @@ import {
   type EngineHooks,
   type VerifyIssue
 } from './copy'
-import { diskSpaceOf, errCode, errMessage, pathExists, renameRetry, sanitizeName, withTimeout, writeJsonAtomic } from './fsutil'
+import {
+  diskSpaceOf,
+  errCode,
+  errMessage,
+  pathExists,
+  renameRetry,
+  sanitizeName,
+  withTimeout,
+  writeJsonAtomic
+} from './fsutil'
 import {
   MANIFEST_FORMAT,
   readRoutineMarker,
@@ -208,7 +224,12 @@ export async function runJob(
   const finish = (status: FinalRunStatus, errorMessage?: string): JobResult => {
     result.status = status
     if (errorMessage) result.errorMessage = errorMessage
-    if (dropped) log.push({ t: now().toISOString(), level: 'warn', message: `… e mais ${dropped} linhas de log omitidas.` })
+    if (dropped)
+      log.push({
+        t: now().toISOString(),
+        level: 'warn',
+        message: `… e mais ${dropped} linhas de log omitidas.`
+      })
     result.finishedAt = now().toISOString()
     tracker.phase('done')
     return result
@@ -261,7 +282,10 @@ export async function runJob(
     result.filesTotal = items.length
     result.bytesTotal = totalBytes
 
-    const walkSkipped: SkippedFile[] = issues.map((i) => ({ path: i.path, reason: skipReason(i.code, i.dir) }))
+    const walkSkipped: SkippedFile[] = issues.map((i) => ({
+      path: i.path,
+      reason: skipReason(i.code, i.dir)
+    }))
     L('info', `Encontrados ${items.length.toLocaleString('pt-BR')} arquivos (${formatBytes(totalBytes)}).`)
     if (stats.tooBig) L('info', `${stats.tooBig} arquivo(s) ignorado(s) por passar do tamanho máximo.`)
     if (stats.hidden) L('info', `${stats.hidden} arquivo(s) oculto(s) ou de sistema ignorado(s).`)
@@ -269,7 +293,9 @@ export async function runJob(
     walkSkipped.slice(0, MAX_SKIPPED_LOGGED).forEach((s) => L('warn', `Ignorado: ${s.path} — ${s.reason}`))
 
     if (!items.length) {
-      return fail('Nenhum arquivo para copiar: as origens estão vazias ou os filtros excluem todos os arquivos.')
+      return fail(
+        'Nenhum arquivo para copiar: as origens estão vazias ou os filtros excluem todos os arquivos.'
+      )
     }
 
     const longest = items.reduce((m, it) => Math.max(m, it.rel.length), 0)
@@ -299,9 +325,15 @@ export async function runJob(
         // 1) acessível?
         const st = await withTimeout(stat(dest.path), accessTimeout).catch(() => null)
         if (!st || !st.isDirectory()) {
-          throw new DestinationError('Destino indisponível: verifique se o disco está conectado.', 'EUNAVAILABLE')
+          throw new DestinationError(
+            'Destino indisponível: verifique se o disco está conectado.',
+            'EUNAVAILABLE'
+          )
         }
-        // 2) espaço livre
+        // 2) pasta da rotina, marcador e sobras de execuções anteriores (libera espaço antes da checagem)
+        const routineDir = await resolveRoutineDir(dest.path, routine, L)
+        await cleanupLeftovers(routineDir, routine.id, L)
+        // 3) espaço livre ≥ bytes × 1,05
         const need = Math.ceil(totalBytes * 1.05)
         const space = await diskSpaceOf(dest.path, accessTimeout).catch(() => null)
         if (space && space.free < need) {
@@ -310,14 +342,19 @@ export async function runJob(
             'ENOSPC'
           )
         }
-        // 3) pasta da rotina, marcador e sobras de execuções anteriores
-        const routineDir = await resolveRoutineDir(dest.path, routine, L)
-        await cleanupLeftovers(routineDir, routine.id, L)
         if (routineDir.length + longest + 25 > 240) {
-          L('warn', 'Alguns caminhos no destino passam de 240 caracteres; o Explorer do Windows pode ter dificuldade para abri-los.')
+          L(
+            'warn',
+            'Alguns caminhos no destino passam de 240 caracteres; o Explorer do Windows pode ter dificuldade para abri-los.'
+          )
         }
         const stamp = await uniqueStamp(routineDir, startedAt)
-        const manifest = (files: number, bytes: number, skipped: number, verified?: boolean): BackupManifest => ({
+        const manifest = (
+          files: number,
+          bytes: number,
+          skipped: number,
+          verified?: boolean
+        ): BackupManifest => ({
           format: MANIFEST_FORMAT,
           version: 1,
           routineId: routine.id,
@@ -354,7 +391,10 @@ export async function runJob(
           if (routine.verify !== 'none') {
             const vi = await verifyZip(work, z.added, routine.verify, tracker, signal)
             if (vi.length) throw new DestinationError(verifyFailureMessage(vi), 'EVERIFY')
-            L('info', `Verificação ${routine.verify === 'full' ? 'completa' : 'rápida'} do ZIP concluída sem diferenças.`)
+            L(
+              'info',
+              `Verificação ${routine.verify === 'full' ? 'completa' : 'rápida'} do ZIP concluída sem diferenças.`
+            )
           }
           // 6) nome final + manifesto ao lado (fonte da retenção)
           await renameRetry(work, finalPath)
@@ -374,18 +414,29 @@ export async function runJob(
           await mkdir(work, { recursive: true }).catch((e) => {
             throw new DestinationError(destinationErrorMessage(errCode(e), e), errCode(e) || 'EDEST', e)
           })
-          const c = await copyTree(items, work, tracker, signal, { hash: routine.verify === 'full', hooks: opts.hooks })
+          const c = await copyTree(items, work, tracker, signal, {
+            hash: routine.verify === 'full',
+            hooks: opts.hooks
+          })
           skippedAll = [...walkSkipped, ...c.skipped]
           // 5) verifica
           if (routine.verify !== 'none') {
             const vi = await verifyCopiedFiles(c.copied, work, routine.verify, tracker, signal)
             if (vi.length) throw new DestinationError(verifyFailureMessage(vi), 'EVERIFY')
-            L('info', `Verificação ${routine.verify === 'full' ? 'completa' : 'rápida'} concluída sem diferenças.`)
+            L(
+              'info',
+              `Verificação ${routine.verify === 'full' ? 'completa' : 'rápida'} concluída sem diferenças.`
+            )
           }
           // 6) manifesto + rename
           await writeFolderManifest(
             work,
-            manifest(c.copied.length, c.bytes, skippedAll.length, routine.verify === 'none' ? undefined : true)
+            manifest(
+              c.copied.length,
+              c.bytes,
+              skippedAll.length,
+              routine.verify === 'none' ? undefined : true
+            )
           )
           res.filesCopied = c.copied.length
           res.bytesCopied = c.bytes
@@ -401,7 +452,10 @@ export async function runJob(
               path: work,
               reason: `A pasta não pôde ser renomeada (${errCode(e) || 'bloqueada'}); será finalizada na próxima execução`
             })
-            L('warn', `Não foi possível dar o nome final à pasta do backup (${errCode(e) || errMessage(e)}). Ela será finalizada na próxima execução.`)
+            L(
+              'warn',
+              `Não foi possível dar o nome final à pasta do backup (${errCode(e) || errMessage(e)}). Ela será finalizada na próxima execução.`
+            )
           }
         }
 
@@ -421,7 +475,8 @@ export async function runJob(
           res.pruned = await applyRetention(routineDir, routine.id, routine.retention, now(), L)
         }
       } catch (e) {
-        if (workPath && !keepWork) await rm(workPath, { recursive: true, force: true, maxRetries: 2 }).catch(() => {})
+        if (workPath && !keepWork)
+          await rm(workPath, { recursive: true, force: true, maxRetries: 2 }).catch(() => {})
         if (signal.aborted) {
           res.status = 'cancelled'
           res.error = 'Execução cancelada.'
@@ -446,7 +501,9 @@ export async function runJob(
   /* ---------------------------- resultado ---------------------------- */
   const dests = result.destinations
   const skippedCount = (d: DestinationResult) => skippedCounts.get(d) ?? d.skipped.length
-  const best = dests.filter((d) => d.status === 'success' || d.status === 'warning').sort((a, b) => b.filesCopied - a.filesCopied)[0]
+  const best = dests
+    .filter((d) => d.status === 'success' || d.status === 'warning')
+    .sort((a, b) => b.filesCopied - a.filesCopied)[0]
   result.filesCopied = best?.filesCopied ?? Math.max(0, ...dests.map((d) => d.filesCopied))
   result.bytesCopied = best?.bytesCopied ?? Math.max(0, ...dests.map((d) => d.bytesCopied))
   result.filesSkipped = Math.max(0, ...dests.map(skippedCount))
@@ -467,6 +524,9 @@ export async function runJob(
     return finish('failed', msg)
   }
   const status: FinalRunStatus = dests.some((d) => d.status === 'warning') ? 'warning' : 'success'
-  L(status === 'success' ? 'info' : 'warn', status === 'success' ? 'Backup concluído com sucesso.' : 'Backup concluído com avisos.')
+  L(
+    status === 'success' ? 'info' : 'warn',
+    status === 'success' ? 'Backup concluído com sucesso.' : 'Backup concluído com avisos.'
+  )
   return finish(status)
 }

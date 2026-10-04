@@ -7,13 +7,22 @@
 //   BC_DEBUG=1             log informativo também no console
 
 import { join, resolve } from 'node:path'
-import { app, dialog, Menu, nativeTheme, powerMonitor, session, type MenuItemConstructorOptions } from 'electron'
+import {
+  app,
+  dialog,
+  Menu,
+  nativeTheme,
+  powerMonitor,
+  session,
+  type MenuItemConstructorOptions
+} from 'electron'
 import { IPC_EVENTS } from '@shared/api'
 import { ROUTES } from '@shared/routes'
 import { HIDDEN_FLAG, setAutoStart, startedHidden } from './autostart'
 import { createContext, type AppContext } from './context'
 import { registerIpc } from './ipc'
 import { initLogger, log } from './logger'
+import { isAppUrl } from './paths'
 import { showNotification } from './notify'
 import { createTray, destroyTray } from './tray'
 import {
@@ -78,7 +87,10 @@ function bootstrap(): void {
     .then(start)
     .catch((e) => {
       log.error('Falha ao iniciar', e)
-      dialog.showErrorBox('BC Backup', `Não foi possível iniciar o BC Backup.\n\n${e instanceof Error ? e.message : String(e)}`)
+      dialog.showErrorBox(
+        'BC Backup',
+        `Não foi possível iniciar o BC Backup.\n\n${e instanceof Error ? e.message : String(e)}`
+      )
       app.exit(1)
     })
 }
@@ -148,7 +160,10 @@ async function setAllEnabled(c: AppContext, enabled: boolean): Promise<void> {
   const { store } = c
   const now = new Date().toISOString()
   if (!enabled) {
-    const ids = store.routines().filter((r) => r.enabled).map((r) => r.id)
+    const ids = store
+      .routines()
+      .filter((r) => r.enabled)
+      .map((r) => r.id)
     for (const id of ids) {
       const r = store.getRoutine(id)
       if (r) await store.upsertRoutine({ ...r, enabled: false, updatedAt: now })
@@ -173,9 +188,21 @@ async function start(): Promise<void> {
   initLogger(join(app.getPath('userData'), 'logs'))
   log.info(`BC Backup ${app.getVersion()} iniciando (userData: ${app.getPath('userData')})`)
 
-  // Segurança: nenhuma permissão de navegador (câmera, notificações web, etc.).
-  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
-  session.defaultSession.setPermissionCheckHandler(() => false)
+  // Segurança: nenhuma permissão de navegador (câmera, notificações web, etc.), exceto gravar
+  // texto na área de transferência ("Copiar log") a partir da nossa interface.
+  const allowed = (perm: string, wc: Electron.WebContents | null) =>
+    perm === 'clipboard-sanitized-write' && !!wc && !wc.isDestroyed() && isAppUrl(wc.getURL())
+  session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(allowed(perm, wc)))
+  session.defaultSession.setPermissionCheckHandler((wc, perm) => allowed(perm, wc))
+  // Sem download de dicionários do corretor (o app não precisa falar com a internet à toa).
+  session.defaultSession.setSpellCheckerEnabled(false)
+  if (process.platform === 'linux') {
+    try {
+      session.defaultSession.setSpellCheckerLanguages([])
+    } catch {
+      // sem suporte: ignora
+    }
+  }
 
   const c = await createContext()
   ctx = c

@@ -100,7 +100,10 @@ export function caseInsensitiveFs(platform: NodeJS.Platform = process.platform):
   return platform === 'win32' || platform === 'darwin'
 }
 
-export function makeFilter(filters: Partial<Filters> | undefined, platform: NodeJS.Platform = process.platform): FileFilter {
+export function makeFilter(
+  filters: Partial<Filters> | undefined,
+  platform: NodeJS.Platform = process.platform
+): FileFilter {
   const opts = { dot: true, nocase: caseInsensitiveFs(platform) }
   const include = (filters?.include ?? []).map(normalizePattern).filter((p): p is string => !!p)
   const exclude = (filters?.exclude ?? []).map(normalizePattern).filter((p): p is string => !!p)
@@ -207,7 +210,9 @@ export function skipReason(code: string, isDir = false): string {
     case 'EIO':
       return 'Erro de leitura no disco de origem'
     default:
-      return isDir ? `Não foi possível ler a pasta (${code || 'erro'})` : `Não foi possível ler o arquivo (${code || 'erro'})`
+      return isDir
+        ? `Não foi possível ler a pasta (${code || 'erro'})`
+        : `Não foi possível ler o arquivo (${code || 'erro'})`
   }
 }
 

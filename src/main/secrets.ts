@@ -14,7 +14,9 @@ export async function sealSecret(plain: string): Promise<string> {
     log.warn('safeStorage assíncrono indisponível', e)
   }
   if (safeStorage.isEncryptionAvailable()) return `s1:${safeStorage.encryptString(plain).toString('base64')}`
-  throw new Error('Não foi possível proteger a senha neste computador (o cofre de senhas do sistema não está disponível).')
+  throw new Error(
+    'Não foi possível proteger a senha neste computador (o cofre de senhas do sistema não está disponível).'
+  )
 }
 
 /** Decifra; `reseal` recebe o novo valor quando a chave do sistema foi trocada. */

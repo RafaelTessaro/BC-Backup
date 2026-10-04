@@ -24,7 +24,11 @@ export function isSmtpConfigured(s: Pick<AppSettings, 'smtp'> | SmtpSettings): b
 }
 
 /** Mapeamento do doc 01 §7: ssl → secure (465), starttls → requireTLS (587), none → ignoreTLS. */
-export function transportOptions(smtp: Omit<SmtpSettings, 'hasPassword'>, password: string, o: TransportOverrides = {}) {
+export function transportOptions(
+  smtp: Omit<SmtpSettings, 'hasPassword'>,
+  password: string,
+  o: TransportOverrides = {}
+) {
   const connect = o.connectTimeoutMs ?? 15_000
   return {
     host: smtp.host.trim(),
@@ -99,7 +103,11 @@ export function smtpErrorMessage(e: unknown, smtp?: Pick<SmtpSettings, 'port' | 
   if (/5\.7\.30|basic authentication is (not supported|disabled)/i.test(resp + msg)) {
     return 'A Microsoft recusou a autenticação básica (SMTP AUTH). Peça ao administrador do Microsoft 365 para habilitá-la ou use outro provedor.'
   }
-  if (/wrong version number|tls_validate_record_header|ssl3_get_record|packet length too long|unknown protocol/i.test(msg)) {
+  if (
+    /wrong version number|tls_validate_record_header|ssl3_get_record|packet length too long|unknown protocol/i.test(
+      msg
+    )
+  ) {
     return 'A porta e a segurança não combinam. Use 465 com SSL/TLS ou 587 com STARTTLS.'
   }
   if (/self[- ]signed|unable to verify|certificate|CERT_|ERR_TLS_CERT/i.test(msg) && err.code !== 'EAUTH') {
@@ -124,14 +132,16 @@ export function smtpErrorMessage(e: unknown, smtp?: Pick<SmtpSettings, 'port' | 
       if (/ETIMEDOUT|timed? ?out/i.test(msg)) {
         return `Tempo esgotado ao falar com o servidor${port}. Confira servidor e porta, e se um firewall ou antivírus bloqueia o envio.`
       }
-      if (/ENOTFOUND|EAI_AGAIN/.test(msg)) return 'Servidor SMTP não encontrado. Confira o endereço e a conexão com a internet.'
+      if (/ENOTFOUND|EAI_AGAIN/.test(msg))
+        return 'Servidor SMTP não encontrado. Confira o endereço e a conexão com a internet.'
       return `Não foi possível conectar ao servidor SMTP${port}. Verifique a internet, o firewall e a porta.`
     case 'ETLS':
       return 'Falha ao negociar a conexão segura (TLS/STARTTLS). Use 465 com SSL/TLS ou 587 com STARTTLS.'
     case 'EENVELOPE':
       return 'Remetente ou destinatário recusado pelo servidor. Use como remetente o mesmo e-mail da conta.'
     case 'EMESSAGE':
-      if (/^55[0-4]|5\.7\.1|sender|from/i.test(resp)) return 'Remetente recusado: use como remetente o mesmo e-mail da conta.'
+      if (/^55[0-4]|5\.7\.1|sender|from/i.test(resp))
+        return 'Remetente recusado: use como remetente o mesmo e-mail da conta.'
       return `O servidor recusou a mensagem: ${resp || msg}`
     default:
       if (err.responseCode === 535) {

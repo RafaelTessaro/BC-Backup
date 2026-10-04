@@ -75,7 +75,10 @@ export function decideRunEmail(args: {
     return { status: 'not_configured', reason: 'Aviso por e-mail desligado nesta rotina.' }
   }
   if (!isSmtpConfigured(settings)) {
-    return { status: 'not_configured', reason: 'Servidor de e-mail (SMTP) não configurado em Configurações › E-mail.' }
+    return {
+      status: 'not_configured',
+      reason: 'Servidor de e-mail (SMTP) não configurado em Configurações › E-mail.'
+    }
   }
   const wants =
     (run.status === 'success' && n.onSuccess) ||
@@ -84,19 +87,20 @@ export function decideRunEmail(args: {
   if (!wants) return { status: 'skipped', reason: 'Esta situação não está marcada para envio de e-mail.' }
 
   const computer = settings.computerAlias.trim() || args.hostname
+  const attach = n.attachLog === 'always' || (n.attachLog === 'onFailure' && run.status === 'failed')
   const rendered = renderRunEmail({
     run,
     routine: { name: routine.name, notification: n },
     settings: {
       clientName: n.clientName?.trim() || settings.clientName,
-      computerAlias: computer,
+      computerAlias: settings.computerAlias.trim(),
       companyName: settings.companyName
     },
     hostname: args.hostname,
     appVersion: args.appVersion,
-    nextRunAt: args.nextRunAt
+    nextRunAt: args.nextRunAt,
+    logAttached: attach
   })
-  const attach = n.attachLog === 'always' || (n.attachLog === 'onFailure' && run.status === 'failed')
   const mail: OutgoingMail = {
     to: n.recipients,
     bcc: n.bcc,

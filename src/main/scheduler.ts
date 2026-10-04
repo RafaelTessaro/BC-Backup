@@ -108,8 +108,11 @@ export class Scheduler {
       const decision = decideSlot(r, this.d.getLastAttempt(r.id), now, this.d.onTimeMs)
       if (decision.kind !== 'none') {
         this.d.setLastAttempt(r.id, decision.slot.toISOString())
-        if (decision.kind === 'run') this.d.enqueue(r.id, 'schedule')
-        else if (decision.kind === 'catch-up') this.scheduleCatchUp(r.id, now)
+        if (decision.kind === 'run') {
+          // Um horário no tempo certo torna a recuperação pendente redundante.
+          this.cancelCatchUp(r.id)
+          this.d.enqueue(r.id, 'schedule')
+        } else if (decision.kind === 'catch-up') this.scheduleCatchUp(r.id, now)
         else this.d.onMissed?.(r, decision.slot)
       }
       if (r.enabled && isClockSchedule(r.schedule)) {
@@ -127,6 +130,13 @@ export class Scheduler {
     }
     const wait = Math.min(tickMax, Math.max(1_000, soonest - now.getTime() + 50))
     this.timer = setTimeout(this.tick, wait)
+  }
+
+  private cancelCatchUp(id: ID): void {
+    const c = this.catchUps.get(id)
+    if (!c) return
+    clearTimeout(c.timer)
+    this.catchUps.delete(id)
   }
 
   private scheduleCatchUp(id: ID, now: Date): void {

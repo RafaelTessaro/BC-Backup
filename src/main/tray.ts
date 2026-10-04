@@ -1,12 +1,13 @@
 // Ícone e menu da bandeja (design §7(i)). Ícone por estado: resources/tray.png (normal),
-// tray-running.png (executando), tray-error.png (falha) — com @2x; no Windows aceita .ico.
-// Arquivo ausente → cai para tray.png → imagem vazia (nunca quebra o app).
+// tray-running.png (executando), tray-warning.png (último backup com avisos), tray-error.png
+// (falha) — com @2x; no Windows prefere .ico; no macOS prefere "<nome>Template.png" (imagem modelo).
+// Arquivo ausente → cai para o ícone normal → imagem vazia (nunca quebra o app).
 
 import { Menu, Tray, nativeImage, type MenuItemConstructorOptions, type NativeImage } from 'electron'
 import { resourcePath } from './paths'
 import { log } from './logger'
 
-export type TrayState = 'idle' | 'running' | 'error'
+export type TrayState = 'idle' | 'running' | 'warning' | 'error'
 
 export interface TrayModel {
   state: TrayState
@@ -37,15 +38,13 @@ const imageCache = new Map<TrayState, NativeImage>()
 function loadImage(state: TrayState): NativeImage {
   const cached = imageCache.get(state)
   if (cached) return cached
-  const base = state === 'idle' ? 'tray' : `tray-${state}`
-  const names: string[] = []
-  if (process.platform === 'win32') names.push(`${base}.ico`)
-  if (process.platform === 'darwin' && state === 'idle') names.push('trayTemplate.png')
-  names.push(`${base}.png`)
-  if (state !== 'idle') {
-    if (process.platform === 'win32') names.push('tray.ico')
-    names.push('tray.png')
+  const variants = (base: string): string[] => {
+    if (process.platform === 'win32') return [`${base}.ico`, `${base}.png`]
+    if (process.platform === 'darwin') return [`${base}Template.png`, `${base}.png`]
+    return [`${base}.png`]
   }
+  const base = state === 'idle' ? 'tray' : `tray-${state}`
+  const names = [...variants(base), ...(state === 'idle' ? [] : variants('tray'))]
   let img = nativeImage.createEmpty()
   for (const n of names) {
     const p = resourcePath(n)

@@ -29,7 +29,8 @@ export function showNotification(title: string, body: string, onClick?: () => vo
   }
 }
 
-const plural = (n: number, one: string, many: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`
+const plural = (n: number, one: string, many: string) =>
+  `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`
 
 /** Título/corpo pt-BR para o fim de uma execução (null = não notificar, ex.: cancelada). */
 export function runNotificationText(r: RunSummary): { title: string; body: string } | null {

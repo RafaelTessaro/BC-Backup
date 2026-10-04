@@ -2,7 +2,14 @@
 // (titleBarOverlay no Windows/Linux, hiddenInset no macOS), cor de fundo do tema resolvido,
 // lembra tamanho/posição e fecha para a bandeja.
 
-import { app, BrowserWindow, nativeTheme, screen, shell, type BrowserWindowConstructorOptions } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  nativeTheme,
+  screen,
+  shell,
+  type BrowserWindowConstructorOptions
+} from 'electron'
 import { IPC_EVENTS } from '@shared/api'
 import type { WindowState } from './store'
 import { devRendererUrl, isAppUrl, preloadPath, rendererIndexPath, resourcePath } from './paths'
@@ -117,7 +124,11 @@ function createWindow(): BrowserWindow {
       navigateOnDragDrop: false
     }
   }
-  if (state?.x !== undefined && state.y !== undefined && boundsVisible({ x: state.x, y: state.y, width: opts.width!, height: opts.height! })) {
+  if (
+    state?.x !== undefined &&
+    state.y !== undefined &&
+    boundsVisible({ x: state.x, y: state.y, width: opts.width!, height: opts.height! })
+  ) {
     opts.x = state.x
     opts.y = state.y
   } else {
@@ -134,9 +145,10 @@ function createWindow(): BrowserWindow {
 
   const w = new BrowserWindow(opts)
   loaded = false
-  if (state?.maximized) w.maximize()
 
   w.once('ready-to-show', () => {
+    // maximize() numa janela oculta a mostra no Windows: só depois de pronta.
+    if (state?.maximized) w.maximize()
     w.show()
     if (process.platform === 'darwin') void app.dock?.show()
   })

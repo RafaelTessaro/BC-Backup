@@ -54,7 +54,11 @@ export function retentionCutoff(days: number, now: Date): Date {
 }
 
 /** Seleção pura (doc 01 §6). Devolve os que devem ser apagados, do mais antigo ao mais novo. */
-export function selectForDeletion<T extends { date: Date }>(snaps: T[], policy: RetentionPolicy, now: Date): T[] {
+export function selectForDeletion<T extends { date: Date }>(
+  snaps: T[],
+  policy: RetentionPolicy,
+  now: Date
+): T[] {
   if (!policy.enabled || !(policy.days > 0)) return []
   const cutoff = retentionCutoff(Math.floor(policy.days), now).getTime()
   const sorted = [...snaps].sort((a, b) => b.date.getTime() - a.date.getTime())
@@ -137,7 +141,11 @@ export async function applyRetention(
  *  - "<carimbo>(.zip).excluindo" → termina a exclusão.
  *  - "<carimbo>.zip.manifesto.json" sem o .zip correspondente → apaga.
  */
-export async function cleanupLeftovers(routineDir: string, routineId: string, log: LogFn = () => {}): Promise<void> {
+export async function cleanupLeftovers(
+  routineDir: string,
+  routineId: string,
+  log: LogFn = () => {}
+): Promise<void> {
   let names: string[]
   try {
     names = await readdir(routineDir)

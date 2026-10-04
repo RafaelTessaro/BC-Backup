@@ -15,7 +15,12 @@ export interface ExportFile {
   routines: StoredRoutine[]
 }
 
-export function buildExport(settings: AppSettings, routines: StoredRoutine[], appVersion: string, now = new Date()): ExportFile {
+export function buildExport(
+  settings: AppSettings,
+  routines: StoredRoutine[],
+  appVersion: string,
+  now = new Date()
+): ExportFile {
   const { trayHintShown: _t, computerAlias: _c, ...rest } = settings
   return {
     format: EXPORT_FORMAT,
@@ -44,7 +49,9 @@ export function planImport(raw: unknown, existing: StoredRoutine[], now = new Da
     throw new Error('Este arquivo não é uma exportação de configurações do BC Backup.')
   }
   if (typeof raw.version !== 'number' || raw.version > 1) {
-    throw new Error('Este arquivo foi gerado por uma versão mais nova do BC Backup. Atualize o programa e tente de novo.')
+    throw new Error(
+      'Este arquivo foi gerado por uma versão mais nova do BC Backup. Atualize o programa e tente de novo.'
+    )
   }
   const ids = new Set(existing.map((r) => r.id))
   const names = new Set(existing.map((r) => r.name.trim().toLocaleLowerCase('pt-BR')))

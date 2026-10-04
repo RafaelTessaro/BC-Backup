@@ -25,7 +25,7 @@ export class ProgressTracker {
   private samples: Array<{ t: number; b: number }> = []
   /** Bytes acumulados em todos os destinos (base da velocidade). */
   private cumulative = 0
-  private copyStartedAt = 0
+  private copyStartedAt: number | null = null
 
   constructor(
     base: ProgressBase,
@@ -65,7 +65,7 @@ export class ProgressTracker {
   }
 
   startDestination(index: number, path: string, filesTotal: number, bytesTotal: number): void {
-    if (!this.copyStartedAt) this.copyStartedAt = this.now()
+    if (this.copyStartedAt === null) this.copyStartedAt = this.now()
     this.p = {
       ...this.p,
       phase: 'copying',
@@ -82,7 +82,15 @@ export class ProgressTracker {
 
   /** Reinicia contadores para a fase de verificação do destino atual. */
   startVerify(filesTotal: number, bytesTotal: number): void {
-    this.p = { ...this.p, phase: 'verifying', filesTotal, bytesTotal, filesDone: 0, bytesDone: 0, etaMs: undefined }
+    this.p = {
+      ...this.p,
+      phase: 'verifying',
+      filesTotal,
+      bytesTotal,
+      filesDone: 0,
+      bytesDone: 0,
+      etaMs: undefined
+    }
     this.tick(true)
   }
 
@@ -115,7 +123,12 @@ export class ProgressTracker {
   }
 
   private updateEta(t: number): void {
-    if (this.p.phase !== 'copying' || !this.copyStartedAt || t - this.copyStartedAt < ETA_AFTER_MS || this.p.speed <= 0) {
+    if (
+      this.p.phase !== 'copying' ||
+      this.copyStartedAt === null ||
+      t - this.copyStartedAt < ETA_AFTER_MS ||
+      this.p.speed <= 0
+    ) {
       if (this.p.phase === 'copying') this.p.etaMs = undefined
       return
     }

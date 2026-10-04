@@ -134,7 +134,11 @@ export async function readRoutineMarker(routineDir: string): Promise<RoutineMark
   return v as RoutineMarker
 }
 
-export async function writeRoutineMarker(routineDir: string, routineId: string, routineName: string): Promise<void> {
+export async function writeRoutineMarker(
+  routineDir: string,
+  routineId: string,
+  routineName: string
+): Promise<void> {
   const marker: RoutineMarker = {
     format: 'bcbackup-rotina',
     routineId,

@@ -76,7 +76,9 @@ type Missing = Exclude<keyof typeof IPC_CHANNELS, keyof HandlerMap>
 const _allChannelsCovered: Missing extends never ? true : Missing = true
 void _allChannelsCovered
 
-type Handler<K extends keyof HandlerMap> = (...args: unknown[]) => Promise<Awaited<ReturnType<HandlerMap[K]>>> | Awaited<ReturnType<HandlerMap[K]>>
+type Handler<K extends keyof HandlerMap> = (
+  ...args: unknown[]
+) => Promise<Awaited<ReturnType<HandlerMap[K]>>> | Awaited<ReturnType<HandlerMap[K]>>
 
 function trustedSender(frame: WebFrameMain | null): boolean {
   if (!frame) return false
@@ -95,8 +97,10 @@ function handle<K extends keyof HandlerMap>(key: K, fn: Handler<K>): void {
     try {
       return await fn(...args)
     } catch (err) {
-      if (!(err instanceof Error && err.name === 'IpcArgError')) log.warn(`IPC ${channel} falhou:`, errMessage(err))
-      throw err instanceof Error ? err : new Error(String(err))
+      if (!(err instanceof Error && err.name === 'IpcArgError'))
+        log.warn(`IPC ${channel} falhou:`, errMessage(err))
+      // Sempre um Error simples: o renderer recebe "Error invoking remote method '<canal>': Error: <mensagem pt-BR>".
+      throw new Error(errMessage(err), { cause: err })
     }
   })
 }
@@ -108,7 +112,8 @@ function parentWindow(): BrowserWindow | undefined {
 function uniqueName(base: string, existing: string[]): string {
   const taken = new Set(existing.map((n) => n.trim().toLocaleLowerCase('pt-BR')))
   let name = base
-  for (let n = 2; taken.has(name.toLocaleLowerCase('pt-BR')); n++) name = `${base.replace(/ \(cópia(?: \d+)?\)$/, '')} (cópia ${n})`
+  for (let n = 2; taken.has(name.toLocaleLowerCase('pt-BR')); n++)
+    name = `${base.replace(/ \(cópia(?: \d+)?\)$/, '')} (cópia ${n})`
   return name
 }
 
@@ -197,7 +202,10 @@ export function registerIpc(ctx: AppContext): void {
     const copy: StoredRoutine = {
       ...structuredClone(src),
       id: newId(),
-      name: uniqueName(`${src.name} (cópia)`, store.routines().map((r) => r.name)).slice(0, 60),
+      name: uniqueName(
+        `${src.name} (cópia)`,
+        store.routines().map((r) => r.name)
+      ).slice(0, 60),
       createdAt: now,
       updatedAt: now
     }
@@ -285,9 +293,25 @@ export function registerIpc(ctx: AppContext): void {
     if (!smtp.host) return { ok: false, message: 'Informe o servidor SMTP.' }
     if (!smtp.fromEmail && !smtp.user) return { ok: false, message: 'Informe o e-mail do remetente.' }
     try {
-      const password = typed !== undefined ? typed : store.settings.smtp.hasPassword ? await ctx.getSmtpPassword() : ''
-      const rendered = renderTestEmail({ companyName: store.settings.companyName || 'BC Backup', hostname: ctx.hostname, appVersion: ctx.version })
-      await sendMail({ ...smtp, timeoutSec: Math.min(smtp.timeoutSec || 30, 20) }, password, { to: [to], ...rendered }, { connectTimeoutMs: 15_000 })
+      const password =
+        typed !== undefined ? typed : store.settings.smtp.hasPassword ? await ctx.getSmtpPassword() : ''
+      const security =
+        smtp.security === 'ssl' ? 'SSL/TLS' : smtp.security === 'starttls' ? 'STARTTLS' : 'sem criptografia'
+      const rendered = renderTestEmail({
+        companyName: store.settings.companyName || 'BC Backup',
+        hostname: ctx.hostname,
+        appVersion: ctx.version,
+        clientName: store.settings.clientName,
+        computerAlias: store.settings.computerAlias,
+        smtpServer: `${smtp.host}:${smtp.port} (${security})`,
+        sentAt: new Date()
+      })
+      await sendMail(
+        { ...smtp, timeoutSec: Math.min(smtp.timeoutSec || 30, 20) },
+        password,
+        { to: [to], ...rendered },
+        { connectTimeoutMs: 15_000 }
+      )
       return { ok: true, message: `E-mail de teste enviado para ${to}.` }
     } catch (e) {
       return { ok: false, message: smtpErrorMessage(e, smtp) }
@@ -314,7 +338,12 @@ export function registerIpc(ctx: AppContext): void {
         message: `Configurações exportadas (${data.routines.length} rotina(s)). A senha do e-mail não vai no arquivo.`
       }
     } catch (e) {
-      return { canceled: false, ok: false, path: res.filePath, message: `Não foi possível salvar o arquivo: ${errMessage(e)}` }
+      return {
+        canceled: false,
+        ok: false,
+        path: res.filePath,
+        message: `Não foi possível salvar o arquivo: ${errMessage(e)}`
+      }
     }
   })
   handle('settingsImport', async (): Promise<FileResult> => {
@@ -339,7 +368,10 @@ export function registerIpc(ctx: AppContext): void {
       }
       if (plan.settings) {
         const keepPassword = !!store.config.data.secrets.smtpPassword
-        await store.updateSettings({ ...plan.settings, smtp: { ...plan.settings.smtp!, hasPassword: keepPassword } })
+        await store.updateSettings({
+          ...plan.settings,
+          smtp: { ...plan.settings.smtp!, hasPassword: keepPassword }
+        })
       }
       await ctx.settingsChanged(prev)
       ctx.routinesChanged()
@@ -364,9 +396,19 @@ export function registerIpc(ctx: AppContext): void {
     const opts = asOptionalObject(o, 'opções')
     const multi = opts.multi === true
     const dialogOpts: OpenDialogOptions = {
-      title: typeof opts.title === 'string' && opts.title ? opts.title : multi ? 'Escolher pastas' : 'Escolher pasta',
+      title:
+        typeof opts.title === 'string' && opts.title
+          ? opts.title
+          : multi
+            ? 'Escolher pastas'
+            : 'Escolher pasta',
       buttonLabel: 'Selecionar',
-      properties: ['openDirectory', 'createDirectory', 'dontAddToRecent', ...(multi ? (['multiSelections'] as const) : [])]
+      properties: [
+        'openDirectory',
+        'createDirectory',
+        'dontAddToRecent',
+        ...(multi ? (['multiSelections'] as const) : [])
+      ]
     }
     const w = parentWindow()
     const res = w ? await dialog.showOpenDialog(w, dialogOpts) : await dialog.showOpenDialog(dialogOpts)
@@ -384,5 +426,7 @@ export function registerIpc(ctx: AppContext): void {
     return { canceled: res.canceled, paths: res.canceled ? [] : res.filePaths }
   })
   handle('systemStats', () => computeStats(store.routines(), history.records(), scheduler.nextRuns()))
-  handle('systemEstimateSize', (sources, filters) => estimateSize(asPathList(sources), asFilters(filters), 4000))
+  handle('systemEstimateSize', (sources, filters) =>
+    estimateSize(asPathList(sources), asFilters(filters), 4000)
+  )
 }

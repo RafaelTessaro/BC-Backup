@@ -29,7 +29,13 @@ export class RunQueue {
   enqueue(routineId: ID, routineName: string, trigger: RunTrigger): { runId: ID; added: boolean } {
     const existing = this.find(routineId)
     if (existing) return { runId: existing.runId, added: false }
-    const item: QueueItem = { runId: randomUUID(), routineId, routineName, trigger, enqueuedAt: this.now().toISOString() }
+    const item: QueueItem = {
+      runId: randomUUID(),
+      routineId,
+      routineName,
+      trigger,
+      enqueuedAt: this.now().toISOString()
+    }
     this.queue.push(item)
     this.onChange()
     void this.drain()
@@ -37,7 +43,10 @@ export class RunQueue {
   }
 
   find(idOrRunId: ID): QueueItem | undefined {
-    if (this.current && (this.current.item.routineId === idOrRunId || this.current.item.runId === idOrRunId)) {
+    if (
+      this.current &&
+      (this.current.item.routineId === idOrRunId || this.current.item.runId === idOrRunId)
+    ) {
       return this.current.item
     }
     return this.queue.find((q) => q.routineId === idOrRunId || q.runId === idOrRunId)

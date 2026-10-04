@@ -14,7 +14,16 @@ import { skipReason } from './walk'
 import type { ProgressTracker } from './progress'
 
 /** Erros da ORIGEM que viram aviso (arquivo pulado), não falha. */
-export const SKIPPABLE_SOURCE = new Set(['EBUSY', 'EPERM', 'EACCES', 'ENOENT', 'ELOOP', 'EINVAL', 'ENAMETOOLONG', 'EIO'])
+export const SKIPPABLE_SOURCE = new Set([
+  'EBUSY',
+  'EPERM',
+  'EACCES',
+  'ENOENT',
+  'ELOOP',
+  'EINVAL',
+  'ENAMETOOLONG',
+  'EIO'
+])
 
 /** Ganchos usados só nos testes (simular arquivo em uso etc.). */
 export interface EngineHooks {
@@ -64,7 +73,8 @@ export async function copyOne(
   onBytes: (n: number) => void,
   signal: AbortSignal,
   hash: boolean,
-  hooks?: EngineHooks
+  hooks?: EngineHooks,
+  madeDirs?: Set<string>
 ): Promise<CopiedFile> {
   const dst = destPathFor(destRoot, item.rel)
   // Abre a origem primeiro: arquivo em uso/sem permissão é detectado aqui, antes de criar o destino.
@@ -80,7 +90,11 @@ export async function copyOne(
   const hasher: Hash | null = hash ? createHash('sha256') : null
   try {
     try {
-      await mkdir(dirname(dst), { recursive: true })
+      const parent = dirname(dst)
+      if (!madeDirs?.has(parent)) {
+        await mkdir(parent, { recursive: true })
+        madeDirs?.add(parent)
+      }
     } catch (e) {
       throw Object.assign(e as Error, { side: 'dst' })
     }
@@ -124,6 +138,7 @@ export async function copyTree(
 ): Promise<CopyTreeResult> {
   const copied: CopiedFile[] = []
   const skipped: SkippedFile[] = []
+  const madeDirs = new Set<string>()
   let bytes = 0
   for (const item of items) {
     signal.throwIfAborted()
@@ -139,7 +154,8 @@ export async function copyTree(
         },
         signal,
         opts.hash,
-        opts.hooks
+        opts.hooks,
+        madeDirs
       )
       copied.push(r)
       bytes += r.bytes
@@ -195,6 +211,12 @@ export function destinationErrorMessage(code: string, e?: unknown): string {
 /** Diferença tolerada no mtime (FAT32/exFAT e compartilhamentos arredondam a 2 s). */
 const MTIME_TOLERANCE_MS = 2000
 
+/** FAT32/exFAT só guardam datas de 1980 a 2107: fora disso o mtime não é comparável. */
+function mtimeComparable(d: Date): boolean {
+  const y = d.getFullYear()
+  return y > 1980 && y < 2107
+}
+
 export interface VerifyIssue {
   path: string
   reason: string
@@ -209,10 +231,7 @@ export async function verifyCopiedFiles(
   signal: AbortSignal
 ): Promise<VerifyIssue[]> {
   const issues: VerifyIssue[] = []
-  tracker.startVerify(
-    copied.length,
-    mode === 'full' ? copied.reduce((a, c) => a + c.bytes, 0) : 0
-  )
+  tracker.startVerify(copied.length, mode === 'full' ? copied.reduce((a, c) => a + c.bytes, 0) : 0)
   for (const c of copied) {
     signal.throwIfAborted()
     const dst = destPathFor(destRoot, c.item.rel)
@@ -221,7 +240,11 @@ export async function verifyCopiedFiles(
       const st = await stat(dst)
       if (st.size !== c.bytes) {
         issues.push({ path: dst, reason: `Tamanho diferente do original (${st.size} ≠ ${c.bytes} bytes)` })
-      } else if (c.mtimeSet && Math.abs(st.mtime.getTime() - c.item.mtime.getTime()) > MTIME_TOLERANCE_MS) {
+      } else if (
+        c.mtimeSet &&
+        mtimeComparable(c.item.mtime) &&
+        Math.abs(st.mtime.getTime() - c.item.mtime.getTime()) > MTIME_TOLERANCE_MS
+      ) {
         issues.push({ path: dst, reason: 'Data de modificação diferente do original' })
       } else if (mode === 'full' && c.hash) {
         const h = createHash('sha256')
@@ -236,7 +259,8 @@ export async function verifyCopiedFiles(
           }),
           { signal }
         )
-        if (h.digest('hex') !== c.hash) issues.push({ path: dst, reason: 'Conteúdo diferente do original (hash)' })
+        if (h.digest('hex') !== c.hash)
+          issues.push({ path: dst, reason: 'Conteúdo diferente do original (hash)' })
       }
     } catch (e) {
       if (signal.aborted) throw signal.reason ?? e
