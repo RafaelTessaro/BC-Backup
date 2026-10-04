@@ -267,7 +267,7 @@ Lista (não grade de cards: escaneia melhor e escala para 20+ rotinas). Linha 72
 ╰────────────────────────────────────────────────────────────────────────╯
 ```
 
-Percentual em `stat` 32 px `tabular-nums`; ProgressBar 8 px. UI atualiza no máx. 4×/s; velocidade com média móvel de 3 s; ETA só após 5 s ("Calculando…"). Arquivo atual com truncamento no meio. "Parar" pede confirmação ("A cópia parcial será mantida").
+Percentual em `stat` 32 px `tabular-nums`; ProgressBar 8 px. UI atualiza no máx. 4×/s; velocidade com média móvel de 3 s; ETA só após 5 s ("Calculando…"). Arquivo atual com truncamento no meio. "Parar" pede confirmação ("A cópia parcial deste backup será apagada; os backups anteriores continuam").
 
 ### (e) Histórico
 
