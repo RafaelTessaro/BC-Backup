@@ -10,7 +10,7 @@
 //  - nada que não é da rotina (outra rotina, legado de outra rotina, arquivos do usuário, pasta com
 //    nome de backup sem manifesto, ZIP qualquer) é tocado; nenhuma sobra fica na pasta.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { LEGACY_ROOT_DIR, MANIFEST_FILE } from '@shared/defaults'
 import { backupStamp } from '@shared/format'
@@ -354,4 +354,44 @@ describe(`retenção ao longo de 30 dias (semente ${SEED}): dias=${DAYS}, mínim
     )
     expect(model.AP.length).toBe(8)
   }, 180_000)
+})
+
+describe('a mesma pasta configurada duas vezes (direto e por um link)', () => {
+  for (const mode of ['copy', 'zip'] as const) {
+    it(`${mode}: dias=1, mínimo=0 — os 2 backups de hoje ficam íntegros, os de ontem saem`, async () => {
+      const base = join(root, `duas-vezes-${mode}`)
+      const dest = join(base, 'backups')
+      await mkdir(dest, { recursive: true })
+      const link = join(base, 'atalho-para-backups')
+      await symlink(dest, link, 'dir')
+      const src = new LiveSource(join(base, 'origem'), new Rng(SEED + 1).fork(mode))
+      await src.init(6)
+      const routine = integrityRoutine({
+        sources: [{ id: 's1', path: src.path, kind: 'folder' }],
+        destinations: [
+          { id: 'a', path: dest },
+          { id: 'b', path: dest },
+          { id: 'c', path: link }
+        ],
+        mode,
+        retention: { enabled: true, days: 1, minKeep: 0 }
+      })
+      for (let day = 1; day <= 3; day++) {
+        await src.mutate(day)
+        const at = new Date(2026, 1, day, 18, 0, 0)
+        const r = await runAt(routine, at, { runId: `dup-${mode}-${day}` })
+        expect(r.status, r.errorMessage).toBe('success')
+        const stamp = backupStamp(at)
+        const names = [stamp, `${stamp}_2`, `${stamp}_3`].map((n) => (mode === 'zip' ? `${n}.zip` : n))
+        const listing = (await readdir(dest)).filter((n) => !n.endsWith('.manifesto.json')).sort()
+        expect(listing, `dia ${day}`).toEqual(names.sort())
+        for (const n of names)
+          expect(
+            await snapshotProblems(join(dest, n), src.state, { routineId: 'rot-1' }),
+            `dia ${day} ${n}`
+          ).toEqual([])
+        expect(await leftovers(dest)).toEqual([])
+      }
+    }, 60_000)
+  }
 })

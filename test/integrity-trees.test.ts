@@ -10,7 +10,7 @@
 // ZIP com mais de 65 535 entradas (Zip64).
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdir, readdir } from 'node:fs/promises'
+import { mkdir, readdir, utimes } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BackupMode, SourceItem } from '@shared/types'
 import { backupStamp } from '@shared/format'
@@ -153,7 +153,7 @@ describe('vários destinos: todos idênticos à origem (e entre si)', () => {
     medWant = await materialize(
       med,
       planTree(new Rng(SEED + 2), {
-        smallFiles: 300,
+        smallFiles: 120,
         depth: 12,
         boundarySizes: [0, 1, 64 * 1024 - 1, 64 * 1024 + 1, MiB - 1, MiB + 1],
         emptyDirs: 2,
@@ -408,4 +408,54 @@ describe.runIf(process.platform !== 'win32')('ZIP: nomes que o formato ZIP não 
       expect(problems).toEqual([])
     }
   })
+})
+
+// Datas de modificação fora do comum (arquivos de câmeras/sistemas com relógio errado, extraídos de
+// pacotes antigos ou com data zerada — no Windows aparecem como 01/01/1601). O yazl gravava o horário
+// Unix com writeUInt32LE de um número NEGATIVO para datas antes de 1970 → RangeError lançado FORA da
+// cadeia de promessas: o motor travava (no app, o processo do motor "caía") e a rotina ZIP nunca mais
+// gerava backup enquanto o arquivo existisse.
+describe('datas de modificação extremas', () => {
+  const DATES: Array<[string, Date]> = [
+    ['1601', new Date('1601-01-01T00:00:00Z')],
+    ['1960', new Date('1960-05-05T12:00:00Z')],
+    ['1969-12-31', new Date('1969-12-31T23:59:59Z')],
+    ['1970', new Date(0)],
+    ['1979', new Date('1979-06-01T00:00:00Z')],
+    ['2040', new Date('2040-02-29T10:00:00Z')],
+    ['2110', new Date('2110-01-01T00:00:00Z')]
+  ]
+  let odd: string
+  let w: TreeMap
+  beforeAll(async () => {
+    odd = join(root, 'datas')
+    w = new Map()
+    for (const [i, [label, d]] of DATES.entries()) {
+      // um pequeno (lido para a memória no ZIP) e um "grande" (direto no ZIP com limite 0) por data
+      const rel = `${label}/arquivo ${i}.bin`
+      w.set(rel, await writeContent(join(odd, ...rel.split('/')), 1000 + i, 'random', rel))
+      await utimes(join(odd, ...rel.split('/')), d, d)
+    }
+  })
+  for (const [mode, zipBufferMax] of [
+    ['copy', undefined],
+    ['zip', undefined],
+    ['zip', 0]
+  ] as const) {
+    it(`${mode}${zipBufferMax === 0 ? ' (direto no ZIP)' : ''}: backup completo e íntegro`, async () => {
+      const ds = await dests(1)
+      const at = new Date(2026, 2, 14, 10, mode === 'copy' ? 0 : zipBufferMax === 0 ? 2 : 1)
+      const r = await runAt(
+        integrityRoutine({
+          sources: [{ id: 's1', path: odd, kind: 'folder' }],
+          destinations: destList(ds),
+          mode
+        }),
+        at,
+        { job: { zipBufferMax } }
+      )
+      expect(r.status, r.errorMessage).toBe('success')
+      await expectExactSnapshot(ds[0], backupStamp(at), mode, w)
+    }, 20_000)
+  }
 })

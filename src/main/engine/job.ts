@@ -717,9 +717,12 @@ export async function runJob(
             )
           await renameRetry(work, claim.finalPath)
           res.outputPath = claim.finalPath
+          // Sem recriar a pasta do destino: se ela sumiu agora (disco desconectado), falha o destino.
           await writeJsonAtomic(
             zipSidecarPath(claim.finalPath),
-            manifest(z.added.length, z.bytes, skippedAll.length, verify !== 'none')
+            manifest(z.added.length, z.bytes, skippedAll.length, verify !== 'none'),
+            true,
+            false
           )
           // A pasta reservada só tem o marcador agora.
           await rm(claim.workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(
@@ -762,6 +765,14 @@ export async function runJob(
             res.outputPath = claim.finalPath
             workPath = null
           } catch (e) {
+            // Só é "backup completo com nome provisório" se a pasta continua lá, com o manifesto. Se ela
+            // sumiu (disco desconectado, pasta apagada), é falha do destino: o "Mover" não pode contar com
+            // um backup que não está onde deveria.
+            const gone = await stat(join(work, MANIFEST_FILE)).then(
+              () => false,
+              (e2: unknown) => errCode(e2) === 'ENOENT' || errCode(e2) === 'ENOTDIR'
+            )
+            if (gone) throw new DestinationError(destinationErrorMessage('ENOENT', e), 'ENOENT', e)
             // Backup completo e com manifesto: fica com o nome provisório e é finalizado na próxima execução.
             keepWork = true
             res.outputPath = work

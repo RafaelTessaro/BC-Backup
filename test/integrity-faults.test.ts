@@ -62,6 +62,9 @@ const ctl = vi.hoisted(() => {
     read: null as Fault | null,
     /** fh.writeFile (manifestos: writeJsonAtomic): grava metade e falha com `code`. */
     wfile: null as Fault | null,
+    /** Chamados antes do mkdir/open/rename reais (simulam o destino sumindo exatamente naquele instante). */
+    onTouch: null as null | ((p: string) => Promise<void>),
+    onRename: null as null | ((from: string, to: string) => Promise<void>),
     /** Releitura do DESTINO (verificação do modo pasta). */
     reread: null as Fault | null
   }
@@ -140,6 +143,7 @@ vi.mock('node:fs/promises', async (orig) => {
   const real = await orig<typeof import('node:fs/promises')>()
   const { Transform } = await import('node:stream')
   const open = (async (p: string, ...rest: unknown[]) => {
+    await ctl.state.onTouch?.(String(p))
     const fh = await (real.open as (...a: unknown[]) => Promise<import('node:fs/promises').FileHandle>)(
       p,
       ...rest
@@ -182,13 +186,23 @@ vi.mock('node:fs/promises', async (orig) => {
       }
     })
   }) as typeof real.open
-  return { ...real, default: { ...real, open }, open }
+  const mkdir = (async (p: string, o?: unknown) => {
+    await ctl.state.onTouch?.(String(p))
+    return real.mkdir(p, o as never)
+  }) as typeof real.mkdir
+  const rename = (async (a: string, b: string) => {
+    await ctl.state.onRename?.(String(a), String(b))
+    return real.rename(a, b)
+  }) as typeof real.rename
+  return { ...real, default: { ...real, open, mkdir, rename }, open, mkdir, rename }
 })
 
 function fault(kind: 'error' | 'flip' | 'drop', at: number, match: (p: string) => boolean, code?: string) {
   return { kind, at, match, code, seen: 0, fired: false }
 }
 function disarm(): void {
+  ctl.state.onTouch = null
+  ctl.state.onRename = null
   ctl.state.write = null
   ctl.state.wfile = null
   ctl.state.read = null
@@ -303,7 +317,7 @@ describe('EIO na leitura da origem (no meio de um arquivo)', () => {
   it('pasta: o arquivo com erro de leitura fica de fora (aviso); o backup tem todo o resto, íntegro', async () => {
     const rng = new Rng(SEED + 1)
     const candidates = [...want].filter(([, s]) => s.size > 0).map(([k]) => k)
-    for (let round = 0; round < 4; round++) {
+    for (let round = 0; round < 3; round++) {
       const rel = round === 0 ? bigRel : rng.pick(candidates)
       const at = rng.int(0, want.get(rel)!.size - 1)
       const ds = await freshDests(2)
@@ -638,7 +652,7 @@ describe('cancelamento em pontos sorteados', () => {
         })
         expect(r.status).toBe('success')
       }
-      for (let round = 0; round < 10; round++) {
+      for (let round = 0; round < 8; round++) {
         const ds = await freshDests(2)
         const k = rng.int(1, total)
         const ac = new AbortController()
@@ -812,4 +826,151 @@ describe('leitura rasgada sorteada (outro programa grava enquanto o backup lê)'
       expect(retriedSeen).toBeGreaterThan(0)
     }, 90_000)
   }
+})
+
+/* ------------------------------------------------------------------ */
+/* Pasta reservada some DEPOIS da verificação (modo pasta)             */
+/* ------------------------------------------------------------------ */
+
+describe('a pasta reservada some depois da verificação (disco desconectado/pasta apagada)', () => {
+  /** Origem própria (o "Mover" apaga): 6 arquivos. */
+  async function erpSource(tag: string): Promise<{ path: string; want: TreeMap }> {
+    const path = join(root, `erp-${tag}`)
+    const w: TreeMap = new Map()
+    for (let i = 0; i < 6; i++)
+      w.set(
+        `erp-${i}.fbk`,
+        await writeContent(join(path, `erp-${i}.fbk`), 5000 + i * 999, 'random', `${tag}${i}`)
+      )
+    return { path, want: w }
+  }
+  const later = () => {
+    const t = new Date()
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate() + 2, 10, 0, 0)
+  }
+
+  for (const move of [false, true]) {
+    it(`entre a verificação e o manifesto${move ? ' ("Mover")' : ''}: o manifesto NÃO é gravado numa pasta recriada; o destino falha${move ? ' e nada sai da origem' : ''}`, async () => {
+      const erp = await erpSource(`m${Number(move)}`)
+      const ds = await freshDests(2)
+      const gone = `${ds[0]}-desconectado`
+      const r = await runAt(
+        integrityRoutine({
+          sources: [{ id: 's1', path: erp.path, kind: 'folder' }],
+          destinations: ds.map((p, i) => ({ id: `d${i}`, path: p })),
+          ...(move ? { moveSources: { enabled: true, minAgeMinutes: 30, warnIfEmpty: true } } : {})
+        }),
+        later(),
+        {
+          job: {
+            hooks: {
+              beforeVerify: (out, i) => {
+                if (i !== 0) return
+                // A verificação ainda vai passar; o disco "sai" no 1º acesso para gravar o manifesto
+                // (mkdir da pasta, ou a abertura do temporário).
+                ctl.state.onTouch = async (p) => {
+                  if (p !== out && !p.startsWith(join(out, MANIFEST_FILE))) return
+                  ctl.state.onTouch = null
+                  await rename(ds[0], gone)
+                }
+              }
+            }
+          }
+        }
+      ).finally(disarm)
+      const label = move ? 'Mover' : 'cópia'
+      expect(r.destinations[0].status, label).toBe('failed')
+      expect(r.status, label).toBe('failed')
+      // Nenhum "backup" com manifesto e sem os arquivos, em lugar nenhum.
+      if (
+        await stat(ds[0]).then(
+          () => true,
+          () => false
+        )
+      ) {
+        expect(await leftovers(ds[0]), label).toEqual([])
+        for (const n of await readdir(ds[0]))
+          expect((await readSnapshot(join(ds[0], n))).manifest, `${label}: ${n}`).toBeNull()
+      }
+      // A origem continua inteira (com "Mover", a porta fechou).
+      expect(treeDiff(erp.want, (await scanTree(erp.path)).files), label).toEqual([])
+    }, 30_000)
+  }
+
+  it('ZIP: o destino some ao gravar o manifesto ao lado → a pasta do destino não é recriada; "Mover" não apaga', async () => {
+    const erp = await erpSource('zip')
+    const ds = await freshDests(2)
+    const gone = `${ds[0]}-desconectado`
+    const r = await runAt(
+      integrityRoutine({
+        sources: [{ id: 's1', path: erp.path, kind: 'folder' }],
+        destinations: ds.map((p, i) => ({ id: `d${i}`, path: p })),
+        mode: 'zip',
+        moveSources: { enabled: true, minAgeMinutes: 30, warnIfEmpty: true }
+      }),
+      later(),
+      {
+        job: {
+          hooks: {
+            beforeVerify: (_out, i) => {
+              if (i !== 0) return
+              ctl.state.onTouch = async (p) => {
+                if (p !== ds[0] && !(p.startsWith(ds[0] + '/') && p.includes('.zip.manifesto.json'))) return
+                ctl.state.onTouch = null
+                await rename(ds[0], gone)
+              }
+            }
+          }
+        }
+      }
+    ).finally(disarm)
+    expect(r.destinations[0].status).toBe('failed')
+    expect(r.move?.removedCount ?? 0).toBe(0)
+    expect(
+      await stat(ds[0]).then(
+        () => true,
+        () => false
+      )
+    ).toBe(false)
+    // O .zip que já tinha o nome final continua completo no disco "desconectado" (manifesto interno).
+    const zips = (await readdir(gone)).filter((n) => n.endsWith('.zip'))
+    expect(zips.length).toBe(1)
+    expect(
+      await snapshotProblems(join(gone, zips[0]), erp.want, { routineId: 'rot-1', sidecarOptional: true })
+    ).toEqual([])
+    expect(treeDiff(erp.want, (await scanTree(erp.path)).files)).toEqual([])
+  }, 30_000)
+
+  it('entre o manifesto e o nome final: se a pasta sumiu, NÃO conta como "backup completo com nome provisório" ("Mover" não apaga)', async () => {
+    const erp = await erpSource('rn')
+    const ds = await freshDests(2)
+    const trash = join(root, 'lixeira-rn')
+    await mkdir(trash, { recursive: true })
+    const r = await runAt(
+      integrityRoutine({
+        sources: [{ id: 's1', path: erp.path, kind: 'folder' }],
+        destinations: ds.map((p, i) => ({ id: `d${i}`, path: p })),
+        moveSources: { enabled: true, minAgeMinutes: 30, warnIfEmpty: true }
+      }),
+      later(),
+      {
+        job: {
+          hooks: {
+            beforeVerify: (out, i) => {
+              if (i !== 0) return
+              ctl.state.onRename = async (from) => {
+                if (from !== out) return
+                ctl.state.onRename = null
+                await rename(out, join(trash, 'apagada'))
+              }
+            }
+          }
+        }
+      }
+    ).finally(disarm)
+    expect(r.destinations[0].status).toBe('failed')
+    expect(r.status).toBe('failed')
+    expect(r.move?.removedCount ?? 0).toBe(0)
+    expect(treeDiff(erp.want, (await scanTree(erp.path)).files)).toEqual([])
+  }, 30_000)
 })

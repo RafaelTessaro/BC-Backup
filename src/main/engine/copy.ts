@@ -12,11 +12,11 @@ import { createHash, type Hash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import type { Stats } from 'node:fs'
 import { mkdir, open, rm, stat, utimes } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { join } from 'node:path'
 import { Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { SkippedFile } from '@shared/types'
-import { errCode } from './fsutil'
+import { errCode, isDirectory } from './fsutil'
 import type { FileItem } from './walk'
 import { skipReason } from './walk'
 import type { ProgressTracker } from './progress'
@@ -105,12 +105,24 @@ export function destPathFor(root: string, rel: string): string {
 }
 
 /**
- * `p` fica estritamente dentro de `root` (nunca a própria `root`)? Os dois vêm do mesmo `join`.
- * (Uma pasta chamada "..algo" dentro de `root` é dentro: só ".." como segmento inteiro sobe.)
+ * Cria as pastas de `relDir` (segmentos) DENTRO de `root`, uma a uma, sem `recursive`: nunca recria a
+ * própria `root` nem nada acima dela. Se `root` sumiu no meio da execução (disco desconectado; no
+ * Linux/macOS o ponto de montagem vazio continua lá), o mkdir falha com ENOENT e o destino falha — o
+ * backup nunca é gravado numa pasta recriada pelo caminho (sem o marcador e, talvez, no disco do sistema).
  */
-export function strictlyBelow(p: string, root: string): boolean {
-  const r = relative(root, p)
-  return !!r && r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r)
+async function mkdirBelow(root: string, relDir: string[], madeDirs?: Set<string>): Promise<void> {
+  let cur = root
+  for (const seg of relDir) {
+    cur = join(cur, seg)
+    if (madeDirs?.has(cur)) continue
+    try {
+      await mkdir(cur)
+    } catch (e) {
+      // Já existe (inclusive em sistemas que respondem outro código para pasta existente): segue.
+      if (errCode(e) !== 'EEXIST' && !(await isDirectory(cur))) throw e
+    }
+    madeDirs?.add(cur)
+  }
 }
 
 /**
@@ -153,20 +165,8 @@ export async function copyOne(
       throw Object.assign(e as Error, { side: 'src' })
     }
     try {
-      const parent = dirname(dst)
-      if (!madeDirs?.has(parent)) {
-        const first = await mkdir(parent, { recursive: true })
-        // Só cria pastas DENTRO de `destRoot` (a pasta reservada, com o marcador). Se o mkdir precisou
-        // recriar a própria `destRoot` (ou algo acima dela), o destino sumiu no meio da execução — disco
-        // desconectado; no Linux/macOS o ponto de montagem vazio continua lá. Nunca grava o backup numa
-        // pasta recriada pelo caminho (sem o marcador e, talvez, no disco do sistema): falha o destino.
-        if (first !== undefined && !strictlyBelow(first, destRoot)) {
-          throw Object.assign(new Error(`A pasta do backup sumiu durante a cópia: ${destRoot}`), {
-            code: 'ENOENT'
-          })
-        }
-        madeDirs?.add(parent)
-      }
+      // Só cria pastas DENTRO de `destRoot` (a pasta reservada, com o marcador): ver mkdirBelow.
+      await mkdirBelow(destRoot, dstRel.split('/').slice(0, -1), madeDirs)
     } catch (e) {
       throw Object.assign(e as Error, { side: 'dst' })
     }

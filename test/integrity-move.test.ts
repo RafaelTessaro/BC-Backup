@@ -221,7 +221,8 @@ for (const mode of ['copy', 'zip'] as BackupMode[]) {
           res = await runAt(routine, dayAt(day), {
             signal: ac.signal,
             runId: `run-${mode}-${day}`,
-            job: { hooks }
+            // ZIP: acima de 256 KiB direto no ZIP (montagem refeita com cópia estável se mudar na leitura).
+            job: { hooks, zipBufferMax: mode === 'zip' ? 256 * KiB : undefined }
           })
         } finally {
           if (d2Off) await rename(`${dests[1]}-desligado`, dests[1])

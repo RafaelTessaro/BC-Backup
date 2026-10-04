@@ -85,6 +85,17 @@ export function zipNameOk(rel: string): boolean {
   )
 }
 
+/**
+ * Data gravada na entrada do ZIP. O yazl grava o horário Unix com writeUInt32LE: uma data antes de
+ * 1970 (relógio errado, data zerada — no Windows, 01/01/1601) lançava RangeError FORA da cadeia de
+ * promessas e o motor travava/caía em toda execução. Só a data do cabeçalho é ajustada (para 1970);
+ * o conteúdo não muda. (Datas depois de 2038/2107 o próprio yazl já limita.)
+ */
+export function zipDate(d: Date): Date {
+  const t = d.getTime()
+  return Number.isFinite(t) && t >= 0 ? d : new Date(0)
+}
+
 export interface ZipTreeOptions {
   level: number
   tracker: ProgressTracker
@@ -167,7 +178,7 @@ async function zipOnce(
   /** Põe uma entrada no ZIP e espera o yazl consumi-la (um arquivo por vez). */
   const addEntry = async (rs: Readable, item: FileItem, mtime: Date): Promise<void> => {
     body = rs
-    zip.addReadStream(rs, zipName(item.rel), { mtime, compressionLevel: level })
+    zip.addReadStream(rs, zipName(item.rel), { mtime: zipDate(mtime), compressionLevel: level })
     try {
       await Promise.race([finished(rs), failed])
     } catch (e) {

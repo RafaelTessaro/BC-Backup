@@ -84,7 +84,10 @@ export async function readFolderManifest(dir: string): Promise<BackupManifest | 
 }
 
 export async function writeFolderManifest(dir: string, m: BackupManifest): Promise<void> {
-  await writeJsonAtomic(join(dir, MANIFEST_FILE), m)
+  // Nunca recria a pasta: se ela sumiu depois da verificação (disco desconectado; no Linux/macOS o
+  // ponto de montagem vazio continua lá), um manifesto numa pasta recriada VAZIA viraria um "backup
+  // concluído" sem nenhum arquivo — e o "Mover" apagaria a origem.
+  await writeJsonAtomic(join(dir, MANIFEST_FILE), m, true, false)
 }
 
 export function zipSidecarPath(zipPath: string): string {

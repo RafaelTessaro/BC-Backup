@@ -87,9 +87,18 @@ export async function readFileRetry(file: string, attempts = 6, baseDelayMs = 10
   }
 }
 
-/** Grava JSON de forma atômica: arquivo temporário + fsync + rename. */
-export async function writeJsonAtomic(file: string, data: unknown, pretty = true): Promise<void> {
-  await mkdir(dirname(file), { recursive: true })
+/**
+ * Grava JSON de forma atômica: arquivo temporário + fsync + rename.
+ * `createDir` = false: a pasta precisa existir (manifestos de backup — se a pasta reservada ou o destino
+ * sumiu, falha em vez de recriá-la vazia e "certificar" um backup que não está lá).
+ */
+export async function writeJsonAtomic(
+  file: string,
+  data: unknown,
+  pretty = true,
+  createDir = true
+): Promise<void> {
+  if (createDir) await mkdir(dirname(file), { recursive: true })
   const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`
   try {
     const fh = await open(tmp, 'w')
