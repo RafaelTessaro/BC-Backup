@@ -6,6 +6,7 @@
 //      lastAttemptSlot = slot                 ← consome ANTES: N horários perdidos → 1 execução
 //      agora − slot <= 2 min  → executa (trigger 'schedule')
 //      senão, catchUpMissed   → UMA recuperação após ~3 min (trigger 'catch-up')
+//                               (o app fechou antes dela: stop() devolve o horário como pendente)
 //      senão                  → registra "backup atrasado não executado"
 // Rotinas "startup" rodam uma vez, startupDelayMinutes após o app iniciar.
 // Rotinas pausadas (enabled=false) nunca rodam pelo agendador.
@@ -54,6 +55,11 @@ export interface SchedulerDeps {
   /** Coloca a rotina na fila global (o executor ignora se já estiver na fila/rodando). */
   enqueue(id: ID, trigger: RunTrigger): void
   onMissed?(routine: SchedRoutine, slot: Date): void
+  /**
+   * O app iniciou junto com o sistema? Rotinas "Ao ligar o computador" só rodam nesse caso — não a
+   * cada vez que o usuário abre o app no meio do dia. Ausente = sempre (testes).
+   */
+  isSystemStart?(): boolean
   now?(): Date
   tickMaxMs?: number
   onTimeMs?: number
@@ -63,8 +69,8 @@ export interface SchedulerDeps {
 export class Scheduler {
   private timer: NodeJS.Timeout | null = null
   private running = false
-  /** Recuperações pendentes: id → instante previsto. */
-  private catchUps = new Map<ID, { at: number; timer: NodeJS.Timeout }>()
+  /** Recuperações pendentes: id → instante previsto e o horário perdido que ela cobre. */
+  private catchUps = new Map<ID, { at: number; timer: NodeJS.Timeout; slot: Date }>()
   /** Execuções "ao iniciar" pendentes: id → instante previsto. */
   private startups = new Map<ID, { at: number; timer: NodeJS.Timeout }>()
 
@@ -78,7 +84,9 @@ export class Scheduler {
     if (this.running) return
     this.running = true
     const now = this.now().getTime()
+    const systemStart = this.d.isSystemStart ? this.d.isSystemStart() : true
     for (const r of this.d.routines()) {
+      if (!systemStart) break
       if (!r.enabled || r.schedule.kind !== 'startup') continue
       const delay = Math.max(0, r.schedule.startupDelayMinutes) * 60_000
       const timer = setTimeout(() => {
@@ -95,7 +103,13 @@ export class Scheduler {
     this.running = false
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
-    for (const c of this.catchUps.values()) clearTimeout(c.timer)
+    // Recuperação que não chegou a rodar (app fechando): o horário volta a ficar pendente. O slot já
+    // foi consumido ao marcá-la; sem isto o próximo início o veria como tratado e o backup perdido
+    // nunca rodaria.
+    for (const [id, c] of this.catchUps) {
+      clearTimeout(c.timer)
+      this.d.setLastAttempt(id, new Date(c.slot.getTime() - 1).toISOString())
+    }
     for (const s of this.startups.values()) clearTimeout(s.timer)
     this.catchUps.clear()
     this.startups.clear()
@@ -117,7 +131,7 @@ export class Scheduler {
           // Um horário no tempo certo torna a recuperação pendente redundante.
           this.cancelCatchUp(r.id)
           this.d.enqueue(r.id, 'schedule')
-        } else if (decision.kind === 'catch-up') this.scheduleCatchUp(r.id, now)
+        } else if (decision.kind === 'catch-up') this.scheduleCatchUp(r.id, now, decision.slot)
         else this.d.onMissed?.(r, decision.slot)
       }
       if (r.enabled && isClockSchedule(r.schedule)) {
@@ -144,7 +158,7 @@ export class Scheduler {
     this.catchUps.delete(id)
   }
 
-  private scheduleCatchUp(id: ID, now: Date): void {
+  private scheduleCatchUp(id: ID, now: Date, slot: Date): void {
     if (this.catchUps.has(id)) return
     const delay = this.d.catchUpDelayMs ?? CATCH_UP_DELAY_MS
     const timer = setTimeout(() => {
@@ -152,7 +166,7 @@ export class Scheduler {
       const cur = this.d.routines().find((x) => x.id === id)
       if (cur?.enabled && isClockSchedule(cur.schedule)) this.d.enqueue(id, 'catch-up')
     }, delay)
-    this.catchUps.set(id, { at: now.getTime() + delay, timer })
+    this.catchUps.set(id, { at: now.getTime() + delay, timer, slot })
   }
 
   /** Próxima execução prevista (ISO) por rotina; null para manual/pausada/sem horário. */

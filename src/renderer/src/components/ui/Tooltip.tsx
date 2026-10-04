@@ -16,9 +16,11 @@ interface TooltipProps {
   delay?: number
 }
 
+// Sem animação de saída: fechando, o Tooltip continuaria montado (e no topo da pilha de camadas) e
+// engoliria o Esc seguinte — Tab até outro controle + Esc não fechava o drawer/diálogo aberto.
 const CONTENT =
   'z-[60] max-w-[420px] rounded-sm bg-tooltip px-2 py-1 text-caption font-medium text-tooltip-fg shadow-pop ' +
-  'data-[state=delayed-open]:animate-pop-in data-[state=instant-open]:animate-fade-in data-[state=closed]:animate-fade-out ' +
+  'data-[state=delayed-open]:animate-pop-in data-[state=instant-open]:animate-fade-in ' +
   'break-words select-none'
 
 /**

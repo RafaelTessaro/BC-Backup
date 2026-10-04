@@ -42,9 +42,18 @@ interface LiveRun {
   log: LogEntry[]
   /** "Mover": arquivos já apagados da origem (contagem exata; o log ao vivo tem limite). */
   moved: number
+  /** Registro final, já montado enquanto o e-mail é enviado (fase "notifying"). */
+  record?: RunRecord
 }
 
 const MAX_LIVE_LOG = 5000
+
+/** "Mover": o motor parou sem devolver o relatório; as linhas "Movido:" recebidas dizem o que saiu. */
+function movedNotice(moved: number): string {
+  return moved
+    ? `A execução parou antes de terminar; ${moved === 1 ? '1 arquivo já tinha sido apagado' : `${moved.toLocaleString('pt-BR')} arquivos já tinham sido apagados`} da origem (veja o log).`
+    : 'Nada foi apagado da origem.'
+}
 
 function userDataPath(): string | undefined {
   try {
@@ -57,6 +66,8 @@ function userDataPath(): string | undefined {
 export class RunManager {
   private readonly queue: RunQueue
   private live: LiveRun | null = null
+  /** shutdown() começou: nenhuma execução nova (o app está fechando). */
+  private closing = false
 
   constructor(private readonly d: RunnerDeps) {
     this.queue = new RunQueue(
@@ -69,6 +80,10 @@ export class RunManager {
   enqueue(routineId: ID, trigger: RunTrigger): { runId: ID; added: boolean } | null {
     const routine = this.d.store.getRoutine(routineId)
     if (!routine) return null
+    if (this.closing) {
+      log.info(`Rotina "${routine.name}" não iniciada (${trigger}): o BC Backup está fechando.`)
+      return null
+    }
     if (this.queue.isBusy(routineId) && trigger !== 'manual') {
       log.info(`Rotina "${routine.name}" ignorada (${trigger}): execução anterior em andamento.`)
     }
@@ -82,6 +97,10 @@ export class RunManager {
 
   isBusy(routineId: ID): boolean {
     return this.queue.isBusy(routineId)
+  }
+
+  get isClosing(): boolean {
+    return this.closing
   }
 
   get runningRoutineId(): ID | null {
@@ -167,6 +186,16 @@ export class RunManager {
   }
 
   /** Cancela por routineId ou runId. Da fila: registra como cancelada no histórico. */
+  /**
+   * Rotina pausada: tira da fila a execução que ainda não começou (registrada como cancelada). O que
+   * já está rodando continua — pausar é sobre o futuro; para interromper existe "Parar".
+   */
+  async dropQueued(routineId: ID): Promise<boolean> {
+    if (this.queue.running?.routineId === routineId) return false
+    if (!this.queue.queued.some((q) => q.routineId === routineId)) return false
+    return this.cancel(routineId)
+  }
+
   async cancel(idOrRunId: ID): Promise<boolean> {
     const res = this.queue.cancel(idOrRunId)
     if (!res) return false
@@ -202,11 +231,65 @@ export class RunManager {
 
   /** Cancela tudo e espera terminar (ao sair do app). */
   async shutdown(timeoutMs = 8000): Promise<void> {
+    this.closing = true
     for (const q of this.queue.clearQueued())
       log.info(`Execução na fila descartada ao sair: ${q.routineName}`)
     const running = this.queue.running
     if (running) this.queue.cancel(running.runId)
-    await withTimeout(this.queue.idle(), timeoutMs).catch(() => {})
+    const done = await withTimeout(this.queue.idle(), timeoutMs).then(
+      () => true,
+      () => false
+    )
+    // Não terminou a tempo (motor apagando a cópia parcial numa pasta de rede lenta, servidor de
+    // e-mail sem resposta): o app fecha mesmo assim, mas a execução não pode sumir do histórico.
+    const live = this.live
+    if (!done && live) {
+      await this.d.history
+        .add(this.unfinishedRecord(live))
+        .catch((e) => log.error('Falha ao gravar o histórico', e))
+    }
+  }
+
+  /** Registro de uma execução que não terminou antes de o app fechar. */
+  private unfinishedRecord(live: LiveRun): RunRecord {
+    const now = new Date().toISOString()
+    if (live.record) {
+      // O backup já tinha terminado; faltava o e-mail.
+      const r: RunRecord = { ...live.record, log: [...live.record.log] }
+      if (!r.email) {
+        r.email = 'failed'
+        r.emailError = 'O BC Backup foi fechado antes de enviar o e-mail.'
+        r.log.push({ t: now, level: 'warn', message: `E-mail não enviado: ${r.emailError}` })
+      }
+      return r
+    }
+    const p = live.progress
+    const record: RunRecord = {
+      id: live.item.runId,
+      routineId: live.routine.id,
+      routineName: live.routine.name,
+      status: 'cancelled',
+      trigger: live.item.trigger,
+      startedAt: live.startedAt,
+      finishedAt: now,
+      durationMs: Math.max(0, Date.parse(now) - Date.parse(live.startedAt)),
+      filesTotal: p.filesTotal,
+      filesCopied: 0,
+      filesSkipped: 0,
+      bytesTotal: p.bytesTotal,
+      bytesCopied: 0,
+      warnings: 0,
+      errors: 0,
+      destinationCount: live.routine.destinations.filter((x) => x.enabled !== false).length,
+      email: 'skipped',
+      destinations: [],
+      log: [
+        ...live.log,
+        { t: now, level: 'warn', message: 'O BC Backup foi fechado antes de a execução terminar.' }
+      ]
+    }
+    if (live.routine.moveSources?.enabled) record.notice = movedNotice(live.moved)
+    return record
   }
 
   private async execute(item: QueueItem, signal: AbortSignal): Promise<void> {
@@ -330,14 +413,12 @@ export class RunManager {
     } else if (routine.moveSources?.enabled) {
       // O motor parou sem devolver o relatório: as linhas "Movido:" recebidas dizem o que já tinha
       // sido apagado (contadas na chegada: o log ao vivo para em MAX_LIVE_LOG linhas).
-      const moved = live.moved
-      record.notice = moved
-        ? `A execução parou antes de terminar; ${moved === 1 ? '1 arquivo já tinha sido apagado' : `${moved.toLocaleString('pt-BR')} arquivos já tinham sido apagados`} da origem (veja o log).`
-        : 'Nada foi apagado da origem.'
+      record.notice = movedNotice(live.moved)
     }
 
     // E-mail consolidado (um por execução).
     live.progress = { ...live.progress, phase: 'notifying', currentFile: undefined, etaMs: undefined }
+    live.record = record
     await this.handleEmail(record, routine)
 
     try {

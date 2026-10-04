@@ -41,6 +41,10 @@ if (userDataOverride) app.setPath('userData', resolve(userDataOverride))
 let ctx: AppContext | null = null
 let shuttingDown = false
 let readyToQuit = false
+/** start() terminou (IPC registrado): antes disso a janela abriria sem resposta da ponte. */
+let started = false
+/** Pedido de janela (segunda instância) que chegou durante o início. */
+let showWhenStarted = false
 
 process.on('unhandledRejection', (e) => log.error('Promessa rejeitada sem tratamento', e))
 process.on('uncaughtException', (e) => log.error('Exceção não tratada', e))
@@ -56,12 +60,17 @@ function bootstrap(): void {
   app.setAppUserModelId(app.isPackaged || process.platform !== 'win32' ? APP_ID : process.execPath)
 
   app.on('second-instance', (_e, argv) => {
-    if (app.isReady() && !argv.includes(HIDDEN_FLAG)) showWindow()
+    if (argv.includes(HIDDEN_FLAG)) return
+    // Ainda carregando (ex.: início "--hidden" do login com o disco ocupado): abre ao terminar.
+    if (!started) showWhenStarted = true
+    else showWindow()
   })
   // Continua rodando na bandeja sem janelas.
   app.on('window-all-closed', () => {})
   app.on('activate', () => {
-    if (app.isReady()) showWindow()
+    if (started) showWindow()
+    // macOS também emite no primeiro lançamento: lá o start() decide se a janela aparece.
+    else if (process.platform !== 'darwin') showWhenStarted = true
   })
   app.on('web-contents-created', (_e, wc) => {
     wc.on('will-attach-webview', (ev) => ev.preventDefault())
@@ -175,6 +184,11 @@ async function start(): Promise<void> {
         .updateSettings({ trayHintShown: true })
         .then(() => broadcast(IPC_EVENTS.settingsChanged, store.settings))
         .catch(() => {})
+    },
+    confirmQuitIfBusy: () => {
+      if (!c.runner.liveProgress) return false
+      void confirmQuit(c)
+      return true
     }
   })
   nativeTheme.on('updated', () => {
@@ -224,7 +238,8 @@ async function start(): Promise<void> {
   void setAutoStart(store.settings.launchAtLogin)
   setInterval(() => void c.history.prune(store.settings.historyDays).catch(() => 0), 6 * 3_600_000).unref()
 
-  if (!startedHidden()) showWindow()
+  started = true
+  if (!startedHidden() || showWhenStarted) showWindow()
   else if (process.platform === 'darwin') app.dock?.hide()
   // Pré-cria o painel oculto DEPOIS da janela principal: o primeiro clique no ícone já o encontra
   // pronto (sem tela branca). No Linux o painel não é usado (menu nativo).

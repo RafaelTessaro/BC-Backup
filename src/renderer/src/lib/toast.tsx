@@ -82,5 +82,6 @@ export const notify = {
   success: (title: ReactNode, opts?: NotifyOptions) => show('success', title, opts),
   warning: (title: ReactNode, opts?: NotifyOptions) => show('warning', title, opts),
   error: (title: ReactNode, opts?: NotifyOptions) => show('error', title, opts),
-  info: (title: ReactNode, opts?: NotifyOptions) => show('info', title, opts)
+  info: (title: ReactNode, opts?: NotifyOptions) => show('info', title, opts),
+  dismiss: (id: string | number) => void toast.dismiss(id)
 }

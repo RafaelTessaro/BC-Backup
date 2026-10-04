@@ -25,6 +25,13 @@ export async function runNow(
   }
 }
 
+/**
+ * Confirmação do "Parar": o motor APAGA a cópia em andamento (nenhum backup incompleto fica no
+ * destino); backups já concluídos não são tocados.
+ */
+export const STOP_RUN_DESCRIPTION =
+  'A cópia em andamento será descartada: nenhum backup incompleto fica no destino, e os backups anteriores não são afetados. A rotina continua agendada normalmente.'
+
 export async function cancelRun(routineId: ID): Promise<void> {
   try {
     await bc.routines.cancel(routineId)
@@ -113,7 +120,9 @@ export function toastRunFinished(r: RunSummary): void {
       })
       break
     case 'cancelled':
-      notify.info('Backup cancelado', { description: `${r.routineName} · a cópia parcial foi mantida.` })
+      notify.info('Backup cancelado', {
+        description: `${r.routineName} · a cópia incompleta foi descartada.`
+      })
       break
   }
 }

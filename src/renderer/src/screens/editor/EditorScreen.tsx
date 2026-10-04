@@ -38,6 +38,9 @@ import { ReviewStep } from './steps/ReviewStep'
 import { ScheduleStep } from './steps/ScheduleStep'
 import { SourcesStep } from './steps/SourcesStep'
 
+/** Toast "Rascunho guardado" (sai sozinho quando o rascunho é retomado). */
+const DRAFT_TOAST = 'rascunho-guardado'
+
 const isSubmitKey = (e: KeyboardEvent): boolean => (e.ctrlKey || e.metaKey) && e.key === 'Enter'
 const isSaveKey = (e: KeyboardEvent): boolean => (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's'
 
@@ -94,7 +97,8 @@ function Editor({ existing }: { existing?: Routine }) {
       draft: stash?.draft ?? base,
       baseline: JSON.stringify(base),
       step: stash?.step ?? ('origem' as StepId),
-      reached: stash?.reached ?? 0
+      reached: stash?.reached ?? 0,
+      restored: !!stash
     }
   })
   const [draft, setDraft] = useState<RoutineInput>(init.draft)
@@ -127,7 +131,11 @@ function Editor({ existing }: { existing?: Routine }) {
     target?.focus({ preventScroll: focusReq.to === 'heading' })
   }, [focusReq])
 
-  useEffect(() => clearStash(key), [key])
+  useEffect(() => {
+    clearStash(key)
+    // De volta ao rascunho: o aviso com "Voltar para a rotina" não serve mais.
+    if (init.restored) notify.dismiss(DRAFT_TOAST)
+  }, [key, init.restored])
 
   const json = JSON.stringify(draft)
   const dirty = json !== init.baseline
@@ -253,7 +261,8 @@ function Editor({ existing }: { existing?: Routine }) {
     notify.info('Rascunho guardado', {
       description: `Quando terminar, volte para “${draft.name.trim() || 'Nova rotina'}”.`,
       action: { label: 'Voltar para a rotina', onClick: () => navigate(back) },
-      duration: 12000
+      duration: 12000,
+      id: DRAFT_TOAST
     })
   }
 

@@ -19,7 +19,7 @@ import { PathText } from '@renderer/components/ui/PathText'
 import { ProgressBar } from '@renderer/components/ui/ProgressBar'
 import { StatusPill } from '@renderer/components/ui/StatusPill'
 import { TruncatedText } from '@renderer/components/ui/Tooltip'
-import { cancelRun } from '@renderer/lib/actions'
+import { STOP_RUN_DESCRIPTION, cancelRun } from '@renderer/lib/actions'
 import { cn } from '@renderer/lib/cn'
 import { formatEta, formatNumber, formatPercent, plural } from '@renderer/lib/format'
 import { useTick } from '@renderer/lib/hooks'
@@ -431,7 +431,7 @@ export function LiveRunDrawer() {
         description={
           routine?.moveSources?.enabled
             ? 'Nada mais é apagado da origem: o que ainda não foi removido fica lá para a próxima execução. A rotina continua agendada normalmente.'
-            : 'A cópia parcial será mantida no destino. A rotina continua agendada normalmente.'
+            : STOP_RUN_DESCRIPTION
         }
         confirmLabel="Parar backup"
         onConfirm={() => (routineId ? cancelRun(routineId) : undefined)}

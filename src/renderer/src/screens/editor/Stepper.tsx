@@ -46,7 +46,9 @@ export function Stepper({
                   !st.clickable && 'cursor-not-allowed'
                 )}
               >
+                {/* Número/ícone só visual: o nome acessível é o da etapa + estado (a lista dá a posição). */}
                 <span
+                  aria-hidden
                   className={cn(
                     'relative flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tnum transition-colors duration-[180ms]',
                     isCurrent && 'bg-accent text-accent-foreground shadow-[0_0_0_3px_var(--accent-soft)]',

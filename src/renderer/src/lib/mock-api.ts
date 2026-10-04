@@ -486,7 +486,7 @@ function buildRecord(spec: GenSpec, rnd: () => number, smtpReady = true): RunRec
       warnings++
     }
     if (cancelled) {
-      push('warn', 'Execução cancelada pelo usuário. A cópia parcial foi mantida.', copyMs)
+      push('warn', 'Execução cancelada pelo usuário. A cópia parcial foi removida.', copyMs)
       warnings++
     } else {
       push(

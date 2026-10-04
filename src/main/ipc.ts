@@ -10,6 +10,7 @@ import { buildExport, planImport } from './config-io'
 import type { AppContext } from './context'
 import { listDrives, diskSpace } from './drives'
 import { estimateSize } from './engine/walk'
+import { e2eJobOptions } from './engine/job'
 import { previewMove } from './engine/move'
 import { errMessage, pathExists } from './engine/fsutil'
 import {
@@ -121,13 +122,21 @@ function parentWindow(): BrowserWindow | undefined {
   return getWindow() ?? undefined
 }
 
-function uniqueName(base: string, existing: string[]): string {
+/**
+ * "<nome> (cópia)", "<nome> (cópia 2)"… sem repetir um nome existente. O nome original é encurtado
+ * ANTES do sufixo: cortar o resultado em `max` caracteres podia devolver o próprio nome da original.
+ */
+function copyName(original: string, existing: string[], max = 60): string {
   const taken = new Set(existing.map((n) => n.trim().toLocaleLowerCase('pt-BR')))
-  let name = base
-  for (let n = 2; taken.has(name.toLocaleLowerCase('pt-BR')); n++)
-    name = `${base.replace(/ \(cópia(?: \d+)?\)$/, '')} (cópia ${n})`
-  return name
+  for (let n = 1; ; n++) {
+    const suffix = n === 1 ? ' (cópia)' : ` (cópia ${n})`
+    const name = `${original.slice(0, max - suffix.length).trimEnd()}${suffix}`
+    if (!taken.has(name.toLocaleLowerCase('pt-BR'))) return name
+  }
 }
+
+/** "1 rotina", "2 rotinas" (sem o "rotina(s)"). */
+const rotinas = (n: number): string => `${n.toLocaleString('pt-BR')} ${n === 1 ? 'rotina' : 'rotinas'}`
 
 function scheduleKey(r: Pick<Routine, 'schedule'>): string {
   return JSON.stringify(r.schedule)
@@ -200,6 +209,13 @@ export function registerIpc(ctx: AppContext): void {
       store.setRoutineState(routine.id, { lastAttemptSlot: now })
     }
     await store.upsertRoutine(routine)
+    // Retomada pelo editor: deixa de ser "pausada pela bandeja" (como em routines.setEnabled), senão
+    // um "Retomar" futuro religaria a rotina mesmo depois de o usuário pausá-la à parte.
+    const paused = store.state.data.pausedByTray
+    if (routine.enabled && paused?.includes(routine.id)) {
+      store.state.data.pausedByTray = paused.filter((x) => x !== routine.id)
+      void store.state.save().catch(() => {})
+    }
     ctx.routinesChanged()
     return ctx.withLastRun(routine)
   })
@@ -217,10 +233,10 @@ export function registerIpc(ctx: AppContext): void {
     const copy: StoredRoutine = {
       ...structuredClone(src),
       id: newId(),
-      name: uniqueName(
-        `${src.name} (cópia)`,
+      name: copyName(
+        src.name,
         store.routines().map((r) => r.name)
-      ).slice(0, 60),
+      ),
       createdAt: now,
       updatedAt: now
     }
@@ -238,6 +254,7 @@ export function registerIpc(ctx: AppContext): void {
     const next: StoredRoutine = { ...r, enabled: on, updatedAt: now }
     if (on && !r.enabled) store.setRoutineState(r.id, { lastAttemptSlot: now }) // antes do upsert
     await store.upsertRoutine(next)
+    if (!on) await runner.dropQueued(r.id) // pausada: o que estava na fila não roda mais
     const paused = store.state.data.pausedByTray
     if (on && paused?.includes(r.id)) {
       store.state.data.pausedByTray = paused.filter((x) => x !== r.id)
@@ -250,7 +267,7 @@ export function registerIpc(ctx: AppContext): void {
     const rid = asId(id)
     getRoutineOrThrow(rid)
     const res = runner.enqueue(rid, 'manual')
-    if (!res) throw new Error('Rotina não encontrada.')
+    if (!res) throw new Error(runner.isClosing ? 'O BC Backup está fechando.' : 'Rotina não encontrada.')
     ctx.refreshTray()
     return { runId: res.runId }
   })
@@ -363,7 +380,7 @@ export function registerIpc(ctx: AppContext): void {
         canceled: false,
         ok: true,
         path: res.filePath,
-        message: `Configurações exportadas (${data.routines.length} rotina(s)). A senha do e-mail não vai no arquivo.`
+        message: `Configurações exportadas (${rotinas(data.routines.length)}). A senha do e-mail não vai no arquivo.`
       }
     } catch (e) {
       return {
@@ -395,6 +412,9 @@ export function registerIpc(ctx: AppContext): void {
         await store.upsertRoutine(r)
       }
       if (plan.settings) {
+        // Mesma regra do saveSmtp: a senha salva não acompanha a troca de servidor/usuário.
+        if (plan.settings.smtp && smtpAccountChanged(prev.smtp, plan.settings.smtp))
+          await store.setSmtpPassword(undefined)
         const keepPassword = !!store.config.data.secrets.smtpPassword
         await store.updateSettings({
           ...plan.settings,
@@ -408,10 +428,10 @@ export function registerIpc(ctx: AppContext): void {
         ok: true,
         path: file,
         message:
-          `Importada(s) ${plan.routines.length} rotina(s)${plan.settings ? ' e as configurações' : ''}. ` +
+          `Importação concluída: ${rotinas(plan.routines.length)}${plan.settings ? ' e as configurações' : ''}. ` +
           'A senha do e-mail não é exportada: digite-a em Configurações › E-mail.' +
           (plan.moveDisabled
-            ? ` "Mover" foi desligado em ${plan.moveDisabled} rotina(s): ative de novo no editor para confirmar as pastas deste computador.`
+            ? ` "Mover" foi desligado em ${rotinas(plan.moveDisabled)}: ative de novo no editor para confirmar as pastas deste computador.`
             : '')
       }
     } catch (e) {
@@ -476,7 +496,10 @@ export function registerIpc(ctx: AppContext): void {
     // Pastas proibidas para "Mover" (raiz de disco, sistema, perfil) nem são examinadas na prévia.
     const guard = { dataPath: ctx.info?.dataPath }
     const allowed = asPathList(sources).filter((p) => !isBlockedMoveSource(p, guard))
-    return previewMove(allowed, asFilters(filters), asMoveSources(move), { timeoutMs: 4000 })
+    // Só E2E (BC_E2E=1 + BC_E2E_MOVE_SKEW_MIN): a prévia usa o mesmo relógio adiantado do motor.
+    const skew = e2eJobOptions().moveAgeSkewMs
+    const now = skew ? new Date(Date.now() + skew) : undefined
+    return previewMove(allowed, asFilters(filters), asMoveSources(move), { timeoutMs: 4000, now })
   })
 
   /* ------------------------- painel da bandeja ----------------------- */

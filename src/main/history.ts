@@ -210,6 +210,25 @@ export class HistoryStore {
     return map
   }
 
+  /**
+   * Último RESULTADO de cada rotina: ignora execuções canceladas (um "Parar" ou uma pausa não pode
+   * esconder que o último backup de verdade falhou). Só canceladas → a mais recente delas.
+   */
+  latestOutcomeByRoutine(): Map<ID, RunSummary> {
+    const map = new Map<ID, RunSummary>()
+    const onlyCancelled = new Map<ID, RunSummary>()
+    for (const r of this.records()) {
+      if (map.has(r.routineId)) continue
+      if (r.status === 'cancelled') {
+        if (!onlyCancelled.has(r.routineId)) onlyCancelled.set(r.routineId, toSummary(r))
+        continue
+      }
+      map.set(r.routineId, toSummary(r))
+    }
+    for (const [id, s] of onlyCancelled) if (!map.has(id)) map.set(id, s)
+    return map
+  }
+
   private pruneMemory(historyDays: number, now: Date): ID[] {
     const cutoff = now.getTime() - Math.max(1, historyDays) * 86_400_000
     const removed: ID[] = []

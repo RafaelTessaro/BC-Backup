@@ -120,23 +120,36 @@ export class Outbox {
         const now = this.now().getTime()
         if (this.dueAt(item, now) > now) continue
         if (!((Date.parse(item.createdAt) || 0) <= now)) item.createdAt = new Date(now).toISOString()
+        let sendError: { e: unknown } | null = null
         try {
           await this.d.send(item.mail)
+        } catch (e) {
+          sendError = { e }
+        }
+        // Só a falha do ENVIO conta como tentativa: um erro ao registrar no histórico (onSent/onExpired)
+        // não pode marcar como "não enviado" um e-mail que saiu, nem rejeitar `processDue` (o timer
+        // chama com `void`).
+        if (!sendError) {
           this.list = this.list.filter((i) => i.id !== item.id)
           await this.save()
-          await this.d.onSent(item)
-        } catch (e) {
-          item.attempts++
-          item.lastError = this.d.errorMessage(e)
-          const age = now - (Date.parse(item.createdAt) || now)
-          if (age + retryEvery > maxAge) {
-            this.list = this.list.filter((i) => i.id !== item.id)
-            await this.save()
-            await this.d.onExpired(item, item.lastError)
-          } else {
-            item.nextAttemptAt = new Date(now + retryEvery).toISOString()
-            await this.save()
-          }
+          await Promise.resolve()
+            .then(() => this.d.onSent(item))
+            .catch(() => {})
+          continue
+        }
+        item.attempts++
+        item.lastError = this.d.errorMessage(sendError.e)
+        const age = now - (Date.parse(item.createdAt) || now)
+        if (age + retryEvery > maxAge) {
+          this.list = this.list.filter((i) => i.id !== item.id)
+          await this.save()
+          const lastError = item.lastError
+          await Promise.resolve()
+            .then(() => this.d.onExpired(item, lastError))
+            .catch(() => {})
+        } else {
+          item.nextAttemptAt = new Date(now + retryEvery).toISOString()
+          await this.save()
         }
       }
     })().finally(() => {

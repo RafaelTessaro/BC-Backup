@@ -33,6 +33,11 @@ export interface WindowDeps {
   closeToTray(): boolean
   /** Chamado quando a janela é escondida para a bandeja pelo botão fechar. */
   onHiddenToTray(): void
+  /**
+   * "Minimizar para a bandeja" desligado e há backup em andamento: em vez de sair na hora, pede
+   * confirmação (o backup seria cancelado). Devolve true se tratou o fechamento.
+   */
+  confirmQuitIfBusy?(): boolean
 }
 
 let win: BrowserWindow | null = null
@@ -41,6 +46,7 @@ let quitting = false
 let resolved: ResolvedTheme = 'light'
 let pendingRoute: string | null = null
 let loaded = false
+let lastRendererCrashAt = 0
 
 export function setQuitting(v = true): void {
   quitting = v
@@ -171,6 +177,9 @@ function createWindow(): BrowserWindow {
       w.hide()
       if (process.platform === 'darwin') app.dock?.hide()
       deps?.onHiddenToTray()
+    } else if (deps?.confirmQuitIfBusy?.()) {
+      // Backup em andamento: a confirmação decide (e encerra, se o usuário quiser).
+      e.preventDefault()
     } else {
       // "Minimizar para a bandeja ao fechar" desligado: fechar = sair do app.
       quitting = true
@@ -210,6 +219,18 @@ function createWindow(): BrowserWindow {
   })
   wc.on('render-process-gone', (_e, details) => {
     log.error('Processo da interface encerrado', details.reason)
+    if (details.reason === 'clean-exit' || quitting || w.isDestroyed()) return
+    // Sem isto a janela ficava em branco até sair do app (fechar e reabrir mostrava a mesma janela
+    // morta). Uma queda: recarrega. Outra em menos de 1 min: descarta a janela (sem laço de recargas);
+    // a próxima abertura (ícone da bandeja, atalho) cria uma nova.
+    const now = Date.now()
+    if (now - lastRendererCrashAt > 60_000) {
+      lastRendererCrashAt = now
+      loaded = false
+      wc.reload()
+    } else {
+      w.destroy()
+    }
   })
   if (!app.isPackaged) {
     // Atalho de desenvolvimento: F12 abre as ferramentas do Chromium.

@@ -13,7 +13,7 @@ import type {
 } from '@shared/types'
 import { ROUTES, parseRoute } from '@shared/routes'
 import { bc } from './bc'
-import { navigate } from './router'
+import { navigate, useRouter } from './router'
 import { readLocal, writeLocal } from './storage'
 
 const SEEN_KEY = 'bc.historySeenAt'
@@ -132,7 +132,10 @@ export function onRunFinished(handler: FinishedHandler): void {
 export function handleRoute(route: string): void {
   const parsed = parseRoute(route)
   if (parsed.name === 'history' && parsed.runId) {
-    navigate(ROUTES.history)
+    // Editor com alterações não salvas: só abre os detalhes por cima, sem sair dele (antes o aviso
+    // "Descartar alterações?" e o drawer abriam juntos, dois modais disputando o foco).
+    const { blocker } = useRouter.getState()
+    if (!blocker?.(ROUTES.history)) navigate(ROUTES.history)
     set({ detailRunId: parsed.runId })
     return
   }

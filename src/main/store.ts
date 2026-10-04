@@ -433,23 +433,32 @@ export class JsonFile<T> {
     migrate: (raw: unknown) => T,
     opts: { backup?: boolean } = {}
   ): Promise<JsonFile<T>> {
-    let raw: unknown = undefined
+    let raw: unknown
     let loadedMain = false
+    let missing = false
+    let fromBak = false
+    let text: string | null = null
     try {
-      raw = JSON.parse(await readFileRetry(file))
+      text = await readFileRetry(file)
+      raw = JSON.parse(text)
       loadedMain = true
     } catch (e) {
-      if (errCode(e) !== 'ENOENT') {
-        await rename(file, `${file}.corrupt-${Date.now()}`).catch(() => {})
-        try {
-          raw = JSON.parse(await readFileRetry(`${file}.bak`))
-        } catch {
-          raw = undefined
-        }
+      missing = errCode(e) === 'ENOENT'
+      if (!missing) await rename(file, `${file}.corrupt-${Date.now()}`).catch(() => {})
+      // Ausente também tenta o .bak: um início anterior pode ter achado o arquivo corrompido e o app
+      // fechado antes de gravar (ou o antivírus o colocou em quarentena). Instalação nova não tem .bak.
+      try {
+        raw = JSON.parse(await readFileRetry(`${file}.bak`))
+        fromBak = true
+      } catch {
+        raw = undefined
       }
     }
     const jf = new JsonFile(file, migrate(raw))
     if (loadedMain && opts.backup) await copyFile(file, `${file}.bak`).catch(() => {})
+    // JSON quebrado (virou "*.corrupt-<ts>") ou ausente com .bak: grava já o que foi recuperado.
+    // Erro de LEITURA (arquivo bloqueado) não: o arquivo pode estar bom e ser mais novo que o .bak.
+    if ((!loadedMain && text !== null) || (missing && fromBak)) await jf.save().catch(() => {})
     return jf
   }
 
@@ -488,6 +497,36 @@ export class JsonFile<T> {
 /* Store do app                                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Falha ao gravar (disco cheio, arquivo bloqueado) → mensagem pt-BR para a interface. A alteração já
+ * vale em memória e continua pendente: a próxima gravação (ou o flush ao sair) tenta de novo.
+ */
+function saveError(e: unknown): Error {
+  const code = errCode(e)
+  const why =
+    code === 'ENOSPC'
+      ? 'disco cheio'
+      : code === 'EPERM' || code === 'EACCES' || code === 'EBUSY'
+        ? 'arquivo bloqueado ou sem permissão'
+        : code === 'EROFS'
+          ? 'disco somente leitura'
+          : e instanceof Error
+            ? e.message
+            : String(e)
+  return new Error(
+    `Não foi possível gravar as configurações no disco (${why}). A alteração vale enquanto o BC Backup estiver aberto; ele tenta gravar de novo na próxima alteração e ao fechar.`,
+    { cause: e }
+  )
+}
+
+const persisted = (p: Promise<unknown>): Promise<void> =>
+  p.then(
+    () => undefined,
+    (e: unknown) => {
+      throw saveError(e)
+    }
+  )
+
 export class AppStore {
   private constructor(
     readonly dir: string,
@@ -519,7 +558,7 @@ export class AppStore {
     const i = list.findIndex((r) => r.id === routine.id)
     if (i >= 0) list[i] = routine
     else list.push(routine)
-    await this.config.save()
+    await persisted(this.config.save())
   }
 
   async removeRoutine(id: ID): Promise<boolean> {
@@ -528,14 +567,14 @@ export class AppStore {
     if (i < 0) return false
     list.splice(i, 1)
     delete this.state.data.routines[id]
-    await Promise.all([this.config.save(), this.state.save()])
+    await persisted(Promise.all([this.config.save(), this.state.save()]))
     return true
   }
 
   async updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
     const cur = this.config.data.settings
     this.config.data.settings = migrateSettings({ ...cur, ...patch, smtp: patch.smtp ?? cur.smtp })
-    await this.config.save()
+    await persisted(this.config.save())
     return this.settings
   }
 
@@ -543,7 +582,7 @@ export class AppStore {
     if (encrypted) this.config.data.secrets.smtpPassword = encrypted
     else delete this.config.data.secrets.smtpPassword
     this.config.data.settings.smtp.hasPassword = !!encrypted
-    await this.config.save()
+    await persisted(this.config.save())
   }
 
   routineState(id: ID): RoutineState {

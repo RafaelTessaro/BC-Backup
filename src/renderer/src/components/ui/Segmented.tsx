@@ -45,6 +45,16 @@ export function Segmented<T extends string>({
       aria-label={label}
       orientation="horizontal"
       loop
+      onKeyDown={(e) => {
+        // A seleção acompanha as setas já no keydown. O Radix move o foco num setTimeout e só seleciona
+        // se a tecla ainda estiver pressionada: com a interface ocupada (ex.: a etapa trocando de
+        // conteúdo), o foco andava para outra opção sem selecioná-la.
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+        const from = options.findIndex((o) => o.value === (e.target as HTMLElement).getAttribute('value'))
+        if (from < 0) return
+        const next = options[(from + (e.key === 'ArrowRight' ? 1 : -1) + n) % n]
+        if (next.value !== value) onChange(next.value)
+      }}
       className={cn(
         'relative isolate inline-grid shrink-0 rounded-md bg-surface-hover p-0.5',
         size === 'sm' ? 'h-7' : 'h-8',

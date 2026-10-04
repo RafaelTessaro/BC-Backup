@@ -37,13 +37,24 @@ export function isAbsolutePath(p: string, platform: NodeJS.Platform = process.pl
 }
 
 /**
+ * Windows: tira o prefixo de caminho longo/dispositivo ("\\?\C:\…" → "C:\…", "\\?\UNC\srv\…" →
+ * "\\srv\…"). É o mesmo caminho; sem isto a grafia contornaria as comparações abaixo.
+ */
+export function stripWinLongPrefix(p: string): string {
+  if (/^[\\/]{2}[?.][\\/]UNC[\\/]/i.test(p)) return `\\\\${p.slice(8)}`
+  if (/^[\\/]{2}[?.][\\/][A-Za-z]:/.test(p)) return p.slice(4)
+  return p
+}
+
+/**
  * Normaliza para comparação: resolve, tira a barra final e ignora maiúsculas no Windows/macOS.
  * No macOS também ignora a forma Unicode (APFS/HFS+ tratam "é" composto e decomposto como o mesmo
  * nome; a pasta pessoal e o caminho escolhido no diálogo podem vir em formas diferentes).
  */
 export function normalizeForCompare(p: string, platform: NodeJS.Platform = process.platform): string {
   const api = pathApi(platform)
-  let n = api.resolve(platform === 'darwin' ? p.normalize('NFC') : p)
+  const plain = platform === 'win32' ? stripWinLongPrefix(p) : p
+  let n = api.resolve(platform === 'darwin' ? plain.normalize('NFC') : plain)
   const root = api.parse(n).root
   if (n.length > root.length) n = n.replace(/[\\/]+$/, '')
   return platform === 'win32' || platform === 'darwin' ? n.toLowerCase() : n
@@ -132,8 +143,9 @@ const POSIX_BLOCKED = [
  * exceto %SystemRoot% (qualquer coisa dentro) e a pasta de dados do BC Backup (quem a contém ou
  * está dentro dela).
  */
-export function isBlockedMoveSource(path: string, ctx: MoveGuardContext = {}): boolean {
+export function isBlockedMoveSource(rawPath: string, ctx: MoveGuardContext = {}): boolean {
   const platform = ctx.platform ?? process.platform
+  const path = platform === 'win32' ? stripWinLongPrefix(rawPath) : rawPath
   const env = ctx.env ?? process.env
   const home = ctx.homedir ?? safeHomedir()
   const api = pathApi(platform)

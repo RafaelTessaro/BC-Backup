@@ -32,6 +32,7 @@ import { Segmented } from '@renderer/components/ui/Segmented'
 import { StatusPill } from '@renderer/components/ui/StatusPill'
 import { Tooltip, TruncatedText } from '@renderer/components/ui/Tooltip'
 import {
+  STOP_RUN_DESCRIPTION,
   cancelRun,
   duplicateRoutine,
   openDestinationFolder,
@@ -270,7 +271,11 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
         open={confirmStop}
         onOpenChange={setConfirmStop}
         title={`Parar “${routine.name}”?`}
-        description="A cópia parcial será mantida no destino. A rotina continua agendada normalmente."
+        description={
+          routine.moveSources?.enabled
+            ? 'Nada mais é apagado da origem: o que ainda não foi removido fica lá para a próxima execução. A rotina continua agendada normalmente.'
+            : STOP_RUN_DESCRIPTION
+        }
         confirmLabel="Parar backup"
         onConfirm={() => cancelRun(routine.id)}
       />

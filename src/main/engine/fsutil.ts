@@ -91,16 +91,18 @@ export async function readFileRetry(file: string, attempts = 6, baseDelayMs = 10
 export async function writeJsonAtomic(file: string, data: unknown, pretty = true): Promise<void> {
   await mkdir(dirname(file), { recursive: true })
   const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`
-  const fh = await open(tmp, 'w')
   try {
-    await fh.writeFile(pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data), 'utf8')
-    await fh.sync()
-  } finally {
-    await fh.close()
-  }
-  try {
+    const fh = await open(tmp, 'w')
+    try {
+      await fh.writeFile(pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data), 'utf8')
+      await fh.sync()
+    } finally {
+      await fh.close()
+    }
     await renameRetry(tmp, file)
   } catch (e) {
+    // O temporário é nosso e não pode ficar para trás em NENHUMA falha (disco cheio no meio da gravação,
+    // rede caiu, rename bloqueado): ao lado do .zip, na pasta do destino do usuário, ninguém o limparia.
     await rm(tmp, { force: true }).catch(() => {})
     throw e
   }

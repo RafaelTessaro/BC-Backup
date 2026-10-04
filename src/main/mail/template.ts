@@ -778,7 +778,9 @@ function movedList(run: RunRecord, logAttached: boolean): string {
   const from = moveFrom(run)
   const shown = (mv.removed ?? []).slice(0, MAX_LISTED_ISSUES)
   const hidden = Math.max(0, (mv.removedCount ?? shown.length) - shown.length)
-  const head = `<tr><td style="padding:2px 0 6px 0;font-family:${FONT};font-size:14px;line-height:20px;color:${C.text};"><span style="color:${STATUS.success.color};font-size:12px;">&#9679;</span>&nbsp; <strong style="font-weight:600;">${escapeHtml(`${plural(mv.removedCount ?? 0, 'arquivo', 'arquivos')} · ${formatBytes(mv.removedBytes ?? 0)}`)}</strong>${from ? `<span style="color:${C.text2};"> apagados de </span><span style="font-family:${MONO};font-size:13px;color:${C.text2};word-break:break-all;">${escapeHtml(from)}</span>` : ''}<span style="color:${C.text3};"> depois de conferidos em todos os destinos</span></td></tr>`
+  // Concordância com a contagem: "1 arquivo … apagado de … depois de conferido".
+  const one = (mv.removedCount ?? 0) === 1
+  const head = `<tr><td style="padding:2px 0 6px 0;font-family:${FONT};font-size:14px;line-height:20px;color:${C.text};"><span style="color:${STATUS.success.color};font-size:12px;">&#9679;</span>&nbsp; <strong style="font-weight:600;">${escapeHtml(`${plural(mv.removedCount ?? 0, 'arquivo', 'arquivos')} · ${formatBytes(mv.removedBytes ?? 0)}`)}</strong>${from ? `<span style="color:${C.text2};"> ${one ? 'apagado' : 'apagados'} de </span><span style="font-family:${MONO};font-size:13px;color:${C.text2};word-break:break-all;">${escapeHtml(from)}</span>` : ''}<span style="color:${C.text3};"> depois de ${one ? 'conferido' : 'conferidos'} em todos os destinos</span></td></tr>`
   const rows = shown
     .map(
       (f) =>

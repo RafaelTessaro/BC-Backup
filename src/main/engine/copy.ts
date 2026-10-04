@@ -12,7 +12,7 @@ import { createHash, type Hash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import type { Stats } from 'node:fs'
 import { mkdir, open, rm, stat, utimes } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { SkippedFile } from '@shared/types'
@@ -105,6 +105,15 @@ export function destPathFor(root: string, rel: string): string {
 }
 
 /**
+ * `p` fica estritamente dentro de `root` (nunca a própria `root`)? Os dois vêm do mesmo `join`.
+ * (Uma pasta chamada "..algo" dentro de `root` é dentro: só ".." como segmento inteiro sobe.)
+ */
+export function strictlyBelow(p: string, root: string): boolean {
+  const r = relative(root, p)
+  return !!r && r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r)
+}
+
+/**
  * Copia um arquivo. Lança erro com `side` = 'src' (problema na origem → pular) ou
  * 'dst' (problema no destino → falha do destino). Leitura rasgada → erro ECHANGED ('src'), com o
  * arquivo parcial já gravado no destino (quem chama remove).
@@ -146,7 +155,16 @@ export async function copyOne(
     try {
       const parent = dirname(dst)
       if (!madeDirs?.has(parent)) {
-        await mkdir(parent, { recursive: true })
+        const first = await mkdir(parent, { recursive: true })
+        // Só cria pastas DENTRO de `destRoot` (a pasta reservada, com o marcador). Se o mkdir precisou
+        // recriar a própria `destRoot` (ou algo acima dela), o destino sumiu no meio da execução — disco
+        // desconectado; no Linux/macOS o ponto de montagem vazio continua lá. Nunca grava o backup numa
+        // pasta recriada pelo caminho (sem o marcador e, talvez, no disco do sistema): falha o destino.
+        if (first !== undefined && !strictlyBelow(first, destRoot)) {
+          throw Object.assign(new Error(`A pasta do backup sumiu durante a cópia: ${destRoot}`), {
+            code: 'ENOENT'
+          })
+        }
         madeDirs?.add(parent)
       }
     } catch (e) {
@@ -203,6 +221,14 @@ export async function copyTree(
   const skipped: SkippedFile[] = []
   const madeDirs = new Set<string>()
   let bytes = 0
+  // A pasta de destino existe antes do 1º arquivo (o motor passa a pasta reservada, já criada; quem
+  // chama sem criá-la continua funcionando). Daqui em diante o copyOne nunca a recria: se ela sumir no
+  // meio da cópia, o destino falha.
+  try {
+    await mkdir(destRoot, { recursive: true })
+  } catch (e) {
+    throw new DestinationError(destinationErrorMessage(errCode(e), e), errCode(e) || 'EDEST', e)
+  }
   for (const item of items) {
     signal.throwIfAborted()
     tracker.file(item.rel)

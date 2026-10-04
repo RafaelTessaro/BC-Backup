@@ -70,6 +70,8 @@ export function EmailTab() {
       const next = await bc.settings.saveSmtp(draft)
       useApp.setState({ settings: next })
       setDraft(toInput(next.smtp))
+      // Primeira configuração: o teste já sugere o e-mail da conta (o campo nasceu vazio).
+      setTestTo((t) => (t.trim() ? t : next.smtp.fromEmail || next.smtp.user || ''))
       notify.success('E-mail configurado', {
         description: 'As rotinas com notificação já podem avisar seus clientes.'
       })

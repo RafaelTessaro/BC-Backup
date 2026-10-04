@@ -2,10 +2,14 @@
 // clicando e digitando. Cada teste abre o app com dados isolados e FALHA se aparecer qualquer erro de
 // console ou de página (inclusive no painel da bandeja).
 import { test as base, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
-import type { BcApi } from '../src/shared/api'
-import { launch, mainWindow, makeDir, type Launched } from './fixtures'
+import type { BcApi, RoutineInput } from '../src/shared/api'
+import { createDefaultRoutine } from '../src/shared/defaults'
+import type { Routine } from '../src/shared/types'
+import { launch, mainWindow, type Launched } from './fixtures'
 
 export type G = { bc: BcApi }
 
@@ -13,19 +17,35 @@ export interface AppUnderTest extends Launched {
   page: Page
 }
 
+/** Pastas temporárias do teste em andamento (apagadas no fim dele). */
+const temps: string[] = []
+
 export const test = base.extend<{ launchEnv: Record<string, string>; bcApp: AppUnderTest }>({
   /** Variáveis de ambiente extras da abertura (ex.: BC_E2E_MOVE_SKEW_MIN). */
   launchEnv: [{}, { option: true }],
   bcApp: async ({ launchEnv }, use) => {
     const l = await launch([], undefined, launchEnv)
-    const page = await mainWindow(l)
-    await use({ ...l, page })
-    await l.app.close().catch(() => undefined)
+    temps.push(l.userData)
+    try {
+      const page = await mainWindow(l)
+      await use({ ...l, page })
+    } finally {
+      await l.app.close().catch(() => undefined)
+      // Pastas temporárias do teste (origens, destinos, dados do app): nada fica enchendo o disco.
+      for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true })
+    }
     expect(l.errors, 'erros no console ou na página').toEqual([])
   }
 })
 
 export { expect }
+
+/** Pasta temporária apagada ao fim do teste. */
+export function makeDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix))
+  temps.push(dir)
+  return dir
+}
 
 /* ------------------------------------------------------------------ */
 /* Seletores nativos (não dá para clicar num diálogo do sistema no CI) */
@@ -116,6 +136,33 @@ export function routineRow(page: Page, name: string): Locator {
     .filter({ has: page.getByRole('button', { name: `Editar ${name}`, exact: true }) })
 }
 
+/**
+ * Pré-condição pronta (rotina salva pelo contrato `window.bc`, como faria o editor): uma pasta de
+ * origem e os destinos dados. Os fluxos em si continuam pela interface.
+ */
+export function saveRoutine(
+  page: Page,
+  name: string,
+  source: string,
+  dests: string[],
+  patch: Partial<RoutineInput> = {}
+): Promise<Routine> {
+  const base = createDefaultRoutine()
+  const input: RoutineInput = {
+    ...base,
+    name,
+    sources: [{ id: 'src-1', path: source, kind: 'folder' }],
+    destinations: dests.map((path, i) => ({ id: `dst-${i + 1}`, path, label: '', enabled: true })),
+    ...patch
+  }
+  return page.evaluate((i) => (globalThis as unknown as G).bc.routines.save(i), input)
+}
+
+/** Rotinas salvas no main (fonte da verdade, não a tela). */
+export function listRoutines(page: Page): Promise<Routine[]> {
+  return page.evaluate(() => (globalThis as unknown as G).bc.routines.list())
+}
+
 /** Espera a execução da rotina terminar (evento do main) e devolve o resumo. */
 export function waitRunFinished(
   page: Page,
@@ -133,6 +180,49 @@ export function waitRunFinished(
       }),
     routineName
   )
+}
+
+/* ------------------------------------------------------------------ */
+/* Teclado                                                             */
+/* ------------------------------------------------------------------ */
+
+/** Nome acessível aproximado do elemento focado (aria-label, rótulo ou texto) + papel. */
+const FOCUSED_JS = `(() => {
+  const el = document.activeElement
+  if (!el || el === document.body) return '(body)'
+  const labelled = el.getAttribute('aria-labelledby')
+  const byId = labelled
+    ? labelled.split(' ').map((id) => document.getElementById(id)?.textContent ?? '').join(' ')
+    : ''
+  const forLabel = el.id ? document.querySelector('label[for="' + CSS.escape(el.id) + '"]')?.textContent : ''
+  const name = el.getAttribute('aria-label') || byId || forLabel || el.textContent || ''
+  const role = el.getAttribute('role') || el.tagName.toLowerCase()
+  return role + ': ' + name.replace(/\\s+/g, ' ').trim()
+})()`
+
+export function focused(page: Page): Promise<string> {
+  return page.evaluate(FOCUSED_JS) as Promise<string>
+}
+
+/**
+ * Tab (ou Shift+Tab) até o foco chegar no controle com esse nome — como quem só usa o teclado.
+ * Falha se não chegar em `max` teclas (controle inalcançável pelo teclado).
+ */
+export async function tabTo(
+  page: Page,
+  name: string | RegExp,
+  opts: { back?: boolean; max?: number } = {}
+): Promise<string> {
+  const seen: string[] = []
+  const match = (f: string): boolean =>
+    typeof name === 'string' ? f.slice(f.indexOf(': ') + 2) === name : name.test(f)
+  for (let i = 0; i < (opts.max ?? 40); i++) {
+    await page.keyboard.press(opts.back ? 'Shift+Tab' : 'Tab')
+    const f = await focused(page)
+    seen.push(f)
+    if (match(f)) return f
+  }
+  throw new Error(`"${String(name)}" não recebeu o foco pelo teclado. Caminho: ${seen.join(' → ')}`)
 }
 
 /* ------------------------------------------------------------------ */
@@ -175,17 +265,26 @@ export function makeAccountingTree(bigFiles = 24, bigSize = 6 * 1024 * 1024): st
   mkdirSync(join(root, 'Balanços', '2026'), { recursive: true })
   mkdirSync(join(root, 'Notas fiscais'), { recursive: true })
   for (let i = 1; i <= bigFiles; i++)
-    writeFileSync(join(root, 'Balanços', '2026', `balanço-${String(i).padStart(2, '0')}.dat`), bytes(i, bigSize))
+    writeFileSync(
+      join(root, 'Balanços', '2026', `balanço-${String(i).padStart(2, '0')}.dat`),
+      bytes(i, bigSize)
+    )
   for (let i = 1; i <= 30; i++)
-    writeFileSync(join(root, 'Notas fiscais', `NF-${String(i).padStart(4, '0')}.xml`), `<nf n="${i}">ação</nf>`)
+    writeFileSync(
+      join(root, 'Notas fiscais', `NF-${String(i).padStart(4, '0')}.xml`),
+      `<nf n="${i}">ação</nf>`
+    )
   writeFileSync(join(root, 'leia-me.txt'), 'Backup da contabilidade — não apagar')
   writeFileSync(join(root, 'Thumbs.db'), 'lixo') // excluído pelo filtro padrão
   return root
+}
+
+/** sha256 (hex) do arquivo. */
+export function sha256(file: string): string {
+  return createHash('sha256').update(readFileSync(file)).digest('hex')
 }
 
 /** Conteúdo idêntico, arquivo a arquivo. */
 export function expectSameFile(a: string, b: string): void {
   expect(readFileSync(b).equals(readFileSync(a)), `${b} igual a ${a}`).toBe(true)
 }
-
-export { makeDir }

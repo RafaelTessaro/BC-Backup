@@ -1,5 +1,5 @@
 import { Download, FolderOpen, Monitor, Moon, Sun, Upload } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { AppSettings } from '@shared/types'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
@@ -31,6 +31,8 @@ function TextSetting({
   onCommit: (v: string) => void
 }) {
   const [draft, setDraft] = useState<string | null>(null)
+  // Esc desfaz: o blur logo em seguida ainda enxerga o rascunho antigo e não pode salvá-lo.
+  const discard = useRef(false)
   return (
     <Input
       id={id}
@@ -39,12 +41,14 @@ function TextSetting({
       placeholder={placeholder}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => {
-        if (draft !== null && draft.trim() !== value) onCommit(draft.trim())
+        if (!discard.current && draft !== null && draft.trim() !== value) onCommit(draft.trim())
+        discard.current = false
         setDraft(null)
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') e.currentTarget.blur()
         if (e.key === 'Escape') {
+          discard.current = true
           setDraft(null)
           e.currentTarget.blur()
         }

@@ -2,13 +2,13 @@
 // entre eles. Criado uma vez em index.ts depois do `app.whenReady()`.
 
 import { app, nativeTheme } from 'electron'
-import { hostname as osHostname } from 'node:os'
+import { hostname as osHostname, uptime } from 'node:os'
 import { join } from 'node:path'
 import { IPC_EVENTS } from '@shared/api'
 import type { AppInfo, AppSettings, Routine, RunProgress, RunSummary } from '@shared/types'
 import { formatDateTime } from '@shared/format'
 import { summarizeHealth } from '@shared/health'
-import { setAutoStart } from './autostart'
+import { setAutoStart, startedHidden } from './autostart'
 import { broadcast } from './broadcast'
 import { HistoryStore } from './history'
 import { log } from './logger'
@@ -22,6 +22,9 @@ import { AppStore, type StoredRoutine } from './store'
 import { updateTray, type TrayModel } from './tray'
 import { applyPanelTheme } from './tray-panel'
 import { applyTheme, currentResolvedTheme, isWindowFocused, navigate } from './window'
+
+/** Até quantos segundos depois de ligar o computador uma abertura conta como "ao ligar". */
+const SYSTEM_START_WINDOW_S = 15 * 60
 
 export interface AppContext {
   store: AppStore
@@ -75,7 +78,9 @@ export async function createContext(): Promise<AppContext> {
   }
 
   const withLastRun = (r: StoredRoutine): Routine => {
-    const last = history.latestByRoutine().get(r.id)
+    // Último resultado (canceladas não escondem uma falha anterior): é o que o painel, a lista e a
+    // bandeja mostram como estado da rotina.
+    const last = history.latestOutcomeByRoutine().get(r.id)
     return last ? { ...r, lastRun: last } : { ...r }
   }
 
@@ -148,7 +153,8 @@ export async function createContext(): Promise<AppContext> {
     statusLines.push(next ? `Próximo: ${relDay(new Date(next.at))} — ${next.name}` : 'Nenhum backup agendado')
     const queued = active.filter((p) => p.phase === 'queued').length
     if (queued) statusLines.push(`Na fila: ${queued}`)
-    if (failingCount && health.kind === 'running') statusLines.push(`${failingCount} rotina(s) com falha`)
+    if (failingCount && health.kind === 'running')
+      statusLines.push(`${failingCount} ${failingCount === 1 ? 'rotina' : 'rotinas'} com falha`)
     return {
       state,
       tooltip,
@@ -180,13 +186,18 @@ export async function createContext(): Promise<AppContext> {
 
   const scheduler = new Scheduler({
     routines: () => store.routines(),
-    getLastAttempt: (id) => store.routineState(id).lastAttemptSlot,
+    // Estado perdido (state.json corrompido/apagado): a última execução registrada serve de âncora,
+    // senão toda rotina "recuperaria" ao abrir o app um horário que já tinha rodado.
+    getLastAttempt: (id) =>
+      store.routineState(id).lastAttemptSlot ?? history.latestByRoutine().get(id)?.startedAt ?? null,
     setLastAttempt: (id, iso) => store.setRoutineState(id, { lastAttemptSlot: iso }),
     enqueue: (id, trigger) => {
       runner.enqueue(id, trigger)
     },
     onMissed: (r, slot) =>
-      log.info(`Backup atrasado não executado (recuperação desligada): "${r.name}" de ${slot.toISOString()}`)
+      log.info(`Backup atrasado não executado (recuperação desligada): "${r.name}" de ${slot.toISOString()}`),
+    // Iniciado pela inicialização do Windows (--hidden) ou aberto logo depois de ligar o computador.
+    isSystemStart: () => startedHidden() || uptime() < SYSTEM_START_WINDOW_S
   })
 
   const runner: RunManager = new RunManager({

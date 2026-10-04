@@ -6,6 +6,9 @@ import { migrateRoutine, migrateSettings, isObj, newId, type StoredRoutine } fro
 
 export const EXPORT_FORMAT = 'bc-backup-config'
 
+/** Tamanho máximo do nome da rotina aceito pelo editor (validate.ts). */
+const MAX_NAME = 60
+
 export interface ExportFile {
   format: typeof EXPORT_FORMAT
   version: 1
@@ -75,9 +78,13 @@ export function planImport(raw: unknown, existing: StoredRoutine[], now = new Da
       r.moveSources = { ...r.moveSources, enabled: false }
       moveDisabled++
     }
-    let name = r.name
+    // Limite do editor (validate.ts: 60 caracteres): o nome é encurtado ANTES do sufixo, senão a
+    // rotina importada não poderia ser salva sem trocar o nome.
+    const base = r.name.slice(0, MAX_NAME).trimEnd()
+    let name = base
     for (let n = 1; names.has(name.toLocaleLowerCase('pt-BR')); n++) {
-      name = n === 1 ? `${r.name} (importada)` : `${r.name} (importada ${n})`
+      const suffix = n === 1 ? ' (importada)' : ` (importada ${n})`
+      name = `${base.slice(0, MAX_NAME - suffix.length).trimEnd()}${suffix}`
     }
     r.name = name
     names.add(name.toLocaleLowerCase('pt-BR'))

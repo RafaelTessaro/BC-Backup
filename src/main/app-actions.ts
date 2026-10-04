@@ -21,8 +21,12 @@ export async function setAllEnabled(c: AppContext, enabled: boolean): Promise<vo
     for (const id of ids) {
       const r = store.getRoutine(id)
       if (r) await store.upsertRoutine({ ...r, enabled: false, updatedAt: now })
+      await c.runner.dropQueued(id) // o que estava na fila não roda mais
     }
-    store.state.data.pausedByTray = ids
+    // Soma à lista anterior: "Pausar" repetido (clique duplo, painel + menu) ou depois de retomar uma
+    // rotina à parte não pode esquecer as que a bandeja já tinha pausado (o "Retomar" ligaria todas).
+    const before = (store.state.data.pausedByTray ?? []).filter((id) => store.getRoutine(id))
+    store.state.data.pausedByTray = [...new Set([...before, ...ids])]
   } else {
     const remembered = (store.state.data.pausedByTray ?? []).filter((id) => store.getRoutine(id))
     const ids = remembered.length ? remembered : store.routines().map((r) => r.id)

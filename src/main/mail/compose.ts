@@ -2,7 +2,7 @@
 // Node puro. O corpo (HTML/texto) vem de ./template.ts (agente de marca).
 
 import type { AppSettings, EmailStatus, RunRecord, RunStatus } from '@shared/types'
-import { backupStamp } from '@shared/format'
+import { backupStamp, formatBytes } from '@shared/format'
 import { sanitizeName } from '../engine/fsutil'
 import type { StoredRoutine } from '../store'
 import { isSmtpConfigured, type OutgoingMail } from './smtp'
@@ -43,7 +43,7 @@ export function runLogText(run: RunRecord, ctx: { computer: string; appVersion: 
   for (const d of run.destinations) {
     lines.push(
       `Destino ${d.label ? `${d.label} (${d.path})` : d.path}: ${STATUS_PT[d.status] ?? d.status}` +
-        ` — ${d.filesCopied} arquivo(s), ${d.bytesCopied} bytes` +
+        ` — ${d.filesCopied.toLocaleString('pt-BR')} ${d.filesCopied === 1 ? 'arquivo' : 'arquivos'}, ${formatBytes(d.bytesCopied)}` +
         (d.error ? ` — ${d.error}` : '')
     )
   }

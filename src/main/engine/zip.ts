@@ -64,6 +64,27 @@ export const MAX_ZIP_ATTEMPTS = 3
 
 const zipName = (rel: string) => rel.replace(/\\/g, '/')
 
+/** Motivo (pt-BR) do arquivo cujo nome o formato ZIP não guarda como está. */
+export const ZIP_NAME_REASON =
+  'Nome de arquivo não aceito dentro de um ZIP (use o modo pasta ou renomeie o arquivo)'
+
+/**
+ * O caminho cabe num ZIP exatamente como está? Só falha com nomes que o Linux/macOS aceitam e o
+ * Windows não: "\" dentro do nome (no ZIP é separador de pasta: viraria outra estrutura e poderia
+ * colidir com uma pasta de verdade) e "X:" no começo (o yazl recusa como caminho absoluto e o destino
+ * inteiro falharia em toda execução). Mesmas regras de validação do yazl/yauzl.
+ */
+export function zipNameOk(rel: string): boolean {
+  return (
+    rel !== '' &&
+    !rel.includes('\\') &&
+    !/^[a-zA-Z]:/.test(rel) &&
+    !rel.startsWith('/') &&
+    !rel.endsWith('/') &&
+    !rel.split('/').includes('..')
+  )
+}
+
 export interface ZipTreeOptions {
   level: number
   tracker: ProgressTracker
@@ -169,6 +190,13 @@ async function zipOnce(
     for (const item of items) {
       signal.throwIfAborted()
       tracker.file(item.rel)
+
+      /* Nome que o ZIP não representa: fica de fora com aviso (o resto do backup continua). */
+      if (!zipNameOk(item.rel)) {
+        skip(item, ZIP_NAME_REASON, 0)
+        tracker.fileDone()
+        continue
+      }
 
       /* Arquivo grande que mudou na montagem anterior: cópia temporária estável primeiro. */
       if (spool.has(item.abs)) {
