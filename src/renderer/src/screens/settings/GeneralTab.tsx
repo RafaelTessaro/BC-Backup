@@ -67,7 +67,9 @@ export function GeneralTab() {
   const os = osName(info?.platform ?? 'win32')
 
   const save = (patch: Partial<Omit<AppSettings, 'smtp'>>): void => {
-    updateSettings(patch).catch((err) => notify.error('Não foi possível salvar', { description: errorMessage(err) }))
+    updateSettings(patch).catch((err) =>
+      notify.error('Não foi possível salvar', { description: errorMessage(err) })
+    )
   }
 
   const saveText = (patch: Partial<Omit<AppSettings, 'smtp'>>): void => {
@@ -80,7 +82,11 @@ export function GeneralTab() {
     setBusy('export')
     try {
       const r = await bc.settings.exportConfig()
-      if (!r.canceled) (r.ok === false ? notify.error : notify.success)(r.ok === false ? 'Falha ao exportar' : 'Configurações exportadas', { description: r.message })
+      if (!r.canceled)
+        (r.ok === false ? notify.error : notify.success)(
+          r.ok === false ? 'Falha ao exportar' : 'Configurações exportadas',
+          { description: r.message }
+        )
     } catch (err) {
       notify.error('Falha ao exportar', { description: errorMessage(err) })
     } finally {
@@ -114,7 +120,11 @@ export function GeneralTab() {
           description="O BC Backup abre na área de notificação ao ligar o computador, para os agendamentos rodarem."
           htmlFor="launch"
         >
-          <Switch id="launch" checked={settings.launchAtLogin} onCheckedChange={(v) => save({ launchAtLogin: v })} />
+          <Switch
+            id="launch"
+            checked={settings.launchAtLogin}
+            onCheckedChange={(v) => save({ launchAtLogin: v })}
+          />
         </SettingsRow>
         <SettingsRow
           label="Ao fechar a janela"
@@ -161,7 +171,10 @@ export function GeneralTab() {
         </SettingsRow>
       </SettingsGroup>
 
-      <SettingsGroup title="Identificação" description="Aparece no assunto e no texto dos e-mails enviados aos seus clientes.">
+      <SettingsGroup
+        title="Identificação"
+        description="Aparece no assunto e no texto dos e-mails enviados aos seus clientes."
+      >
         <SettingsRow label="Nome do cliente" description="Quem é dono destes arquivos." htmlFor="client">
           <TextSetting
             id="client"
@@ -170,7 +183,11 @@ export function GeneralTab() {
             onCommit={(v) => saveText({ clientName: v })}
           />
         </SettingsRow>
-        <SettingsRow label="Apelido do computador" description="Ajuda a saber de qual máquina veio o aviso." htmlFor="alias">
+        <SettingsRow
+          label="Apelido do computador"
+          description="Ajuda a saber de qual máquina veio o aviso."
+          htmlFor="alias"
+        >
           <TextSetting
             id="alias"
             value={settings.computerAlias}
@@ -178,7 +195,11 @@ export function GeneralTab() {
             onCommit={(v) => saveText({ computerAlias: v })}
           />
         </SettingsRow>
-        <SettingsRow label="Nome da empresa" description="Assina os e-mails — use o nome da sua empresa de TI." htmlFor="company">
+        <SettingsRow
+          label="Nome da empresa"
+          description="Assina os e-mails — use o nome da sua empresa de TI."
+          htmlFor="company"
+        >
           <TextSetting
             id="company"
             value={settings.companyName}

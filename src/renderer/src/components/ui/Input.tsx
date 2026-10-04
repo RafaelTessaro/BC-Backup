@@ -23,7 +23,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   ref
 ) {
   if (!Icon && !suffix && !prefixText) {
-    return <input ref={ref} aria-invalid={invalid || undefined} className={cn(inputBase, className)} {...rest} />
+    return (
+      <input ref={ref} aria-invalid={invalid || undefined} className={cn(inputBase, className)} {...rest} />
+    )
   }
   return (
     <div className={cn('relative flex items-center', className)}>

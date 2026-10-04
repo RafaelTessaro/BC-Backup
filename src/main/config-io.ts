@@ -43,7 +43,13 @@ export interface ImportPlan {
   settings: Partial<AppSettings> | null
 }
 
-/** Valida o arquivo importado e prepara as rotinas (ids novos quando colidem, nomes únicos). */
+/**
+ * Valida o arquivo importado e prepara as rotinas (ids SEMPRE novos, nomes únicos).
+ * O id identifica a pasta da rotina no destino (marcador) e os backups dela (manifesto): se o
+ * arquivo foi exportado de outro PC que grava no mesmo destino de rede, manter o id faria as
+ * duas rotinas dividirem a pasta — a limpeza de sobras de uma apagaria a cópia em andamento da
+ * outra e a retenção de uma apagaria os backups da outra.
+ */
 export function planImport(raw: unknown, existing: StoredRoutine[], now = new Date()): ImportPlan {
   if (!isObj(raw) || raw.format !== EXPORT_FORMAT) {
     throw new Error('Este arquivo não é uma exportação de configurações do BC Backup.')
@@ -53,15 +59,13 @@ export function planImport(raw: unknown, existing: StoredRoutine[], now = new Da
       'Este arquivo foi gerado por uma versão mais nova do BC Backup. Atualize o programa e tente de novo.'
     )
   }
-  const ids = new Set(existing.map((r) => r.id))
   const names = new Set(existing.map((r) => r.name.trim().toLocaleLowerCase('pt-BR')))
   const routines: StoredRoutine[] = []
   for (const item of Array.isArray(raw.routines) ? raw.routines : []) {
     if (!isObj(item)) continue
     const r = migrateRoutine(item, now)
     if (!r.name) continue
-    if (ids.has(r.id)) r.id = newId()
-    ids.add(r.id)
+    r.id = newId()
     let name = r.name
     for (let n = 1; names.has(name.toLocaleLowerCase('pt-BR')); n++) {
       name = n === 1 ? `${r.name} (importada)` : `${r.name} (importada ${n})`

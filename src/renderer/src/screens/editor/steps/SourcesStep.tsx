@@ -1,4 +1,14 @@
-import { ChevronRight, File, FilePlus, Folder, FolderPlus, LoaderCircle, RotateCcw, Upload, X } from 'lucide-react'
+import {
+  ChevronRight,
+  File,
+  FilePlus,
+  Folder,
+  FolderPlus,
+  LoaderCircle,
+  RotateCcw,
+  Upload,
+  X
+} from 'lucide-react'
 import { Collapsible } from 'radix-ui'
 import { useState, type DragEvent } from 'react'
 import type { RoutineInput, ValidationIssue } from '@shared/api'
@@ -89,10 +99,7 @@ export function SourcesStep({
       entries.push({ path: toPath(file), kind: entry?.isDirectory ? 'folder' : 'file' })
     })
     const kinds = new Map(entries.map((x) => [x.path, x.kind]))
-    addPaths(
-      entries.map((x) => x.path).filter(Boolean),
-      (p) => kinds.get(p) ?? 'folder'
-    )
+    addPaths(entries.map((x) => x.path).filter(Boolean), (p) => kinds.get(p) ?? 'folder')
   }
 
   const f = draft.filters
@@ -135,7 +142,11 @@ export function SourcesStep({
 
   return (
     <div className="flex flex-col gap-7">
-      <Field label="Nome da rotina" error={nameError?.message} description="Aparece na lista, no histórico e nos e-mails.">
+      <Field
+        label="Nome da rotina"
+        error={nameError?.message}
+        description="Aparece na lista, no histórico e nos e-mails."
+      >
         {(id) => (
           <Input
             id={id}
@@ -158,7 +169,9 @@ export function SourcesStep({
         <div className="flex items-end justify-between gap-3">
           <div>
             <h3 className="text-small font-medium text-fg">O que copiar</h3>
-            <p className="mt-0.5 text-caption text-fg-subtle">Pastas e arquivos avulsos, de qualquer disco.</p>
+            <p className="mt-0.5 text-caption text-fg-subtle">
+              Pastas e arquivos avulsos, de qualquer disco.
+            </p>
           </div>
           {!empty && (
             <span className="flex items-center gap-1.5 text-caption text-fg-muted tnum">
@@ -201,7 +214,9 @@ export function SourcesStep({
                     ) : (
                       <>
                         {formatBytes(est.bytes)}
-                        <span className="block text-fg-subtle">{plural(est.files, 'arquivo', 'arquivos')}</span>
+                        <span className="block text-fg-subtle">
+                          {plural(est.files, 'arquivo', 'arquivos')}
+                        </span>
                       </>
                     )}
                   </span>
@@ -253,7 +268,9 @@ export function SourcesStep({
                   size="sm"
                   icon={RotateCcw}
                   className="-my-1 h-6"
-                  onClick={() => update((d) => ({ ...d, filters: { ...d.filters, exclude: [...DEFAULT_EXCLUDES] } }))}
+                  onClick={() =>
+                    update((d) => ({ ...d, filters: { ...d.filters, exclude: [...DEFAULT_EXCLUDES] } }))
+                  }
                 >
                   Restaurar padrão
                 </Button>
@@ -286,12 +303,16 @@ export function SourcesStep({
             <div className="flex items-center justify-between gap-6">
               <div>
                 <p className="text-small font-medium text-fg">Ignorar arquivos ocultos e de sistema</p>
-                <p className="text-caption text-fg-subtle">Recomendado: evita arquivos temporários do Windows.</p>
+                <p className="text-caption text-fg-subtle">
+                  Recomendado: evita arquivos temporários do Windows.
+                </p>
               </div>
               <Switch
                 label="Ignorar arquivos ocultos e de sistema"
                 checked={f.skipHiddenAndSystem}
-                onCheckedChange={(v) => update((d) => ({ ...d, filters: { ...d.filters, skipHiddenAndSystem: v } }))}
+                onCheckedChange={(v) =>
+                  update((d) => ({ ...d, filters: { ...d.filters, skipHiddenAndSystem: v } }))
+                }
               />
             </div>
             <div className="flex items-center justify-between gap-6">

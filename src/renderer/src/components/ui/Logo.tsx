@@ -5,7 +5,14 @@ import { cn } from '@renderer/lib/cn'
 export function BrandMark({ size = 24, className }: { size?: number; className?: string }) {
   const id = useId().replace(/:/g, '')
   return (
-    <svg viewBox="0 0 32 32" width={size} height={size} fill="none" aria-hidden className={cn('shrink-0', className)}>
+    <svg
+      viewBox="0 0 32 32"
+      width={size}
+      height={size}
+      fill="none"
+      aria-hidden
+      className={cn('shrink-0', className)}
+    >
       <defs>
         <linearGradient id={`bc-g-${id}`} x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
           <stop offset="0" stopColor="#5674FF" />
@@ -30,7 +37,8 @@ export function Wordmark({ size = 15, className }: { size?: number; className?: 
     <span className={cn('inline-flex items-center', className)} style={{ gap: Math.round(size * 0.53) }}>
       <BrandMark size={icon} />
       <span className="leading-none tracking-[-0.02em] whitespace-nowrap" style={{ fontSize: size }}>
-        <span className="font-semibold text-fg">BC</span> <span className="font-normal text-fg-muted">Backup</span>
+        <span className="font-semibold text-fg">BC</span>{' '}
+        <span className="font-normal text-fg-muted">Backup</span>
       </span>
     </span>
   )

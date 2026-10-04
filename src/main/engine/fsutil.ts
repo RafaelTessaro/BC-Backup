@@ -116,12 +116,13 @@ export async function diskSpaceOf(p: string, timeoutMs = 5000): Promise<SpaceInf
   return { total: Number(s.blocks) * Number(s.bsize), free: Number(s.bavail) * Number(s.bsize) }
 }
 
-const RESERVED_WIN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i
+// Inclui CONIN$/CONOUT$, COM¹²³/LPT¹²³ e variantes com espaço antes da extensão ("CON .txt").
+const RESERVED_WIN = /^(con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³]) *(\..*)?$/i
 
 /**
  * Nome seguro para pasta/arquivo no Windows (e nos outros sistemas):
  * troca <>:"/\|?* e caracteres de controle por "_", remove ponto/espaço final
- * e prefixa "_" em nomes reservados (CON, PRN, AUX, NUL, COMn, LPTn).
+ * e prefixa "_" em nomes reservados (CON, PRN, AUX, NUL, CONIN$, CONOUT$, COMn, LPTn).
  */
 export function sanitizeName(name: string, fallback = 'Rotina', maxLength = 80): string {
   // eslint-disable-next-line no-control-regex

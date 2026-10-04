@@ -1,4 +1,15 @@
-import { CalendarRange, Download, Ellipsis, Hand, History, Play, SearchX, Trash2, Undo2 } from 'lucide-react'
+import {
+  CalendarRange,
+  Download,
+  Ellipsis,
+  Hand,
+  History,
+  Play,
+  Plus,
+  SearchX,
+  Trash2,
+  Undo2
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { RunSummary } from '@shared/types'
 import { formatBytes, formatDuration } from '@shared/format'
@@ -32,7 +43,19 @@ function toCsv(runs: RunSummary[]): string {
     const s = v === undefined ? '' : String(v)
     return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
-  const header = ['Início', 'Fim', 'Rotina', 'Status', 'Origem', 'Duração (s)', 'Arquivos', 'Bytes', 'Avisos', 'Erros', 'Mensagem']
+  const header = [
+    'Início',
+    'Fim',
+    'Rotina',
+    'Status',
+    'Origem',
+    'Duração (s)',
+    'Arquivos',
+    'Bytes',
+    'Avisos',
+    'Erros',
+    'Mensagem'
+  ]
   const rows = runs.map((r) =>
     [
       new Date(r.startedAt).toLocaleString('pt-BR'),
@@ -166,7 +189,9 @@ export function HistoryScreen() {
   const counts = useMemo(() => {
     const limit = period === 'all' ? Infinity : Number(period) * 86_400_000
     const base = runs.filter(
-      (r) => nowMs - new Date(r.startedAt).getTime() <= limit && (routineFilter === 'all' || r.routineId === routineFilter)
+      (r) =>
+        nowMs - new Date(r.startedAt).getTime() <= limit &&
+        (routineFilter === 'all' || r.routineId === routineFilter)
     )
     return {
       all: base.length,
@@ -193,7 +218,9 @@ export function HistoryScreen() {
               icon={Download}
               onClick={() => {
                 download(`bc-backup-historico-${dayKey(new Date())}.csv`, toCsv(filtered))
-                notify.success('Histórico exportado', { description: plural(filtered.length, 'execução', 'execuções') })
+                notify.success('Histórico exportado', {
+                  description: plural(filtered.length, 'execução', 'execuções')
+                })
               }}
               disabled={filtered.length === 0}
             >
@@ -229,7 +256,7 @@ export function HistoryScreen() {
             action={
               <Button
                 variant="primary"
-                icon={Play}
+                icon={routines.length ? Play : Plus}
                 onClick={() => navigate(routines.length ? ROUTES.routines : ROUTES.newRoutine)}
               >
                 {routines.length ? 'Executar uma rotina agora' : 'Criar primeira rotina'}
@@ -321,8 +348,12 @@ export function HistoryScreen() {
           {groups.map(([key, list]) => (
             <div key={key} role="rowgroup" className="border-b border-border last:border-b-0">
               <div className="flex items-baseline justify-between px-5 pt-4 pb-1.5">
-                <span className="text-overline text-fg-subtle">{formatDayHeading(list[0].startedAt, now)}</span>
-                <span className="text-caption text-fg-subtle tnum">{plural(list.length, 'execução', 'execuções')}</span>
+                <span className="text-overline text-fg-subtle">
+                  {formatDayHeading(list[0].startedAt, now)}
+                </span>
+                <span className="text-caption text-fg-subtle tnum">
+                  {plural(list.length, 'execução', 'execuções')}
+                </span>
               </div>
               <div className="px-2 pb-2">
                 {list.map((r) => (

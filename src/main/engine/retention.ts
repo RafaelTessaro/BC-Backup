@@ -9,7 +9,9 @@
 //   salva os `faltam` primeiros de cands; os demais: renomeia para ".excluindo" e apaga
 //   (do mais antigo ao mais novo).
 // A data vem do NOME da pasta/zip (carimbo), nunca do mtime.
-// Nada que não tenha o nosso manifesto (com o mesmo routineId) é apagado.
+// Nada que não tenha o nosso manifesto (com o mesmo routineId) é apagado, e o backup que a
+// execução acabou de criar é sempre mantido (conta em `manter`): uma execução que atravessa a
+// meia-noite (ou um backup "do futuro" de quando o relógio estava errado) não pode apagá-lo.
 
 import { readFile, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -53,17 +55,22 @@ export function retentionCutoff(days: number, now: Date): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1))
 }
 
-/** Seleção pura (doc 01 §6). Devolve os que devem ser apagados, do mais antigo ao mais novo. */
+/**
+ * Seleção pura (doc 01 §6). Devolve os que devem ser apagados, do mais antigo ao mais novo.
+ * `isProtected` marca backups que nunca saem (ex.: o que acabou de ser criado) — contam em `manter`.
+ */
 export function selectForDeletion<T extends { date: Date }>(
   snaps: T[],
   policy: RetentionPolicy,
-  now: Date
+  now: Date,
+  isProtected: (s: T) => boolean = () => false
 ): T[] {
   if (!policy.enabled || !(policy.days > 0)) return []
   const cutoff = retentionCutoff(Math.floor(policy.days), now).getTime()
   const sorted = [...snaps].sort((a, b) => b.date.getTime() - a.date.getTime())
-  const keep = sorted.filter((s) => s.date.getTime() >= cutoff)
-  const cands = sorted.filter((s) => s.date.getTime() < cutoff)
+  const kept = (s: T) => s.date.getTime() >= cutoff || isProtected(s)
+  const keep = sorted.filter(kept)
+  const cands = sorted.filter((s) => !kept(s))
   const missing = Math.max(0, Math.floor(policy.minKeep || 0) - keep.length)
   return cands.slice(missing).reverse()
 }
@@ -109,17 +116,22 @@ export async function deleteSnapshot(s: Snapshot): Promise<void> {
   if (s.kind === 'zip') await rm(zipSidecarPath(s.path), { force: true })
 }
 
-/** Aplica a retenção numa pasta de rotina. Devolve os caminhos apagados. */
+/**
+ * Aplica a retenção numa pasta de rotina. Devolve os caminhos apagados.
+ * `protect` = nomes (pasta ou .zip) que nunca são apagados — o backup desta execução.
+ */
 export async function applyRetention(
   routineDir: string,
   routineId: string,
   policy: RetentionPolicy,
   now: Date,
-  log: LogFn = () => {}
+  log: LogFn = () => {},
+  protect: string[] = []
 ): Promise<string[]> {
   if (!policy.enabled || !(policy.days > 0)) return []
   const snaps = await listSnapshots(routineDir, routineId)
-  const victims = selectForDeletion(snaps, policy, now)
+  const keepNames = new Set(protect)
+  const victims = selectForDeletion(snaps, policy, now, (s) => keepNames.has(s.name))
   const pruned: string[] = []
   for (const v of victims) {
     try {
@@ -137,6 +149,7 @@ export async function applyRetention(
  * Limpa sobras de execuções anteriores desta rotina (chamada no início de cada execução):
  *  - "<carimbo>.em-andamento" com manifesto válido desta rotina → finaliza (rename);
  *    sem manifesto → apaga (execução que caiu ou foi interrompida).
+ *    Com manifesto de OUTRA rotina, ou se o nome final já existe → não mexe (é um backup completo).
  *  - "<carimbo>.zip.em-andamento" → apaga.
  *  - "<carimbo>(.zip).excluindo" → termina a exclusão.
  *  - "<carimbo>.zip.manifesto.json" sem o .zip correspondente → apaga.
@@ -161,12 +174,15 @@ export async function cleanupLeftovers(
         if (!st.isDirectory()) continue
         const manifest = await readFolderManifest(path)
         const finalPath = join(routineDir, inProgress[1])
-        if (manifest && manifest.routineId === routineId && !(await pathExists(finalPath))) {
+        if (!manifest) {
+          await rm(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
+          log('info', `Removida a sobra de uma execução interrompida: ${name}.`)
+        } else if (manifest.routineId === routineId && !(await pathExists(finalPath))) {
           await renameRetry(path, finalPath)
           log('info', `Backup anterior finalizado: ${inProgress[1]}.`)
         } else {
-          await rm(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
-          log('info', `Removida a sobra de uma execução interrompida: ${name}.`)
+          // Backup completo (tem manifesto): nunca apagamos; fica como está.
+          log('warn', `Backup completo deixado como está (não pôde receber o nome final): ${name}.`)
         }
         continue
       }

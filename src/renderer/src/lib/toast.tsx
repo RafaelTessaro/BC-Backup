@@ -71,7 +71,9 @@ function ToastCard({
 
 function show(kind: Kind, title: ReactNode, opts: NotifyOptions = {}): string | number {
   return toast.custom(
-    (id) => <ToastCard id={id} kind={kind} title={title} description={opts.description} action={opts.action} />,
+    (id) => (
+      <ToastCard id={id} kind={kind} title={title} description={opts.description} action={opts.action} />
+    ),
     { duration: opts.duration ?? (kind === 'error' ? Infinity : 5000), id: opts.id }
   )
 }

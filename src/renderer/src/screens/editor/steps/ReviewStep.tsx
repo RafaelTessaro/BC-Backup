@@ -55,7 +55,10 @@ export function ReviewStep({
   return (
     <div className="flex flex-col gap-6">
       {errors.length > 0 && (
-        <Callout tone="danger" title={errors.length === 1 ? 'Falta 1 ajuste' : `Faltam ${errors.length} ajustes`}>
+        <Callout
+          tone="danger"
+          title={errors.length === 1 ? 'Falta 1 ajuste' : `Faltam ${errors.length} ajustes`}
+        >
           <ul className="mt-1 flex flex-col gap-1">
             {errors.map((e) => (
               <li key={e.message} className="flex items-baseline justify-between gap-3">
@@ -82,11 +85,16 @@ export function ReviewStep({
 
       <Card className="divide-y divide-border">
         <Row label="Nome" onEdit={() => goTo('origem')}>
-          <span className="font-medium">{draft.name.trim() || <span className="text-danger">Sem nome</span>}</span>
+          <span className="font-medium">
+            {draft.name.trim() || <span className="text-danger">Sem nome</span>}
+          </span>
         </Row>
         <Row label="Origem" onEdit={() => goTo('origem')}>
           <p>
-            {[folders ? plural(folders, 'pasta', 'pastas') : null, files ? plural(files, 'arquivo', 'arquivos') : null]
+            {[
+              folders ? plural(folders, 'pasta', 'pastas') : null,
+              files ? plural(files, 'arquivo', 'arquivos') : null
+            ]
               .filter(Boolean)
               .join(' e ') || <span className="text-danger">Nada selecionado</span>}
             {sizes.total && <span className="text-fg-muted"> · ≈ {formatBytes(sizes.total.bytes)}</span>}
@@ -107,8 +115,12 @@ export function ReviewStep({
             <div className="flex flex-col gap-0.5">
               {draft.destinations.map((d) => (
                 <span key={d.id} className="flex min-w-0 items-baseline gap-2">
-                  <span className="max-w-[60%] shrink-0">
-                    <PathText path={d.path} className="text-fg" />
+                  <span
+                    className="min-w-0 truncate font-mono text-mono text-fg"
+                    title={d.path}
+                    data-selectable
+                  >
+                    {d.path}
                   </span>
                   {d.label && <span className="truncate text-fg-subtle">{d.label}</span>}
                   {d.enabled === false && <span className="text-caption text-fg-subtle">(desativado)</span>}
@@ -117,7 +129,8 @@ export function ReviewStep({
             </div>
           )}
           <p className="mt-1 text-fg-muted">
-            {draft.mode === 'zip' ? `Arquivo ZIP (nível ${draft.zipLevel})` : 'Pasta datada'} · {VERIFY[draft.verify]}
+            {draft.mode === 'zip' ? `Arquivo ZIP (nível ${draft.zipLevel})` : 'Pasta datada'} ·{' '}
+            {VERIFY[draft.verify]}
           </p>
         </Row>
         <Row label="Agendamento" onEdit={() => goTo('agendamento')}>
@@ -137,7 +150,8 @@ export function ReviewStep({
         <Row label="Notificação" onEdit={() => goTo('notificacao')}>
           {n.enabled ? (
             <p>
-              E-mail para {n.recipients.length ? n.recipients.join(', ') : <span className="text-danger">ninguém</span>}
+              E-mail para{' '}
+              {n.recipients.length ? n.recipients.join(', ') : <span className="text-danger">ninguém</span>}
               <span className="text-fg-muted">
                 {' '}
                 · {n.onSuccess ? 'sempre' : 'só com avisos ou falhas'}

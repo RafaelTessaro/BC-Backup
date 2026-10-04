@@ -2,7 +2,15 @@ import { cn } from '@renderer/lib/cn'
 import { TONE_SOFT, type StatusMeta } from '@renderer/lib/status'
 
 /** StatusPill (§8): altura 22, px 8, radius-full, caption 500, ícone 12 px + texto. */
-export function StatusPill({ meta, className, label }: { meta: StatusMeta; className?: string; label?: string }) {
+export function StatusPill({
+  meta,
+  className,
+  label
+}: {
+  meta: StatusMeta
+  className?: string
+  label?: string
+}) {
   const Icon = meta.icon
   return (
     <span

@@ -448,15 +448,22 @@ export class JsonFile<T> {
     return this.running
   }
 
-  /** Espera as gravações pendentes. */
+  /** Espera as gravações pendentes; se a última falhou, tenta gravar mais uma vez. */
   async flush(): Promise<void> {
     while (this.running) await this.running.catch(() => {})
+    if (this.dirty) await this.save()
   }
 
   private async loop(): Promise<void> {
     while (this.dirty) {
       this.dirty = false
-      await writeJsonAtomic(this.file, this.data)
+      try {
+        await writeJsonAtomic(this.file, this.data)
+      } catch (e) {
+        // Continua pendente: a próxima gravação (ou o flush ao sair) tenta de novo.
+        this.dirty = true
+        throw e
+      }
     }
   }
 }

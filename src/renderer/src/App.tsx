@@ -86,7 +86,10 @@ export function App() {
           <Titlebar platform={platform} />
           <main ref={mainRef} id="conteudo" className="@container relative min-h-0 flex-1 overflow-y-auto">
             {ready && (
-              <div key={route.name === 'settings' ? section : path} className="flex min-h-full flex-col animate-fade-in">
+              <div
+                key={route.name === 'settings' ? section : path}
+                className="flex min-h-full flex-col animate-fade-in"
+              >
                 <ErrorBoundary resetKey={path}>
                   <Screen />
                 </ErrorBoundary>
@@ -98,7 +101,13 @@ export function App() {
       <LiveRunDrawer />
       <RunDetailDrawer />
       <NavigationGuard />
-      <Toaster position="bottom-right" visibleToasts={3} offset={16} gap={8} toastOptions={{ unstyled: true }} />
+      <Toaster
+        position="bottom-right"
+        visibleToasts={3}
+        offset={16}
+        gap={8}
+        toastOptions={{ unstyled: true }}
+      />
     </TooltipProvider>
   )
 }

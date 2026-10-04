@@ -33,7 +33,9 @@ export function ProgressBar({ value, size = 'sm', tone = 'accent', className, la
       )}
     >
       {indeterminate ? (
-        <div className={cn('absolute inset-y-0 left-0 w-[30%] rounded-xs animate-indeterminate', FILL[tone])} />
+        <div
+          className={cn('absolute inset-y-0 left-0 w-[30%] rounded-xs animate-indeterminate', FILL[tone])}
+        />
       ) : (
         <div
           className={cn('h-full rounded-xs transition-[width] duration-[400ms] ease-linear', FILL[tone])}

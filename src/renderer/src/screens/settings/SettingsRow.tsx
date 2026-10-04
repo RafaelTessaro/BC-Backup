@@ -59,7 +59,9 @@ export function SettingsRow({
         </label>
         {description && <p className="mt-0.5 text-small text-fg-muted">{description}</p>}
       </div>
-      {children && <div className={cn('flex shrink-0 items-center gap-2', stack && 'w-full')}>{children}</div>}
+      {children && (
+        <div className={cn('flex shrink-0 items-center gap-2', stack && 'w-full')}>{children}</div>
+      )}
     </div>
   )
 }

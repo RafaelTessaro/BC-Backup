@@ -113,7 +113,9 @@ function DestinationItem({ d }: { d: DestinationResult }) {
         <p className="text-caption text-fg-subtle tnum">
           {[
             d.freeBytesAfter !== undefined ? `${formatBytes(d.freeBytesAfter)} livres depois` : null,
-            d.pruned.length ? plural(d.pruned.length, 'backup antigo removido', 'backups antigos removidos') : null,
+            d.pruned.length
+              ? plural(d.pruned.length, 'backup antigo removido', 'backups antigos removidos')
+              : null,
             d.skipped.length ? plural(d.skipped.length, 'arquivo ignorado', 'arquivos ignorados') : null
           ]
             .filter(Boolean)
@@ -138,7 +140,11 @@ function Summary({ r }: { r: RunRecord }) {
         <Metric label="Arquivos" value={formatNumber(r.filesCopied)} />
         <Metric label="Dados" value={formatBytes(r.bytesCopied)} />
         <Metric label="Duração" value={r.durationMs !== undefined ? formatDuration(r.durationMs) : '—'} />
-        <Metric label="Avisos" value={formatNumber(r.warnings)} tone={r.warnings ? 'text-warning' : undefined} />
+        <Metric
+          label="Avisos"
+          value={formatNumber(r.warnings)}
+          tone={r.warnings ? 'text-warning' : undefined}
+        />
         <Metric label="Erros" value={formatNumber(r.errors)} tone={r.errors ? 'text-danger' : undefined} />
         <Metric label="Origem" value={TRIGGER_LABEL[r.trigger] ?? r.trigger} />
       </section>
@@ -164,7 +170,8 @@ function Summary({ r }: { r: RunRecord }) {
             ))}
           </ul>
           <p className="text-caption text-fg-subtle">
-            Arquivos em uso não impedem o backup. Feche o programa que os usa para que entrem na próxima cópia.
+            Arquivos em uso não impedem o backup. Feche o programa que os usa para que entrem na próxima
+            cópia.
           </p>
         </section>
       )}
@@ -235,7 +242,13 @@ function LogView({ log, fileStamp }: { log: LogEntry[]; fileStamp: string }) {
         />
         <Checkbox checked={onlyIssues} onCheckedChange={setOnlyIssues} label="Só erros e avisos" />
         <div className="flex items-center gap-1">
-          <IconButton icon={Copy} label="Copiar log" variant="secondary" size="md" onClick={() => void copy()} />
+          <IconButton
+            icon={Copy}
+            label="Copiar log"
+            variant="secondary"
+            size="md"
+            onClick={() => void copy()}
+          />
           <IconButton icon={Download} label="Salvar como .txt" variant="secondary" size="md" onClick={save} />
         </div>
       </div>
@@ -244,7 +257,9 @@ function LogView({ log, fileStamp }: { log: LogEntry[]; fileStamp: string }) {
         data-selectable
       >
         {lines.length === 0 ? (
-          <p className="px-3 py-2 font-sans text-small text-fg-subtle">Nenhuma linha corresponde ao filtro.</p>
+          <p className="px-3 py-2 font-sans text-small text-fg-subtle">
+            Nenhuma linha corresponde ao filtro.
+          </p>
         ) : (
           lines.map((l, i) => {
             const lv = LEVEL[l.level]
@@ -384,7 +399,10 @@ export function RunDetailDrawer() {
             <Summary r={r} />
           </Tabs.Content>
           <Tabs.Content value="log" className="min-h-0 flex-1 focus-visible:outline-none">
-            <LogView log={r.log} fileStamp={`${r.routineName.replace(/[\\/:*?"<>|]+/g, '-')}-${backupStamp(new Date(r.startedAt))}`} />
+            <LogView
+              log={r.log}
+              fileStamp={`${r.routineName.replace(/[\\/:*?"<>|]+/g, '-')}-${backupStamp(new Date(r.startedAt))}`}
+            />
           </Tabs.Content>
         </Tabs.Root>
       )}

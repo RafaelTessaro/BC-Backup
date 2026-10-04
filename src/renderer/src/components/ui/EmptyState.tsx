@@ -12,7 +12,14 @@ interface EmptyStateProps {
 }
 
 /** EmptyState (§7g): ícone 24 em tile 48 surface-hover · título section · texto small · 1 CTA. */
-export function EmptyState({ icon: Icon, title, description, action, align = 'center', className }: EmptyStateProps) {
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  action,
+  align = 'center',
+  className
+}: EmptyStateProps) {
   return (
     <div
       className={cn(

@@ -30,7 +30,8 @@ export function AboutTab() {
         <div className="relative flex flex-col items-center gap-4 text-center">
           <Wordmark size={28} />
           <p className="max-w-[420px] text-small text-fg-muted">
-            Backups automáticos para pastas, discos externos e servidores da rede — com retenção e aviso por e-mail.
+            Backups automáticos para pastas, discos externos e servidores da rede — com retenção e aviso por
+            e-mail.
           </p>
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-surface-hover px-2.5 py-1 font-mono text-mono text-fg-muted">
@@ -45,12 +46,18 @@ export function AboutTab() {
 
       <SettingsGroup title="Informações">
         <SettingsRow label="Computador" description={info.hostname} />
-        <SettingsRow label="Pasta de dados" description={<span className="font-mono text-mono">{info.dataPath}</span>}>
+        <SettingsRow
+          label="Pasta de dados"
+          description={<span className="font-mono text-mono">{info.dataPath}</span>}
+        >
           <Button icon={FolderOpen} onClick={() => void bc.app.openPath(info.dataPath)}>
             Abrir
           </Button>
         </SettingsRow>
-        <SettingsRow label="Pasta de logs" description={<span className="font-mono text-mono">{info.logsPath}</span>}>
+        <SettingsRow
+          label="Pasta de logs"
+          description={<span className="font-mono text-mono">{info.logsPath}</span>}
+        >
           <Button icon={FolderOpen} onClick={() => void bc.app.openPath(info.logsPath)}>
             Abrir
           </Button>

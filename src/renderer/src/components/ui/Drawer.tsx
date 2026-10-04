@@ -17,7 +17,16 @@ interface DrawerProps {
 }
 
 /** Drawer (§8): direita, 480 px, abaixo da titlebar, surface-raised, sh-dialog, cabeçalho sticky 56 px. */
-export function Drawer({ open, onOpenChange, title, actions, subtitle, children, footer, description }: DrawerProps) {
+export function Drawer({
+  open,
+  onOpenChange,
+  title,
+  actions,
+  subtitle,
+  children,
+  footer,
+  description
+}: DrawerProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>

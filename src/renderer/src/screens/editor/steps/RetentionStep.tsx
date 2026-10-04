@@ -40,7 +40,11 @@ export function RetentionStep({
           title="Apagar backups antigos automaticamente"
           description="Recomendado. Sem isso, os backups se acumulam até o disco encher."
         >
-          <Switch label="Apagar backups antigos" checked={r.enabled} onCheckedChange={(enabled) => set({ enabled })} />
+          <Switch
+            label="Apagar backups antigos"
+            checked={r.enabled}
+            onCheckedChange={(enabled) => set({ enabled })}
+          />
         </OptionRow>
         {r.enabled && (
           <>
@@ -48,7 +52,9 @@ export function RetentionStep({
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="text-small font-medium text-fg">Apagar cópias com mais de</p>
-                  <p className="mt-0.5 text-caption text-fg-subtle">Dias de calendário — hoje conta como o primeiro.</p>
+                  <p className="mt-0.5 text-caption text-fg-subtle">
+                    Dias de calendário — hoje conta como o primeiro.
+                  </p>
                 </div>
                 <NumberStepper
                   label="Dias"

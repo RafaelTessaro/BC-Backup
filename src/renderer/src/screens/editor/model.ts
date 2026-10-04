@@ -23,7 +23,8 @@ export const STEPS: StepMeta[] = [
     id: 'destinos',
     label: 'Destinos',
     title: 'Para onde as cópias vão?',
-    description: 'Dois discos diferentes = mais segurança. Use um HD externo, outra unidade ou uma pasta da rede.'
+    description:
+      'Dois discos diferentes = mais segurança. Use um HD externo, outra unidade ou uma pasta da rede.'
   },
   {
     id: 'agendamento',

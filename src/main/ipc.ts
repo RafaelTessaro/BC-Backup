@@ -22,7 +22,8 @@ import {
   asRoutineInput,
   asSettingsPatch,
   asSmtpInput,
-  asString
+  asString,
+  checkOpenablePath
 } from './ipc-validate'
 import { log } from './logger'
 import { renderTestEmail } from './mail/template'
@@ -132,8 +133,8 @@ export function registerIpc(ctx: AppContext): void {
   /* ------------------------------ app ------------------------------ */
   handle('appInfo', () => ctx.info)
   handle('appOpenPath', async (p) => {
-    const path = asAbsPath(p)
-    if (!(await pathExists(path))) throw new Error(`Caminho não encontrado: ${path}`)
+    // Só pastas e .zip: openPath num .exe/.bat/.lnk executaria o arquivo.
+    const path = await checkOpenablePath(asAbsPath(p))
     const err = await shell.openPath(path)
     if (err) throw new Error(`Não foi possível abrir: ${err}`)
   })

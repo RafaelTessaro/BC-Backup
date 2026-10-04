@@ -54,8 +54,8 @@ export function NotificationStep({
             </Button>
           }
         >
-          Configure o servidor de envio (SMTP) uma vez e todas as rotinas poderão avisar seus clientes. Seu rascunho fica
-          guardado enquanto isso.
+          Configure o servidor de envio (SMTP) uma vez e todas as rotinas poderão avisar seus clientes. Seu
+          rascunho fica guardado enquanto isso.
         </Callout>
       )}
 
@@ -64,11 +64,18 @@ export function NotificationStep({
           title="Enviar e-mail ao terminar"
           description="Com o resultado, os destinos e o espaço livre. Ótimo para o cliente saber que está tudo bem."
         >
-          <Switch label="Enviar e-mail ao terminar" checked={n.enabled} onCheckedChange={(enabled) => set({ enabled })} />
+          <Switch
+            label="Enviar e-mail ao terminar"
+            checked={n.enabled}
+            onCheckedChange={(enabled) => set({ enabled })}
+          />
         </OptionRow>
         {n.enabled && (
           <div className="flex flex-col gap-5 px-5 py-5">
-            <Field label="Destinatários" description="Digite e tecle Enter ou vírgula. Pode colar vários de uma vez.">
+            <Field
+              label="Destinatários"
+              description="Digite e tecle Enter ou vírgula. Pode colar vários de uma vez."
+            >
               {(id) => (
                 <ChipInput
                   id={id}
@@ -125,7 +132,10 @@ export function NotificationStep({
                 )}
               </Field>
             </div>
-            <Field label="Nome do cliente no e-mail" description="Em branco, usa o nome definido em Configurações.">
+            <Field
+              label="Nome do cliente no e-mail"
+              description="Em branco, usa o nome definido em Configurações."
+            >
               {(id) => (
                 <Input
                   id={id}

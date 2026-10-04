@@ -77,7 +77,9 @@ export function Segmented<T extends string>({
             {Icon && <Icon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />}
             <span className="truncate">{o.label}</span>
             {o.count !== undefined && (
-              <span className={cn('tnum text-caption', active ? 'text-fg-muted' : 'text-fg-subtle')}>{o.count}</span>
+              <span className={cn('tnum text-caption', active ? 'text-fg-muted' : 'text-fg-subtle')}>
+                {o.count}
+              </span>
             )}
           </RadioGroup.Item>
         )

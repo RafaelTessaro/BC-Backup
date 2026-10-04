@@ -65,7 +65,10 @@ export function MenuItem({
       )}
     >
       {Icon && (
-        <Icon className={cn('size-4 shrink-0', danger ? 'text-danger' : 'text-fg-subtle')} strokeWidth={1.75} />
+        <Icon
+          className={cn('size-4 shrink-0', danger ? 'text-danger' : 'text-fg-subtle')}
+          strokeWidth={1.75}
+        />
       )}
       <span className="flex-1 truncate">{children}</span>
       {hint && <span className="ml-3 text-caption text-fg-subtle">{hint}</span>}

@@ -13,7 +13,8 @@ const VARIANTS: Record<ButtonVariant, string> = {
   secondary:
     'bg-surface-raised text-fg border border-border-strong shadow-xs hover:bg-surface-hover active:bg-surface-hover',
   ghost: 'text-fg-muted hover:bg-surface-hover hover:text-fg active:bg-surface-hover',
-  danger: 'bg-danger-soft text-danger border border-transparent hover:border-danger/30 active:border-danger/40',
+  danger:
+    'bg-danger-soft text-danger border border-transparent hover:border-danger/30 active:border-danger/40',
   link: 'text-accent-text hover:underline underline-offset-4 decoration-accent-text/40 px-0! h-auto!'
 }
 
@@ -82,7 +83,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
             <Icon className={iconCls} strokeWidth={1.75} aria-hidden />
           ) : null}
           {children}
-          {IconRight && <IconRight className={cn(iconCls, '-mr-0.5 opacity-80')} strokeWidth={1.75} aria-hidden />}
+          {IconRight && (
+            <IconRight className={cn(iconCls, '-mr-0.5 opacity-80')} strokeWidth={1.75} aria-hidden />
+          )}
         </>
       )}
     </Comp>
@@ -102,7 +105,17 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
 
 /** Botão só com ícone: quadrado + Tooltip obrigatório (§8). */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { icon: Icon, label, variant = 'ghost', size = 'sm', tooltipSide = 'top', loading, className, shortcut, ...rest },
+  {
+    icon: Icon,
+    label,
+    variant = 'ghost',
+    size = 'sm',
+    tooltipSide = 'top',
+    loading,
+    className,
+    shortcut,
+    ...rest
+  },
   ref
 ) {
   return (

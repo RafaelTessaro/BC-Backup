@@ -62,15 +62,21 @@ function SchedulePreview({ schedule }: { schedule: Schedule }) {
               Próxima execução: <span className="text-accent-text">{formatWhen(first, now)}</span>.
             </p>
             {rest.length > 0 && (
-              <p className="text-caption text-fg-muted tnum">Depois: {rest.map((d) => formatWhen(d, now)).join(' · ')}</p>
+              <p className="text-caption text-fg-muted tnum">
+                Depois: {rest.map((d) => formatWhen(d, now)).join(' · ')}
+              </p>
             )}
           </>
         ) : schedule.kind === 'manual' ? (
-          <p className="text-small font-medium text-fg">Sem horário fixo: a rotina roda quando você clicar em “Executar agora”.</p>
+          <p className="text-small font-medium text-fg">
+            Sem horário fixo: a rotina roda quando você clicar em “Executar agora”.
+          </p>
         ) : schedule.kind === 'startup' ? (
           <p className="text-small font-medium text-fg">{describeSchedule(schedule)}.</p>
         ) : (
-          <p className="text-small font-medium text-fg">Escolha os dias e horários para ver as próximas execuções.</p>
+          <p className="text-small font-medium text-fg">
+            Escolha os dias e horários para ver as próximas execuções.
+          </p>
         )}
         {first && <p className="text-caption text-fg-subtle">{describeSchedule(schedule)}</p>}
       </div>
@@ -89,7 +95,8 @@ export function ScheduleStep({
 }) {
   const s = draft.schedule
   const launchAtLogin = useApp((st) => st.settings?.launchAtLogin ?? true)
-  const set = (patch: Partial<Schedule>): void => update((d) => ({ ...d, schedule: { ...d.schedule, ...patch } }))
+  const set = (patch: Partial<Schedule>): void =>
+    update((d) => ({ ...d, schedule: { ...d.schedule, ...patch } }))
 
   const setKind = (kind: ScheduleKind): void => {
     const patch: Partial<Schedule> = { kind }
@@ -121,7 +128,11 @@ export function ScheduleStep({
           </div>
         ))}
         {s.times.length < MAX_TIMES && (
-          <Button variant="ghost" icon={Plus} onClick={() => set({ times: [...s.times, nextFreeTime(s.times)] })}>
+          <Button
+            variant="ghost"
+            icon={Plus}
+            onClick={() => set({ times: [...s.times, nextFreeTime(s.times)] })}
+          >
             Adicionar horário
           </Button>
         )}
@@ -176,7 +187,11 @@ export function ScheduleStep({
                     onChange={(start) => set({ window: { ...s.window!, start } })}
                   />
                   <span>às</span>
-                  <TimePicker label="Fim" value={s.window.end} onChange={(end) => set({ window: { ...s.window!, end } })} />
+                  <TimePicker
+                    label="Fim"
+                    value={s.window.end}
+                    onChange={(end) => set({ window: { ...s.window!, end } })}
+                  />
                 </>
               )}
             </div>
@@ -205,7 +220,10 @@ export function ScheduleStep({
 
       {s.kind === 'startup' && (
         <section className="flex flex-col gap-3">
-          <SectionTitle title="Quando ligar o computador" description="Esperar um pouco deixa o computador terminar de iniciar." />
+          <SectionTitle
+            title="Quando ligar o computador"
+            description="Esperar um pouco deixa o computador terminar de iniciar."
+          />
           <Select
             className="w-[220px]"
             label="Atraso"
@@ -222,7 +240,8 @@ export function ScheduleStep({
                 </Button>
               }
             >
-              “Iniciar com o Windows” está desligado. Ligue em Configurações → Geral para esta rotina funcionar.
+              “Iniciar com o Windows” está desligado. Ligue em Configurações → Geral para esta rotina
+              funcionar.
             </Callout>
           )}
         </section>

@@ -41,7 +41,8 @@ export function Titlebar({ platform }: { platform: string }) {
   const route = useRoute()
   const routines = useApp((s) => s.routines)
   const progress = useApp((s) => s.progress)
-  const routineName = route.name === 'routine-edit' ? routines.find((r) => r.id === route.id)?.name : undefined
+  const routineName =
+    route.name === 'routine-edit' ? routines.find((r) => r.id === route.id)?.name : undefined
   const crumbs = crumbsFor(route, routineName)
   const active = Object.values(progress)
   const first = primaryRun(progress)
@@ -49,14 +50,23 @@ export function Titlebar({ platform }: { platform: string }) {
   const queuedOnly = active.length > 0 && active.every(isQueued)
 
   return (
-    <div className="titlebar drag flex h-10 shrink-0 items-center" style={{ paddingRight: overlayReserve(platform) }}>
+    <div
+      className="titlebar drag flex h-10 shrink-0 items-center"
+      style={{ paddingRight: overlayReserve(platform) }}
+    >
       <div className="mx-auto flex w-full max-w-[1080px] min-w-0 items-center gap-3 px-8">
         <nav aria-label="Você está em" className="flex min-w-0 items-center gap-1 text-small">
           {crumbs.map((c, i) => {
             const last = i === crumbs.length - 1
             return (
               <Fragment key={i}>
-                {i > 0 && <ChevronRight className="size-3.5 shrink-0 text-fg-subtle/70" strokeWidth={1.75} aria-hidden />}
+                {i > 0 && (
+                  <ChevronRight
+                    className="size-3.5 shrink-0 text-fg-subtle/70"
+                    strokeWidth={1.75}
+                    aria-hidden
+                  />
+                )}
                 {c.to && !last ? (
                   <button
                     type="button"
@@ -96,7 +106,9 @@ export function Titlebar({ platform }: { platform: string }) {
                   ? `${first.routineName} · na fila`
                   : first.routineName}
             </span>
-            {active.length === 1 && pct !== undefined && <span className="tnum opacity-80">{formatPercent(pct)}</span>}
+            {active.length === 1 && pct !== undefined && (
+              <span className="tnum opacity-80">{formatPercent(pct)}</span>
+            )}
           </button>
         )}
       </div>

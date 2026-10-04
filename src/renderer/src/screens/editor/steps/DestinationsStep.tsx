@@ -19,7 +19,14 @@ import { Button, IconButton } from '@renderer/components/ui/Button'
 import { Callout } from '@renderer/components/ui/Callout'
 import { DiskUsageBar } from '@renderer/components/ui/DiskUsageBar'
 import { Field, Input } from '@renderer/components/ui/Input'
-import { MenuContent, MenuItem, MenuLabel, MenuRoot, MenuSeparator, MenuTrigger } from '@renderer/components/ui/Menu'
+import {
+  MenuContent,
+  MenuItem,
+  MenuLabel,
+  MenuRoot,
+  MenuSeparator,
+  MenuTrigger
+} from '@renderer/components/ui/Menu'
 import { PathText } from '@renderer/components/ui/PathText'
 import { Segmented } from '@renderer/components/ui/Segmented'
 import { Select } from '@renderer/components/ui/Select'
@@ -110,7 +117,11 @@ function DestinationCard({
           </span>
           <PathText path={dest.path} className="text-fg-subtle" />
         </div>
-        <Switch label="Usar este destino" checked={enabled} onCheckedChange={(v) => onChange({ enabled: v })} />
+        <Switch
+          label="Usar este destino"
+          checked={enabled}
+          onCheckedChange={(v) => onChange({ enabled: v })}
+        />
         <IconButton icon={X} label="Remover destino" onClick={onRemove} />
       </div>
       {space === undefined ? (
@@ -118,7 +129,9 @@ function DestinationCard({
       ) : space ? (
         <DiskUsageBar total={space.total} free={space.free} incoming={enabled ? incoming : undefined} />
       ) : (
-        <p className="text-caption text-warning">Destino indisponível agora — conecte o disco ou verifique a rede.</p>
+        <p className="text-caption text-warning">
+          Destino indisponível agora — conecte o disco ou verifique a rede.
+        </p>
       )}
       {lacking > 0 && enabled && (
         <p className="-mt-2 text-caption text-danger">
@@ -325,7 +338,9 @@ export function DestinationsStep({
             </span>
             <div>
               <h3 className="text-section font-semibold text-fg">Nenhum destino ainda</h3>
-              <p className="text-small text-fg-muted">Adicione um disco externo, outra unidade ou uma pasta de rede.</p>
+              <p className="text-small text-fg-muted">
+                Adicione um disco externo, outra unidade ou uma pasta de rede.
+              </p>
             </div>
             <AddDestinationMenu drives={drives} used={[]} onAdd={add} variant="primary" />
           </div>
@@ -340,7 +355,9 @@ export function DestinationsStep({
                   incoming={incoming}
                   issues={issues.filter((i) => i.message.includes(d.path))}
                   onChange={(p) => patch(d.id, p)}
-                  onRemove={() => update((x) => ({ ...x, destinations: x.destinations.filter((y) => y.id !== d.id) }))}
+                  onRemove={() =>
+                    update((x) => ({ ...x, destinations: x.destinations.filter((y) => y.id !== d.id) }))
+                  }
                 />
               ))}
             </ul>
@@ -350,13 +367,15 @@ export function DestinationsStep({
         <IssueList issues={general} />
         {!hasNetwork && (
           <Callout tone="info">
-            <span className="font-medium">Dica:</span> um destino em outro computador (\\servidor\pasta) protege contra falha
-            do disco local.
+            <span className="font-medium">Dica:</span> um destino em outro computador (\\servidor\pasta)
+            protege contra falha do disco local.
           </Callout>
         )}
         {example && (
           <div className="flex flex-col gap-1.5 rounded-md bg-surface-hover/70 px-3 py-2.5">
-            <span className="text-caption text-fg-subtle">Cada execução cria uma pasta nova, por exemplo:</span>
+            <span className="text-caption text-fg-subtle">
+              Cada execução cria uma pasta nova, por exemplo:
+            </span>
             <PathText
               path={`${example.path.replace(/[\\/]+$/, '')}\\${BACKUP_ROOT_DIR}\\${draft.name.trim() || 'Rotina'}\\${backupStamp(now)}${draft.mode === 'zip' ? '.zip' : ''}`}
               className="text-fg-muted"

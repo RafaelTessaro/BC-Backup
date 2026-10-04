@@ -34,14 +34,20 @@ function NavItem({ icon: Icon, label, active, collapsed, onClick, badge }: NavIt
       )}
     >
       <Icon
-        className={cn('size-4 shrink-0', active ? 'text-accent-text' : 'text-fg-subtle group-hover:text-fg-muted')}
+        className={cn(
+          'size-4 shrink-0',
+          active ? 'text-accent-text' : 'text-fg-subtle group-hover:text-fg-muted'
+        )}
         strokeWidth={1.75}
         aria-hidden
       />
       {!collapsed && <span className="flex-1 truncate text-left">{label}</span>}
       {!collapsed && badge}
       {collapsed && badge && (
-        <span className="absolute top-1 right-2 size-1.5 rounded-full bg-danger ring-2 ring-surface" aria-hidden />
+        <span
+          className="absolute top-1 right-2 size-1.5 rounded-full bg-danger ring-2 ring-surface"
+          aria-hidden
+        />
       )}
     </button>
   )
@@ -156,7 +162,10 @@ export function Sidebar({ collapsed, platform }: { collapsed: boolean; platform:
           onClick={() => navigate(ROUTES.history)}
           badge={
             unseenFailures > 0 ? (
-              <Tooltip label={`${unseenFailures} ${unseenFailures === 1 ? 'falha não vista' : 'falhas não vistas'}`} side="right">
+              <Tooltip
+                label={`${unseenFailures} ${unseenFailures === 1 ? 'falha não vista' : 'falhas não vistas'}`}
+                side="right"
+              >
                 <span>
                   <Badge tone="danger">{unseenFailures}</Badge>
                 </span>
@@ -170,7 +179,11 @@ export function Sidebar({ collapsed, platform }: { collapsed: boolean; platform:
 
       <div className="flex flex-col gap-0.5 px-3 pb-3">
         <div className="mx-0.5 mb-2 h-px bg-border" />
-        <Tooltip label={schedulerHint} side={collapsed ? 'right' : 'top'} align={collapsed ? 'center' : 'start'}>
+        <Tooltip
+          label={schedulerHint}
+          side={collapsed ? 'right' : 'top'}
+          align={collapsed ? 'center' : 'start'}
+        >
           <div
             className={cn(
               'flex h-8 items-center text-caption font-medium text-fg-subtle',

@@ -9,7 +9,10 @@ import { navigate } from './router'
 import { openLiveRun, openRunDetail, refreshRoutines } from './store'
 import { notify } from './toast'
 
-export async function runNow(routine: Pick<Routine, 'id' | 'name'>, opts?: { openDrawer?: boolean }): Promise<void> {
+export async function runNow(
+  routine: Pick<Routine, 'id' | 'name'>,
+  opts?: { openDrawer?: boolean }
+): Promise<void> {
   try {
     await bc.routines.runNow(routine.id)
     if (opts?.openDrawer) openLiveRun(routine.id)

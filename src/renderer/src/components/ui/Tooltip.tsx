@@ -16,7 +16,15 @@ interface TooltipProps {
 }
 
 /** Tooltip invertido (§8): caption, px 8 py 4, radius-sm, sem seta, delay 400 ms. */
-export function Tooltip({ label, children, side = 'top', align = 'center', disabled, className, delay }: TooltipProps) {
+export function Tooltip({
+  label,
+  children,
+  side = 'top',
+  align = 'center',
+  disabled,
+  className,
+  delay
+}: TooltipProps) {
   if (disabled || label === null || label === undefined || label === '') return <>{children}</>
   return (
     <T.Root delayDuration={delay}>

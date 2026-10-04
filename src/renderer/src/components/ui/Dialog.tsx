@@ -50,7 +50,9 @@ export function ConfirmDialog({
         >
           <AlertDialog.Title className="text-section font-semibold text-fg">{title}</AlertDialog.Title>
           {description && (
-            <AlertDialog.Description className="mt-2 text-body text-fg-muted">{description}</AlertDialog.Description>
+            <AlertDialog.Description className="mt-2 text-body text-fg-muted">
+              {description}
+            </AlertDialog.Description>
           )}
           {children}
           <div className="mt-6 flex justify-end gap-2">

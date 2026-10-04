@@ -62,7 +62,9 @@ export function EmailTab() {
       const next = await bc.settings.saveSmtp(draft)
       useApp.setState({ settings: next })
       setDraft(toInput(next.smtp))
-      notify.success('E-mail configurado', { description: 'As rotinas com notificação já podem avisar seus clientes.' })
+      notify.success('E-mail configurado', {
+        description: 'As rotinas com notificação já podem avisar seus clientes.'
+      })
     } catch (err) {
       notify.error('Não foi possível salvar', { description: errorMessage(err) })
     } finally {
@@ -83,7 +85,10 @@ export function EmailTab() {
   }
 
   const fromMismatch =
-    draft.fromEmail && draft.user && draft.user.includes('@') && draft.fromEmail.toLowerCase() !== draft.user.toLowerCase()
+    draft.fromEmail &&
+    draft.user &&
+    draft.user.includes('@') &&
+    draft.fromEmail.toLowerCase() !== draft.user.toLowerCase()
   const testValid = EMAIL_RE.test(testTo.trim())
 
   const stash = hasStash()
@@ -109,7 +114,8 @@ export function EmailTab() {
       )}
       {!configured && !dirty && (
         <Callout tone="info" title="E-mail ainda não configurado">
-          Configure o SMTP para avisar seus clientes ao fim de cada backup. Escolha o provedor abaixo para começar.
+          Configure o SMTP para avisar seus clientes ao fim de cada backup. Escolha o provedor abaixo para
+          começar.
         </Callout>
       )}
 
@@ -193,7 +199,14 @@ export function EmailTab() {
                 />
               )}
             </Field>
-            <Field label="Senha" description={draft.password === undefined && saved.hasPassword ? 'Deixe em branco para manter a senha salva.' : undefined}>
+            <Field
+              label="Senha"
+              description={
+                draft.password === undefined && saved.hasPassword
+                  ? 'Deixe em branco para manter a senha salva.'
+                  : undefined
+              }
+            >
               {(id) => (
                 <div className="relative">
                   <Input
@@ -211,7 +224,11 @@ export function EmailTab() {
                     onClick={() => setShowPass((v) => !v)}
                     className="absolute top-1/2 right-1 flex size-7 -translate-y-1/2 items-center justify-center rounded-sm text-fg-subtle hover:text-fg"
                   >
-                    {showPass ? <EyeOff className="size-4" strokeWidth={1.75} /> : <Eye className="size-4" strokeWidth={1.75} />}
+                    {showPass ? (
+                      <EyeOff className="size-4" strokeWidth={1.75} />
+                    ) : (
+                      <Eye className="size-4" strokeWidth={1.75} />
+                    )}
                   </button>
                 </div>
               )}
@@ -223,7 +240,11 @@ export function EmailTab() {
           description="Só ligue se confiar no servidor (ex.: servidor interno com certificado próprio)."
           htmlFor="invalid-cert"
         >
-          <Switch id="invalid-cert" checked={draft.allowInvalidCert} onCheckedChange={(v) => set('allowInvalidCert', v)} />
+          <Switch
+            id="invalid-cert"
+            checked={draft.allowInvalidCert}
+            onCheckedChange={(v) => set('allowInvalidCert', v)}
+          />
         </SettingsRow>
       </SettingsGroup>
 
@@ -253,7 +274,11 @@ export function EmailTab() {
               />
             )}
           </Field>
-          <Field label="Responder para" description="Opcional — ex.: o e-mail do suporte." className="col-span-1">
+          <Field
+            label="Responder para"
+            description="Opcional — ex.: o e-mail do suporte."
+            className="col-span-1"
+          >
             {(id) => (
               <Input
                 id={id}
@@ -280,12 +305,20 @@ export function EmailTab() {
                 />
               )}
             </Field>
-            <Button icon={Send} loading={testing} disabled={!testValid || !draft.host} onClick={() => void test()}>
+            <Button
+              icon={Send}
+              loading={testing}
+              disabled={!testValid || !draft.host}
+              onClick={() => void test()}
+            >
               Enviar e-mail de teste
             </Button>
           </div>
           {result && (
-            <Callout tone={result.ok ? 'success' : 'danger'} title={result.ok ? 'Tudo certo!' : 'Não foi possível enviar'}>
+            <Callout
+              tone={result.ok ? 'success' : 'danger'}
+              title={result.ok ? 'Tudo certo!' : 'Não foi possível enviar'}
+            >
               {result.message}
             </Callout>
           )}

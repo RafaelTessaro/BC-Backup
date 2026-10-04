@@ -95,7 +95,12 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
 
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2">
-            <span className={cn('truncate text-body font-semibold tracking-[-0.005em]', paused ? 'text-fg-muted' : 'text-fg')}>
+            <span
+              className={cn(
+                'truncate text-body font-semibold tracking-[-0.005em]',
+                paused ? 'text-fg-muted' : 'text-fg'
+              )}
+            >
               {routine.name}
             </span>
             <StatusPill meta={ROUTINE_STATUS[state]} />
@@ -103,7 +108,8 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
           <p className="truncate text-small text-fg-subtle">
             <span className={cn(!paused && 'text-fg-muted')}>{describeSchedule(routine.schedule)}</span>
             {' · '}
-            {sourcesSummary(routine)} → <span className="font-mono text-mono">{destinationsSummary(routine)}</span>
+            {sourcesSummary(routine)} →{' '}
+            <span className="font-mono text-mono">{destinationsSummary(routine)}</span>
             {routine.retention.enabled && ` · ${plural(routine.retention.days, 'dia', 'dias')}`}
           </p>
         </div>
@@ -120,7 +126,11 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
           >
             <span className="flex items-baseline justify-between text-caption tnum">
               <span className="font-medium text-accent-text">
-                {pct !== undefined ? formatPercent(pct) : progress.phase === 'queued' ? 'Na fila' : 'Preparando…'}
+                {pct !== undefined
+                  ? formatPercent(pct)
+                  : progress.phase === 'queued'
+                    ? 'Na fila'
+                    : 'Preparando…'}
               </span>
               {progress.bytesTotal > 0 && progress.phase !== 'queued' && (
                 <span className="truncate text-fg-subtle">
@@ -148,7 +158,10 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
           </div>
         )}
 
-        <div className="flex w-[112px] shrink-0 items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="flex w-[112px] shrink-0 items-center justify-end gap-0.5"
+          onClick={(e) => e.stopPropagation()}
+        >
           {progress ? (
             <IconButton icon={Square} label="Parar" onClick={() => setConfirmStop(true)} />
           ) : paused ? (
@@ -164,7 +177,11 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
           ) : (
             <>
               <IconButton icon={Play} label="Executar agora" onClick={() => void runNow(routine)} />
-              <IconButton icon={Pause} label="Pausar" onClick={() => void setRoutineEnabled(routine, false)} />
+              <IconButton
+                icon={Pause}
+                label="Pausar"
+                onClick={() => void setRoutineEnabled(routine, false)}
+              />
             </>
           )}
           <MenuRoot>
@@ -198,10 +215,7 @@ function RoutineRow({ routine, progress }: { routine: Routine; progress?: RunPro
               >
                 Abrir pasta de destino
               </MenuItem>
-              <MenuItem
-                icon={History}
-                onSelect={() => showHistoryFor(routine.id)}
-              >
+              <MenuItem icon={History} onSelect={() => showHistoryFor(routine.id)}>
                 Ver histórico
               </MenuItem>
               <MenuSeparator />
@@ -264,7 +278,9 @@ export function RoutinesScreen() {
       (!q ||
         r.name.toLocaleLowerCase('pt-BR').includes(q) ||
         r.sources.some((s) => s.path.toLocaleLowerCase('pt-BR').includes(q)) ||
-        r.destinations.some((d) => d.path.toLocaleLowerCase('pt-BR').includes(q) || d.label?.toLowerCase().includes(q)))
+        r.destinations.some(
+          (d) => d.path.toLocaleLowerCase('pt-BR').includes(q) || d.label?.toLowerCase().includes(q)
+        ))
   )
   const active = routines.filter((r) => r.enabled).length
 

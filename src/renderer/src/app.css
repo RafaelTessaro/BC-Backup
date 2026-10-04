@@ -40,8 +40,11 @@
   --tooltip-fg: #fafafb;
   --sh-xs: 0 1px 2px rgb(16 17 20 / 0.05);
   --sh-card: 0 1px 2px rgb(16 17 20 / 0.04), 0 1px 3px rgb(16 17 20 / 0.03);
-  --sh-pop: 0 0 0 1px rgb(16 17 20 / 0.06), 0 4px 12px -2px rgb(16 17 20 / 0.1), 0 2px 4px -2px rgb(16 17 20 / 0.06);
-  --sh-dialog: 0 0 0 1px rgb(16 17 20 / 0.06), 0 24px 48px -12px rgb(16 17 20 / 0.22), 0 8px 16px -8px rgb(16 17 20 / 0.1);
+  --sh-pop:
+    0 0 0 1px rgb(16 17 20 / 0.06), 0 4px 12px -2px rgb(16 17 20 / 0.1), 0 2px 4px -2px rgb(16 17 20 / 0.06);
+  --sh-dialog:
+    0 0 0 1px rgb(16 17 20 / 0.06), 0 24px 48px -12px rgb(16 17 20 / 0.22),
+    0 8px 16px -8px rgb(16 17 20 / 0.1);
   --hero-glow: rgb(50 84 240 / 0.06);
 }
 
@@ -80,8 +83,12 @@
   --tooltip-fg: #111215;
   --sh-xs: 0 1px 2px rgb(0 0 0 / 0.4);
   --sh-card: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 1px 2px rgb(0 0 0 / 0.4);
-  --sh-pop: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 0 1px rgb(255 255 255 / 0.06), 0 8px 24px -4px rgb(0 0 0 / 0.55);
-  --sh-dialog: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 0 0 1px rgb(255 255 255 / 0.08), 0 24px 64px -12px rgb(0 0 0 / 0.7);
+  --sh-pop:
+    inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 0 1px rgb(255 255 255 / 0.06),
+    0 8px 24px -4px rgb(0 0 0 / 0.55);
+  --sh-dialog:
+    inset 0 1px 0 rgb(255 255 255 / 0.06), 0 0 0 1px rgb(255 255 255 / 0.08),
+    0 24px 64px -12px rgb(0 0 0 / 0.7);
   --hero-glow: rgb(69 102 250 / 0.08);
 }
 

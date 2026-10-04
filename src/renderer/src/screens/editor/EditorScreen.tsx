@@ -206,7 +206,11 @@ function Editor({ existing }: { existing?: Routine }) {
           <aside className="sticky top-6 w-[220px] shrink-0">
             <Stepper current={step} states={states} onSelect={goTo} />
           </aside>
-          <section key={step} className="max-w-[640px] min-w-0 flex-1 animate-step-in" aria-labelledby="step-title">
+          <section
+            key={step}
+            className="max-w-[640px] min-w-0 flex-1 animate-step-in"
+            aria-labelledby="step-title"
+          >
             <p className="text-caption font-medium text-fg-subtle tnum">
               Etapa {idx + 1} de {STEPS.length}
             </p>
@@ -227,9 +231,16 @@ function Editor({ existing }: { existing?: Routine }) {
                 />
               )}
               {step === 'destinos' && (
-                <DestinationsStep draft={draft} update={update} sizes={sizes} issues={issuesFor('destinos')} />
+                <DestinationsStep
+                  draft={draft}
+                  update={update}
+                  sizes={sizes}
+                  issues={issuesFor('destinos')}
+                />
               )}
-              {step === 'agendamento' && <ScheduleStep draft={draft} update={update} issues={issuesFor('agendamento')} />}
+              {step === 'agendamento' && (
+                <ScheduleStep draft={draft} update={update} issues={issuesFor('agendamento')} />
+              )}
               {step === 'retencao' && (
                 <RetentionStep draft={draft} update={update} sizes={sizes} issues={issuesFor('retencao')} />
               )}
@@ -282,16 +293,39 @@ function Editor({ existing }: { existing?: Routine }) {
               )}
               {last ? (
                 <>
-                  <Button variant="secondary" icon={Play} loading={saving === 'run'} disabled={!!saving} onClick={() => void submit(true)}>
+                  <Button
+                    variant="secondary"
+                    icon={Play}
+                    loading={saving === 'run'}
+                    disabled={!!saving}
+                    onClick={() => void submit(true)}
+                  >
                     Criar e executar agora
                   </Button>
-                  <Button variant="primary" icon={Check} loading={saving === 'save'} disabled={!!saving} onClick={() => void submit(false)}>
+                  <Button
+                    variant="primary"
+                    icon={Check}
+                    loading={saving === 'save'}
+                    disabled={!!saving}
+                    onClick={() => void submit(false)}
+                  >
                     Criar rotina
                   </Button>
                 </>
               ) : (
-                <Tooltip label={<span className="flex items-center gap-2">Continuar <Shortcut keys={['Ctrl', 'Enter']} className={TOOLTIP_KBD} /></span>}>
-                  <Button variant="primary" iconRight={ArrowRight} onClick={() => void next()} className="min-w-[120px]">
+                <Tooltip
+                  label={
+                    <span className="flex items-center gap-2">
+                      Continuar <Shortcut keys={['Ctrl', 'Enter']} className={TOOLTIP_KBD} />
+                    </span>
+                  }
+                >
+                  <Button
+                    variant="primary"
+                    iconRight={ArrowRight}
+                    onClick={() => void next()}
+                    className="min-w-[120px]"
+                  >
                     Continuar
                   </Button>
                 </Tooltip>
@@ -300,7 +334,13 @@ function Editor({ existing }: { existing?: Routine }) {
           ) : (
             <>
               {last && (
-                <Button variant="secondary" icon={Play} loading={saving === 'run'} disabled={!!saving} onClick={() => void submit(true)}>
+                <Button
+                  variant="secondary"
+                  icon={Play}
+                  loading={saving === 'run'}
+                  disabled={!!saving}
+                  onClick={() => void submit(true)}
+                >
                   Salvar e executar
                 </Button>
               )}

@@ -45,7 +45,12 @@ function Column({
     ref.current?.querySelector('[data-selected="true"]')?.scrollIntoView({ block: 'center' })
   }, [])
   return (
-    <div ref={ref} className="flex h-[208px] w-14 flex-col gap-0.5 overflow-y-auto scrollbar-none py-1" aria-label={label} role="listbox">
+    <div
+      ref={ref}
+      className="flex h-[208px] w-14 flex-col gap-0.5 overflow-y-auto scrollbar-none py-1"
+      aria-label={label}
+      role="listbox"
+    >
       {items.map((n) => {
         const active = n === selected
         return (
@@ -58,7 +63,9 @@ function Column({
             onClick={() => onPick(n)}
             className={cn(
               'h-7 shrink-0 rounded-sm font-mono text-small tnum transition-colors duration-[120ms]',
-              active ? 'bg-accent text-accent-foreground' : 'text-fg-muted hover:bg-surface-hover hover:text-fg'
+              active
+                ? 'bg-accent text-accent-foreground'
+                : 'text-fg-muted hover:bg-surface-hover hover:text-fg'
             )}
           >
             {pad(n)}

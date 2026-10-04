@@ -9,6 +9,8 @@
 //      senão                  → registra "backup atrasado não executado"
 // Rotinas "startup" rodam uma vez, startupDelayMinutes após o app iniciar.
 // Rotinas pausadas (enabled=false) nunca rodam pelo agendador.
+// Relógio corrigido para trás: uma âncora (lastAttemptSlot/createdAt) mais de 1 dia no futuro só
+// pode ter sido gravada com o relógio errado — é ignorada, senão a rotina ficaria parada até lá.
 
 import type { ID, Routine, RunTrigger } from '@shared/types'
 import { isClockSchedule, lastSlotAtOrBefore, nextRunAt } from '@shared/schedule'
@@ -16,6 +18,8 @@ import { isClockSchedule, lastSlotAtOrBefore, nextRunAt } from '@shared/schedule
 export const TICK_MAX_MS = 30_000
 export const ON_TIME_MS = 120_000
 export const CATCH_UP_DELAY_MS = 3 * 60_000
+/** Âncora no futuro além disto = gravada com o relógio adiantado (ajustes pequenos do NTP são tolerados). */
+export const CLOCK_SKEW_TOLERANCE_MS = 24 * 3_600_000
 
 export type SchedRoutine = Pick<Routine, 'id' | 'name' | 'enabled' | 'schedule' | 'createdAt'>
 
@@ -36,7 +40,8 @@ export function decideSlot(
   const slot = lastSlotAtOrBefore(routine.schedule, now)
   if (!slot) return { kind: 'none' }
   const anchor = Date.parse(lastAttemptSlot ?? routine.createdAt)
-  if (Number.isFinite(anchor) && slot.getTime() <= anchor) return { kind: 'none' }
+  const stale = anchor - now.getTime() > CLOCK_SKEW_TOLERANCE_MS
+  if (Number.isFinite(anchor) && !stale && slot.getTime() <= anchor) return { kind: 'none' }
   if (now.getTime() - slot.getTime() <= onTimeMs) return { kind: 'run', slot }
   if (routine.schedule.catchUpMissed) return { kind: 'catch-up', slot }
   return { kind: 'missed', slot }
@@ -120,10 +125,10 @@ export class Scheduler {
         if (next) soonest = Math.min(soonest, next.getTime())
       }
     }
-    // Rotinas removidas/pausadas: descarta recuperações pendentes.
+    // Rotinas removidas/pausadas/que deixaram de ter horário: descarta recuperações pendentes.
     for (const [id, c] of this.catchUps) {
       const r = routines.find((x) => x.id === id)
-      if (!r || !r.enabled) {
+      if (!r || !r.enabled || !isClockSchedule(r.schedule)) {
         clearTimeout(c.timer)
         this.catchUps.delete(id)
       }
@@ -145,7 +150,7 @@ export class Scheduler {
     const timer = setTimeout(() => {
       this.catchUps.delete(id)
       const cur = this.d.routines().find((x) => x.id === id)
-      if (cur?.enabled) this.d.enqueue(id, 'catch-up')
+      if (cur?.enabled && isClockSchedule(cur.schedule)) this.d.enqueue(id, 'catch-up')
     }, delay)
     this.catchUps.set(id, { at: now.getTime() + delay, timer })
   }

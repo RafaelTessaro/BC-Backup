@@ -135,7 +135,10 @@ const FOLDER_POOL = [
 ]
 const FILE_POOL = ['C:\\ERP\\Dados\\ESTOQUE.FDB', 'C:\\Users\\Ana\\Documents\\Senhas do Wi-Fi.xlsx']
 
-function baseRoutine(partial: Partial<Routine> & Pick<Routine, 'id' | 'name'>, createdDaysAgo: number): Routine {
+function baseRoutine(
+  partial: Partial<Routine> & Pick<Routine, 'id' | 'name'>,
+  createdDaysAgo: number
+): Routine {
   const created = iso(Date.now() - createdDaysAgo * 86_400_000)
   return {
     description: '',
@@ -477,7 +480,13 @@ function buildRecord(spec: GenSpec, rnd: () => number, smtpReady = true): RunRec
   const n = routine.notification
   if (n.enabled && n.recipients.length > 0 && smtpReady) {
     const wants =
-      status === 'success' ? n.onSuccess : status === 'warning' ? n.onWarning : status === 'failed' ? n.onFailure : false
+      status === 'success'
+        ? n.onSuccess
+        : status === 'warning'
+          ? n.onWarning
+          : status === 'failed'
+            ? n.onFailure
+            : false
     if (wants) {
       email = 'sent'
       push('info', `E-mail enviado para ${n.recipients.join(', ')}`, 1300)
@@ -541,7 +550,8 @@ function seedRuns(routines: Routine[], scenario: Scenario, now: Date): RunRecord
         if (r.id === 'r-contab' && roll < 0.14) status = 'warning'
         else if (r.id === 'r-nfe' && back === 9) {
           status = 'failed'
-          errorMessage = 'Destino indisponível: \\\\SERVIDOR\\backup não respondeu. Verifique se o servidor está ligado.'
+          errorMessage =
+            'Destino indisponível: \\\\SERVIDOR\\backup não respondeu. Verifique se o servidor está ligado.'
           failedDestination = 1
         } else if (r.id === 'r-fotos' && back === 6) {
           status = 'failed'
@@ -569,7 +579,8 @@ function seedRuns(routines: Routine[], scenario: Scenario, now: Date): RunRecord
   for (const s of [sql, contab, nfe]) if (s) s.status = 'success'
   if ((scenario === 'running' || scenario === 'failed') && sql) {
     sql.status = 'failed'
-    sql.errorMessage = 'Destino indisponível: \\\\SERVIDOR\\backup não respondeu. Verifique se o servidor está ligado.'
+    sql.errorMessage =
+      'Destino indisponível: \\\\SERVIDOR\\backup não respondeu. Verifique se o servidor está ligado.'
     sql.failedDestination = 0
   }
   if (scenario === 'warning' && contab) contab.status = 'warning'
@@ -647,7 +658,11 @@ export function createMockApi(): BcApi {
 
   /* ---------------- execução simulada ---------------- */
 
-  function startRun(routine: Routine, trigger: RunTrigger, opts?: { startRatio?: number; startedAgoMs?: number }): ID {
+  function startRun(
+    routine: Routine,
+    trigger: RunTrigger,
+    opts?: { startRatio?: number; startedAgoMs?: number }
+  ): ID {
     const prof = profile(routine)
     const dests = routine.destinations.filter((d) => d.enabled !== false)
     const runId = uid('run')
@@ -668,7 +683,9 @@ export function createMockApi(): BcApi {
       bytesDone: Math.round(prof.bytes * ratio),
       speed: isSeeded ? speed : 0,
       etaMs: isSeeded ? ((prof.bytes * (dests.length - ratio)) / speed) * 1000 : undefined,
-      currentFile: isSeeded ? 'C:\\Users\\Ana\\Pictures\\Escritório\\2026\\Clientes\\Reforma da fachada\\IMG_4821.HEIC' : undefined,
+      currentFile: isSeeded
+        ? 'C:\\Users\\Ana\\Pictures\\Escritório\\2026\\Clientes\\Reforma da fachada\\IMG_4821.HEIC'
+        : undefined,
       destinationIndex: 0,
       destinationCount: dests.length,
       destinationPath: dests[0]?.path,
@@ -725,12 +742,14 @@ export function createMockApi(): BcApi {
       const src = run.routine.sources[Math.floor(Math.random() * run.routine.sources.length)]
       p.currentFile = `${src?.path ?? 'C:\\'}\\${FILE_NAMES[Math.floor(Math.random() * FILE_NAMES.length)]}`
       const elapsed = Date.now() - new Date(p.startedAt).getTime()
-      const remaining = p.bytesTotal - p.bytesDone + (p.destinationCount - p.destinationIndex - 1) * p.bytesTotal
+      const remaining =
+        p.bytesTotal - p.bytesDone + (p.destinationCount - p.destinationIndex - 1) * p.bytesTotal
       p.etaMs = elapsed > 5000 ? (remaining / Math.max(1, p.speed)) * 1000 : undefined
       if (p.bytesDone >= p.bytesTotal) {
         if (p.destinationIndex < p.destinationCount - 1) {
           p.destinationIndex++
-          p.destinationPath = run.routine.destinations.filter((d) => d.enabled !== false)[p.destinationIndex]?.path
+          p.destinationPath = run.routine.destinations.filter((d) => d.enabled !== false)[p.destinationIndex]
+            ?.path
           p.bytesDone = 0
           p.filesDone = 0
         } else {
@@ -782,14 +801,27 @@ export function createMockApi(): BcApi {
 
   function validate(input: RoutineInput): ValidationIssue[] {
     const issues: ValidationIssue[] = []
-    if (!input.name.trim()) issues.push({ level: 'error', step: 'origem', message: 'Dê um nome para a rotina.' })
-    else if (routines.some((r) => r.id !== input.id && r.name.trim().toLowerCase() === input.name.trim().toLowerCase()))
+    if (!input.name.trim())
+      issues.push({ level: 'error', step: 'origem', message: 'Dê um nome para a rotina.' })
+    else if (
+      routines.some(
+        (r) => r.id !== input.id && r.name.trim().toLowerCase() === input.name.trim().toLowerCase()
+      )
+    )
       issues.push({ level: 'warning', step: 'origem', message: 'Já existe uma rotina com esse nome.' })
     if (input.sources.length === 0)
-      issues.push({ level: 'error', step: 'origem', message: 'Adicione ao menos uma pasta ou arquivo para copiar.' })
+      issues.push({
+        level: 'error',
+        step: 'origem',
+        message: 'Adicione ao menos uma pasta ou arquivo para copiar.'
+      })
     const dests = input.destinations.filter((d) => d.enabled !== false)
     if (dests.length === 0)
-      issues.push({ level: 'error', step: 'destinos', message: 'Adicione ao menos um destino para as cópias.' })
+      issues.push({
+        level: 'error',
+        step: 'destinos',
+        message: 'Adicione ao menos um destino para as cópias.'
+      })
     for (const d of input.destinations) {
       const dp = d.path.toUpperCase().replace(/\\$/, '')
       for (const s of input.sources) {
@@ -803,8 +835,14 @@ export function createMockApi(): BcApi {
       }
       const drive = driveFor(d.path)
       if (!drive)
-        issues.push({ level: 'warning', step: 'destinos', message: `Não foi possível acessar ${d.path} agora.` })
-      const sameDisk = input.sources.find((s) => s.path.slice(0, 2).toUpperCase() === d.path.slice(0, 2).toUpperCase())
+        issues.push({
+          level: 'warning',
+          step: 'destinos',
+          message: `Não foi possível acessar ${d.path} agora.`
+        })
+      const sameDisk = input.sources.find(
+        (s) => s.path.slice(0, 2).toUpperCase() === d.path.slice(0, 2).toUpperCase()
+      )
       if (sameDisk && /^[A-Z]:/i.test(d.path))
         issues.push({
           level: 'warning',
@@ -818,7 +856,11 @@ export function createMockApi(): BcApi {
     if (sc.kind === 'weekly' && sc.weekdays.length === 0)
       issues.push({ level: 'error', step: 'agendamento', message: 'Escolha ao menos um dia da semana.' })
     if (sc.kind === 'interval' && sc.window && sc.window.end <= sc.window.start)
-      issues.push({ level: 'error', step: 'agendamento', message: 'O horário final precisa ser depois do inicial.' })
+      issues.push({
+        level: 'error',
+        step: 'agendamento',
+        message: 'O horário final precisa ser depois do inicial.'
+      })
     if (input.retention.enabled && input.retention.days < 1)
       issues.push({ level: 'error', step: 'retencao', message: 'Mantenha os backups por pelo menos 1 dia.' })
     const n = input.notification
@@ -855,7 +897,9 @@ export function createMockApi(): BcApi {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       const dayRuns = final.filter((r) => {
         const s = new Date(r.startedAt)
-        return s.getFullYear() === d.getFullYear() && s.getMonth() === d.getMonth() && s.getDate() === d.getDate()
+        return (
+          s.getFullYear() === d.getFullYear() && s.getMonth() === d.getMonth() && s.getDate() === d.getDate()
+        )
       })
       let worst: FinalRunStatus | null = null
       for (const r of dayRuns) {
@@ -936,7 +980,13 @@ export function createMockApi(): BcApi {
         const r = routines.find((x) => x.id === id)
         if (!r) throw ipcError('routines:duplicate', 'Rotina não encontrada.')
         const ts = iso(Date.now())
-        const copy: Routine = { ...clone(r), id: uid('r'), name: `${r.name} (cópia)`, createdAt: ts, updatedAt: ts }
+        const copy: Routine = {
+          ...clone(r),
+          id: uid('r'),
+          name: `${r.name} (cópia)`,
+          createdAt: ts,
+          updatedAt: ts
+        }
         delete copy.lastRun
         routines = [...routines, copy]
         routinesChanged()
@@ -958,7 +1008,8 @@ export function createMockApi(): BcApi {
       },
       cancel: async (id) => {
         await delay(200)
-        for (const [runId, a] of active) if (runId === id || a.routine.id === id) finishRun(runId, 'cancelled')
+        for (const [runId, a] of active)
+          if (runId === id || a.routine.id === id) finishRun(runId, 'cancelled')
       },
       nextRuns: async () => {
         const out: Record<ID, string | null> = {}
@@ -1010,7 +1061,10 @@ export function createMockApi(): BcApi {
         await delay(1400)
         if (!input.host.trim())
           return { ok: false, message: 'Servidor não encontrado. Confira o endereço e a internet.' }
-        if ((input.security === 'ssl' && input.port === 587) || (input.security === 'starttls' && input.port === 465))
+        if (
+          (input.security === 'ssl' && input.port === 587) ||
+          (input.security === 'starttls' && input.port === 465)
+        )
           return { ok: false, message: 'A porta e a segurança não combinam: 465 = SSL; 587 = STARTTLS.' }
         const pass = input.password ?? smtpPassword
         if (!input.user.trim() || !pass)
@@ -1074,13 +1128,7 @@ export function createMockApi(): BcApi {
   return api
 }
 
-/** Instala o mock em `window.bc` quando pedido (dev:web) ou quando não há preload. */
-export function installMockApiIfNeeded(): boolean {
-  const w = window as Window & { bc?: BcApi }
-  if (import.meta.env.VITE_MOCK_API === '1' || !w.bc) {
-    w.bc = createMockApi()
-    return true
-  }
-  return false
+/** Instala o mock em `window.bc` (dev:web ou quando não há preload). */
+export function installMockApi(): void {
+  ;(window as Window & { bc?: BcApi }).bc = createMockApi()
 }
-

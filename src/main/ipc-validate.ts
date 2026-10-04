@@ -1,6 +1,8 @@
 // Validação dos argumentos que chegam do renderer (nunca confie no que vem pela ponte IPC).
 // Node puro. Erros são lançados com mensagem em pt-BR.
 
+import { realpath, stat } from 'node:fs/promises'
+import { extname } from 'node:path'
 import type { HistoryQuery, RoutineInput } from '@shared/api'
 import type { AppSettings, Filters, RunStatus, SmtpInput } from '@shared/types'
 import { DEFAULT_SETTINGS } from '@shared/defaults'
@@ -166,4 +168,25 @@ export function asSmtpInput(v: unknown): SmtpInput {
     out.password = v.password
   }
   return out
+}
+
+/** Extensões de arquivo que `app.openPath` aceita abrir (o .zip do modo ZIP). */
+const OPENABLE_FILE_EXT = new Set(['.zip'])
+
+/**
+ * `shell.openPath` EXECUTA arquivos (.exe, .bat, .lnk…). Da interface só abrimos pastas (backup,
+ * logs, dados) e o .zip de um backup. Resolve links antes de checar e devolve o caminho real.
+ */
+export async function checkOpenablePath(path: string): Promise<string> {
+  let real: string
+  let st
+  try {
+    real = await realpath(path)
+    st = await stat(real)
+  } catch {
+    throw new IpcArgError(`Caminho não encontrado: ${path}`)
+  }
+  if (st.isDirectory()) return real
+  if (st.isFile() && OPENABLE_FILE_EXT.has(extname(real).toLowerCase())) return real
+  throw new IpcArgError('Só é possível abrir pastas e arquivos .zip de backup.')
 }

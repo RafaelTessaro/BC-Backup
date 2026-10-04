@@ -56,7 +56,11 @@ function PhaseSteps({ p, routine }: { p: RunProgress; routine?: Routine }) {
     }
   ]
   if (!routine || routine.verify !== 'none')
-    steps.push({ phase: 'verifying', label: 'Verificando a cópia', detail: routine?.verify === 'full' ? 'Completa' : 'Rápida' })
+    steps.push({
+      phase: 'verifying',
+      label: 'Verificando a cópia',
+      detail: routine?.verify === 'full' ? 'Completa' : 'Rápida'
+    })
   if (!routine || routine.retention.enabled)
     steps.push({ phase: 'pruning', label: 'Limpando cópias antigas' })
   if (routine?.notification.enabled) steps.push({ phase: 'notifying', label: 'Enviando e-mail' })
@@ -71,7 +75,10 @@ function PhaseSteps({ p, routine }: { p: RunProgress; routine?: Routine }) {
           <li key={s.phase} className="relative flex gap-3 pb-3 last:pb-0">
             {i < steps.length - 1 && (
               <span
-                className={cn('absolute top-5 bottom-0 left-[9.5px] w-px', done ? 'bg-accent/40' : 'bg-border')}
+                className={cn(
+                  'absolute top-5 bottom-0 left-[9.5px] w-px',
+                  done ? 'bg-accent/40' : 'bg-border'
+                )}
                 aria-hidden
               />
             )}
@@ -90,10 +97,17 @@ function PhaseSteps({ p, routine }: { p: RunProgress; routine?: Routine }) {
               ) : null}
             </span>
             <div className="flex min-w-0 flex-1 items-baseline justify-between gap-3 pt-px">
-              <span className={cn('text-small', active ? 'font-medium text-fg' : done ? 'text-fg-muted' : 'text-fg-subtle')}>
+              <span
+                className={cn(
+                  'text-small',
+                  active ? 'font-medium text-fg' : done ? 'text-fg-muted' : 'text-fg-subtle'
+                )}
+              >
                 {s.label}
               </span>
-              {s.detail && (active || done) && <span className="text-caption text-fg-subtle">{s.detail}</span>}
+              {s.detail && (active || done) && (
+                <span className="text-caption text-fg-subtle">{s.detail}</span>
+              )}
             </div>
           </li>
         )
@@ -118,14 +132,12 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
       <section className="flex flex-col gap-3">
         <div className="flex items-end justify-between gap-4">
           <span className="text-[32px] leading-10 font-semibold tracking-[-0.02em] text-fg tnum">
-            {pct === undefined ? '—' : formatPercent(pct)}
+            {queued ? 'Na fila' : pct === undefined ? 'Preparando' : formatPercent(pct)}
           </span>
           <span className="pb-1 text-small text-fg-muted tnum">
-            {queued
-              ? 'Na fila'
-              : preparing
-                ? 'Preparando…'
-                : p.phase === 'copying'
+            {preparing
+              ? ''
+              : p.phase === 'copying'
                 ? p.etaMs === undefined
                   ? 'Calculando…'
                   : `${formatEta(p.etaMs)} restantes`
@@ -144,20 +156,22 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
         </p>
       </section>
 
-      <section className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg bg-surface-sunken p-4 dark:bg-surface">
-        <Stat
-          label={dest ? 'Arquivos · neste destino' : 'Arquivos'}
-          value={formatNumber(p.filesDone)}
-          sub={`/ ${formatNumber(p.filesTotal)}`}
-        />
-        <Stat
-          label={dest ? 'Dados · neste destino' : 'Dados'}
-          value={formatBytes(p.bytesDone)}
-          sub={`/ ${formatBytes(p.bytesTotal)}`}
-        />
-        <Stat label="Velocidade" value={p.speed > 0 ? formatSpeed(p.speed) : '—'} />
-        <Stat label="Tempo decorrido" value={formatDuration(Math.max(0, elapsed))} />
-      </section>
+      {!queued && (
+        <section className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg bg-surface-sunken p-4 dark:bg-surface">
+          <Stat
+            label={dest ? 'Arquivos · neste destino' : 'Arquivos'}
+            value={formatNumber(p.filesDone)}
+            sub={`/ ${formatNumber(p.filesTotal)}`}
+          />
+          <Stat
+            label={dest ? 'Dados · neste destino' : 'Dados'}
+            value={formatBytes(p.bytesDone)}
+            sub={`/ ${formatBytes(p.bytesTotal)}`}
+          />
+          <Stat label="Velocidade" value={p.speed > 0 ? formatSpeed(p.speed) : '—'} />
+          <Stat label="Tempo decorrido" value={formatDuration(Math.max(0, elapsed))} />
+        </section>
+      )}
 
       {p.currentFile && p.phase === 'copying' && (
         <section className="flex flex-col gap-1.5">
@@ -178,10 +192,13 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
           <h3 className="text-caption font-medium text-fg-subtle">Destinos</h3>
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
             {dests.map((d, i) => {
-              const drive = drives.find((x) => d.path.toUpperCase().startsWith(x.path.toUpperCase().replace(/\\$/, '')))
+              const drive = drives.find((x) =>
+                d.path.toUpperCase().startsWith(x.path.toUpperCase().replace(/\\$/, ''))
+              )
               const Icon = destIcon(d.path, drive?.removable)
               const state =
-                i < p.destinationIndex || (i === p.destinationIndex && ORDER.indexOf(p.phase) > ORDER.indexOf('copying'))
+                i < p.destinationIndex ||
+                (i === p.destinationIndex && ORDER.indexOf(p.phase) > ORDER.indexOf('copying'))
                   ? 'done'
                   : i === p.destinationIndex && p.phase === 'copying'
                     ? 'active'
@@ -190,7 +207,9 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
                 <li key={d.id} className="flex items-center gap-3 px-3 py-2.5">
                   <Icon className="size-4 shrink-0 text-fg-subtle" strokeWidth={1.75} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-small font-medium text-fg">{d.label || drive?.label || d.path}</p>
+                    <p className="truncate text-small font-medium text-fg">
+                      {d.label || drive?.label || d.path}
+                    </p>
                     <PathText path={d.path} className="text-fg-subtle" />
                   </div>
                   <span
@@ -201,7 +220,11 @@ function Running({ p, routine }: { p: RunProgress; routine?: Routine }) {
                       state === 'waiting' && 'text-fg-subtle'
                     )}
                   >
-                    {state === 'done' ? 'Concluído' : state === 'active' ? formatPercent(destPct) : 'Aguardando'}
+                    {state === 'done'
+                      ? 'Concluído'
+                      : state === 'active'
+                        ? formatPercent(destPct)
+                        : 'Aguardando'}
                   </span>
                 </li>
               )
@@ -245,7 +268,9 @@ function Finished({ r }: { r: RunSummary }) {
           </p>
         </div>
       </div>
-      {r.errorMessage && <p className="rounded-md bg-danger-soft p-3 text-small text-danger">{r.errorMessage}</p>}
+      {r.errorMessage && (
+        <p className="rounded-md bg-danger-soft p-3 text-small text-danger">{r.errorMessage}</p>
+      )}
       <section className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg bg-surface-sunken p-4 dark:bg-surface">
         <Stat label="Arquivos copiados" value={formatNumber(r.filesCopied)} />
         <Stat label="Dados" value={formatBytes(r.bytesCopied)} />

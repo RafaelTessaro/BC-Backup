@@ -63,7 +63,15 @@ export function OptionRow({
   )
 }
 
-export function SectionTitle({ title, description, aside }: { title: string; description?: string; aside?: ReactNode }) {
+export function SectionTitle({
+  title,
+  description,
+  aside
+}: {
+  title: string
+  description?: string
+  aside?: ReactNode
+}) {
   return (
     <div className="flex items-end justify-between gap-3">
       <div>

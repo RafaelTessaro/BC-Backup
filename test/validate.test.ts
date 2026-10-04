@@ -180,7 +180,7 @@ describe('argumentos IPC', () => {
 })
 
 describe('exportar/importar configurações', () => {
-  it('exporta sem senha e importa com ids novos quando colidem e nomes únicos', () => {
+  it('exporta sem senha e importa com ids novos e nomes únicos', () => {
     const r = makeRoutine({ id: 'r1', name: 'Docs' })
     const settings = {
       ...DEFAULT_SETTINGS,
@@ -197,8 +197,8 @@ describe('exportar/importar configurações', () => {
     expect(plan.routines[0].name).toBe('Docs (importada)')
     expect(plan.settings?.smtp?.host).toBe('smtp.x')
     expect(plan.settings).not.toHaveProperty('computerAlias')
-    // Sem colisão: mantém o id.
-    expect(planImport(file, []).routines[0].id).toBe('r1')
+    // Sem colisão: também gera id novo (outro PC no mesmo destino não pode dividir a pasta da rotina).
+    expect(planImport(file, []).routines[0].id).not.toBe('r1')
   })
   it('arquivo estranho → erro em pt-BR', () => {
     expect(() => planImport({ foo: 1 }, [])).toThrow(/não é uma exportação/)

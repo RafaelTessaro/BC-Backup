@@ -51,10 +51,16 @@ export function Stepper({
                     'relative flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tnum transition-colors duration-[180ms]',
                     isCurrent && 'bg-accent text-accent-foreground shadow-[0_0_0_3px_var(--accent-soft)]',
                     !isCurrent && st.status === 'done' && 'bg-accent-soft text-accent-text',
-                    !isCurrent && st.status === 'pending' && 'border border-border-strong bg-surface-raised text-fg-subtle'
+                    !isCurrent &&
+                      st.status === 'pending' &&
+                      'border border-border-strong bg-surface-raised text-fg-subtle'
                   )}
                 >
-                  {!isCurrent && st.status === 'done' ? <Check className="size-3" strokeWidth={2.75} /> : i + 1}
+                  {!isCurrent && st.status === 'done' ? (
+                    <Check className="size-3" strokeWidth={2.75} />
+                  ) : (
+                    i + 1
+                  )}
                   {st.issue && (
                     <span
                       className={cn(
@@ -68,7 +74,11 @@ export function Stepper({
                 <span
                   className={cn(
                     'text-small',
-                    isCurrent ? 'font-medium text-fg' : st.status === 'done' ? 'text-fg-muted' : 'text-fg-subtle',
+                    isCurrent
+                      ? 'font-medium text-fg'
+                      : st.status === 'done'
+                        ? 'text-fg-muted'
+                        : 'text-fg-subtle',
                     st.clickable && !isCurrent && 'group-hover:text-fg'
                   )}
                 >

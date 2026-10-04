@@ -163,15 +163,15 @@ function StatusHero({ routines }: { routines: Routine[] }) {
     <>
       {lastOk ? (
         <>
-          Último backup{' '}
-          <RelativeTime iso={lastOk.finishedAt ?? lastOk.startedAt} mode="ago" />
+          Último backup <RelativeTime iso={lastOk.finishedAt ?? lastOk.startedAt} mode="ago" />
         </>
       ) : (
         'Nenhum backup concluído ainda'
       )}
       {next && (
         <>
-          {' · '}Próximo <RelativeTime iso={next.at} /> <span className="text-fg-subtle">({next.routineName})</span>
+          {' · '}Próximo <RelativeTime iso={next.at} />{' '}
+          <span className="text-fg-subtle">({next.routineName})</span>
         </>
       )}
     </>
@@ -209,8 +209,16 @@ function StatusHero({ routines }: { routines: Routine[] }) {
         >
           <ProgressBar value={running.phase === 'queued' ? 0 : pct} className="flex-1" label="Progresso" />
           <span className="shrink-0 text-small font-medium text-fg tnum">
-            {pct !== undefined ? formatPercent(pct) : '—'}
-            <span className="font-normal text-fg-subtle"> · {formatEta(running.etaMs)}</span>
+            {running.phase === 'queued' ? (
+              'Na fila'
+            ) : pct === undefined ? (
+              <span className="font-normal text-fg-subtle">Preparando…</span>
+            ) : (
+              <>
+                {formatPercent(pct)}
+                <span className="font-normal text-fg-subtle"> · {formatEta(running.etaMs)}</span>
+              </>
+            )}
           </span>
           <ArrowRight
             className="size-4 shrink-0 text-fg-subtle transition-transform duration-[120ms] group-hover:translate-x-0.5 group-hover:text-fg"
@@ -245,7 +253,12 @@ function StatusHero({ routines }: { routines: Routine[] }) {
             <Button variant="secondary" size="sm" onClick={() => openRunDetail(lr.id)}>
               Ver detalhes
             </Button>
-            <Button variant="ghost" size="sm" icon={Play} onClick={() => void runNow(r, { openDrawer: true })}>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={Play}
+              onClick={() => void runNow(r, { openDrawer: true })}
+            >
               Executar novamente
             </Button>
           </>
@@ -322,11 +335,18 @@ function StatTile({
       <span className="text-caption font-medium text-fg-muted">{label}</span>
       <span className="text-stat font-semibold text-fg tnum">
         {value}
-        {suffix && <span className="ml-1 text-body font-normal tracking-normal text-fg-subtle">{suffix}</span>}
+        {suffix && (
+          <span className="ml-1 text-body font-normal tracking-normal text-fg-subtle">{suffix}</span>
+        )}
       </span>
       <span className="flex min-h-4 items-center gap-1 truncate text-caption text-fg-subtle">
         {delta && (
-          <span className={cn('inline-flex items-center gap-0.5 font-medium', delta.good ? 'text-success' : 'text-danger')}>
+          <span
+            className={cn(
+              'inline-flex items-center gap-0.5 font-medium',
+              delta.good ? 'text-success' : 'text-danger'
+            )}
+          >
             <Arrow className="size-3.5" strokeWidth={2} aria-hidden />
             {delta.text}
           </span>
@@ -338,7 +358,9 @@ function StatTile({
 }
 
 function rate(runs: RunSummary[]): number | null {
-  const counted = runs.filter((r) => r.status !== 'cancelled' && r.status !== 'running' && r.status !== 'queued')
+  const counted = runs.filter(
+    (r) => r.status !== 'cancelled' && r.status !== 'running' && r.status !== 'queued'
+  )
   if (!counted.length) return null
   return (counted.filter((r) => r.status !== 'failed').length / counted.length) * 100
 }
@@ -374,7 +396,10 @@ function StatTiles({ routines }: { routines: Routine[] }) {
         value={formatNumber(stats?.runsLast7d ?? 0)}
         sub={
           failures || warnings
-            ? [failures ? plural(failures, 'falha', 'falhas') : null, warnings ? `${formatNumber(warnings)} com avisos` : null]
+            ? [
+                failures ? plural(failures, 'falha', 'falhas') : null,
+                warnings ? `${formatNumber(warnings)} com avisos` : null
+              ]
                 .filter(Boolean)
                 .join(' · ')
             : 'Nenhuma falha'
@@ -419,7 +444,9 @@ function UpcomingCard({ routines }: { routines: Routine[] }) {
     <Card className="flex h-full flex-col">
       <CardHeader title="Próximas execuções" />
       {items.length === 0 ? (
-        <p className="px-5 pb-5 text-small text-fg-muted">Nenhuma execução agendada. Rotinas manuais rodam quando você pedir.</p>
+        <p className="px-5 pb-5 text-small text-fg-muted">
+          Nenhuma execução agendada. Rotinas manuais rodam quando você pedir.
+        </p>
       ) : (
         <ul className="flex flex-col px-2 pb-2">
           {items.map(({ routine, at }) => (
@@ -429,7 +456,9 @@ function UpcomingCard({ routines }: { routines: Routine[] }) {
             >
               <Tooltip label={formatWhen(at, now)}>
                 <div className="flex w-[76px] shrink-0 flex-col leading-tight">
-                  <span className="text-caption text-fg-subtle first-letter:uppercase">{formatDayWord(at, now).split(',')[0]}</span>
+                  <span className="text-caption text-fg-subtle first-letter:uppercase">
+                    {formatDayWord(at, now).split(',')[0]}
+                  </span>
                   <span className="text-body font-medium text-fg tnum">{formatTime(at)}</span>
                 </div>
               </Tooltip>
@@ -439,7 +468,9 @@ function UpcomingCard({ routines }: { routines: Routine[] }) {
                 onClick={() => navigate(ROUTES.routine(routine.id))}
               >
                 <span className="truncate text-small font-medium text-fg">{routine.name}</span>
-                <span className="truncate text-caption text-fg-subtle">{describeSchedule(routine.schedule)}</span>
+                <span className="truncate text-caption text-fg-subtle">
+                  {describeSchedule(routine.schedule)}
+                </span>
               </button>
               <IconButton
                 icon={Play}
@@ -492,7 +523,12 @@ function DestinationsCard({ routines }: { routines: Routine[] }) {
     for (const r of routines)
       for (const d of r.destinations) {
         const root = pathRoot(d.path)
-        const row = map.get(root) ?? { root, label: undefined, routines: [], network: root.startsWith('\\\\') }
+        const row = map.get(root) ?? {
+          root,
+          label: undefined,
+          routines: [],
+          network: root.startsWith('\\\\')
+        }
         if (!row.routines.includes(r.name)) row.routines.push(r.name)
         row.label ??= d.label
         map.set(root, row)
@@ -509,8 +545,11 @@ function DestinationsCard({ routines }: { routines: Routine[] }) {
       ) : (
         <ul className="flex flex-col gap-1 px-2 pb-3">
           {rows.map((row) => {
-            const drive = drives.find((d) => d.path.toUpperCase().replace(/\\$/, '') === row.root.toUpperCase().replace(/\\$/, ''))
-            const space = spaces[row.root] ?? (drive ? { path: drive.path, total: drive.total, free: drive.free } : null)
+            const drive = drives.find(
+              (d) => d.path.toUpperCase().replace(/\\$/, '') === row.root.toUpperCase().replace(/\\$/, '')
+            )
+            const space =
+              spaces[row.root] ?? (drive ? { path: drive.path, total: drive.total, free: drive.free } : null)
             const Icon: LucideIcon = row.network ? Server : drive?.removable ? Usb : HardDrive
             const usedPct = space && space.total ? ((space.total - space.free) / space.total) * 100 : 0
             const tone = usageTone(usedPct)
@@ -537,12 +576,18 @@ function DestinationsCard({ routines }: { routines: Routine[] }) {
                       <DiskUsageBar total={space.total} free={space.free} className="flex-1" />
                       {tone === 'danger' && (
                         <Tooltip label="Pouco espaço livre: o próximo backup pode falhar.">
-                          <TriangleAlert className="-mt-5 size-4 shrink-0 text-danger" strokeWidth={1.75} aria-label="Pouco espaço" />
+                          <TriangleAlert
+                            className="-mt-5 size-4 shrink-0 text-danger"
+                            strokeWidth={1.75}
+                            aria-label="Pouco espaço"
+                          />
                         </Tooltip>
                       )}
                     </div>
                   ) : (
-                    <span className="text-caption text-warning">Indisponível agora — conecte o disco ou verifique a rede.</span>
+                    <span className="text-caption text-warning">
+                      Indisponível agora — conecte o disco ou verifique a rede.
+                    </span>
                   )}
                 </div>
               </li>
@@ -572,7 +617,9 @@ function RecentRunsCard() {
         }
       />
       {recent.length === 0 ? (
-        <p className="px-5 pb-5 text-small text-fg-muted">Assim que uma rotina rodar, o resultado aparece aqui.</p>
+        <p className="px-5 pb-5 text-small text-fg-muted">
+          Assim que uma rotina rodar, o resultado aparece aqui.
+        </p>
       ) : (
         <div className="px-2 pb-2" role="table" aria-label="Últimas execuções">
           {recent.map((r) => (
@@ -699,4 +746,3 @@ export function DashboardScreen() {
     </Page>
   )
 }
-

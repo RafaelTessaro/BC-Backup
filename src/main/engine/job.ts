@@ -7,9 +7,13 @@
 //   5) verifica 6) grava o manifesto e renomeia para o nome final 7) retenção (só se 1–6 deram certo)
 // Status: success = tudo copiado em todos os destinos · warning = concluído com arquivos pulados ·
 // failed = origem ausente, nada a copiar, ou QUALQUER destino falhou · cancelled.
+// Um destino que não recebeu NENHUM arquivo (todos em uso/sem permissão) falha: um backup vazio
+// contaria na retenção e faria apagar os backups bons. Destino dentro da origem (ou a origem dentro
+// da pasta "BC Backup" do destino) também falha aqui, mesmo que o editor não tenha pego (importação,
+// link/junção, outra grafia do caminho): o backup copiaria a si mesmo a cada execução.
 
-import { mkdir, readdir, rm, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
+import { basename, join, resolve } from 'node:path'
 import type {
   DestinationResult,
   FinalRunStatus,
@@ -18,7 +22,7 @@ import type {
   SkippedFile,
   SourceItem
 } from '@shared/types'
-import { BACKUP_ROOT_DIR, IN_PROGRESS_SUFFIX } from '@shared/defaults'
+import { BACKUP_ROOT_DIR, IN_PROGRESS_SUFFIX, MANIFEST_FILE } from '@shared/defaults'
 import { formatBytes } from '@shared/format'
 import {
   DestinationError,
@@ -51,6 +55,7 @@ import { applyRetention, cleanupLeftovers, uniqueStamp } from './retention'
 import type { EngineEvent, JobResult, JobSpec } from './types'
 import { emptyWalkStats, makeFilter, skipReason, walk, type FileItem, type WalkIssue } from './walk'
 import { verifyZip, zipTree } from './zip'
+import { isInside } from '../validate'
 
 export interface JobOptions {
   now?: () => Date
@@ -103,7 +108,8 @@ function withSuffix(name: string, n: number, isFile: boolean): string {
 
 /** Nomes das origens dentro do backup, únicos (sem diferenciar maiúsculas). */
 export function sourceSlots(sources: SourceItem[]): SourceSlot[] {
-  const used = new Set<string>()
+  // O nome do manifesto é reservado: um arquivo de origem com esse nome seria sobrescrito por ele.
+  const used = new Set<string>([MANIFEST_FILE.toLowerCase()])
   return sources.map((source) => {
     const explicit = source.label?.trim()
     const folder = source.kind !== 'file' || !!explicit
@@ -168,6 +174,18 @@ export async function resolveRoutineDir(
     return dir
   }
   throw new DestinationError('Não foi possível criar a pasta da rotina no destino.', 'EDEST')
+}
+
+/** Caminho real (resolve links/junções/unidades substituídas); se falhar, o caminho absoluto. */
+async function realPathOf(p: string, timeoutMs: number): Promise<string> {
+  return withTimeout(realpath(p), timeoutMs).catch(() => resolve(p))
+}
+
+const INSIDE_SOURCE_MESSAGE =
+  'O destino fica dentro da origem (ou a origem dentro da pasta "BC Backup" do destino): o backup copiaria a si mesmo. Escolha outro destino.'
+
+function nothingCopiedMessage(): string {
+  return 'Nenhum arquivo pôde ser copiado (em uso, sem permissão ou removidos durante o backup). Os backups anteriores foram mantidos.'
 }
 
 function verifyFailureMessage(issues: VerifyIssue[]): string {
@@ -250,12 +268,12 @@ export async function runJob(
     tracker.phase('scanning')
     const slots = sourceSlots(routine.sources)
     const missing: string[] = []
+    /** Caminhos reais das origens que são pastas (para recusar destino dentro da origem). */
+    const sourceDirs: string[] = []
     for (const slot of slots) {
-      const ok = await withTimeout(stat(slot.source.path), accessTimeout).then(
-        () => true,
-        () => false
-      )
-      if (!ok) missing.push(slot.source.path)
+      const st = await withTimeout(stat(slot.source.path), accessTimeout).catch(() => null)
+      if (!st) missing.push(slot.source.path)
+      else if (st.isDirectory()) sourceDirs.push(await realPathOf(slot.source.path, accessTimeout))
     }
     signal.throwIfAborted()
     if (missing.length) {
@@ -330,6 +348,11 @@ export async function runJob(
             'EUNAVAILABLE'
           )
         }
+        // 1b) destino dentro da origem? (antes de criar qualquer coisa no destino)
+        const backupRoot = join(await realPathOf(dest.path, accessTimeout), BACKUP_ROOT_DIR)
+        if (sourceDirs.some((src) => isInside(backupRoot, src) || isInside(src, backupRoot))) {
+          throw new DestinationError(INSIDE_SOURCE_MESSAGE, 'EINSIDE')
+        }
         // 2) pasta da rotina, marcador e sobras de execuções anteriores (libera espaço antes da checagem)
         const routineDir = await resolveRoutineDir(dest.path, routine, L)
         await cleanupLeftovers(routineDir, routine.id, L)
@@ -387,6 +410,7 @@ export async function runJob(
             manifest: (files, bytes, skipped) => manifest(files, bytes, skipped + walkSkipped.length)
           })
           skippedAll = [...walkSkipped, ...z.skipped]
+          if (!z.added.length) throw new DestinationError(nothingCopiedMessage(), 'ENOFILES')
           // 5) verifica
           if (routine.verify !== 'none') {
             const vi = await verifyZip(work, z.added, routine.verify, tracker, signal)
@@ -419,6 +443,7 @@ export async function runJob(
             hooks: opts.hooks
           })
           skippedAll = [...walkSkipped, ...c.skipped]
+          if (!c.copied.length) throw new DestinationError(nothingCopiedMessage(), 'ENOFILES')
           // 5) verifica
           if (routine.verify !== 'none') {
             const vi = await verifyCopiedFiles(c.copied, work, routine.verify, tracker, signal)
@@ -469,10 +494,12 @@ export async function runJob(
             (skippedAll.length ? `, ${skippedAll.length} ignorado(s).` : '.')
         )
 
-        // 7) retenção — só depois de um backup concluído neste destino
-        if (routine.retention.enabled && !keepWork) {
+        // 7) retenção — só depois de um backup concluído neste destino (nunca apaga o que acabou de ser criado)
+        if (routine.retention.enabled && !keepWork && res.outputPath) {
           tracker.phase('pruning')
-          res.pruned = await applyRetention(routineDir, routine.id, routine.retention, now(), L)
+          res.pruned = await applyRetention(routineDir, routine.id, routine.retention, now(), L, [
+            basename(res.outputPath)
+          ])
         }
       } catch (e) {
         if (workPath && !keepWork)
