@@ -8,6 +8,7 @@ import type {
   DashboardStats,
   DiskSpace,
   DriveInfo,
+  Filters,
   ID,
   Routine,
   RunProgress,
@@ -37,6 +38,29 @@ export interface PickResult {
   paths: string[]
 }
 
+export interface ValidationIssue {
+  level: 'error' | 'warning'
+  /** Etapa do editor a que o problema pertence. */
+  step: 'origem' | 'destinos' | 'agendamento' | 'retencao' | 'notificacao'
+  /** Mensagem em pt-BR pronta para exibir. */
+  message: string
+}
+
+export interface SizeEstimate {
+  files: number
+  bytes: number
+  /** true se a contagem foi interrompida pelo tempo limite (valor parcial). */
+  partial: boolean
+}
+
+export interface FileResult {
+  canceled: boolean
+  path?: string
+  /** Mensagem em pt-BR (sucesso ou erro). */
+  message?: string
+  ok?: boolean
+}
+
 export interface BcApi {
   app: {
     info(): Promise<AppInfo>
@@ -45,6 +69,8 @@ export interface BcApi {
     openExternal(url: string): Promise<void>
     /** Controles de janela (titlebar customizada). */
     window(action: 'minimize' | 'maximize' | 'close'): Promise<void>
+    /** Tema efetivo mudou — main ajusta titleBarOverlay e cor de fundo. */
+    setResolvedTheme(theme: 'light' | 'dark'): Promise<void>
   }
   routines: {
     list(): Promise<Routine[]>
@@ -57,6 +83,8 @@ export interface BcApi {
     cancel(id: ID): Promise<void>
     /** Próxima execução calculada pelo agendador (ISO) ou null. */
     nextRuns(): Promise<Record<ID, string | null>>
+    /** Valida origem/destinos (destino dentro da origem, mesmo disco, acessível…). */
+    validate(input: RoutineInput): Promise<ValidationIssue[]>
   }
   runs: {
     list(query?: HistoryQuery): Promise<RunSummary[]>
@@ -69,6 +97,9 @@ export interface BcApi {
     update(patch: Partial<Omit<AppSettings, 'smtp'>>): Promise<AppSettings>
     saveSmtp(input: SmtpInput): Promise<AppSettings>
     testSmtp(input: SmtpInput & { to: string }): Promise<MailTestResult>
+    /** Exporta rotinas + configurações (sem senhas) para um .json escolhido pelo usuário. */
+    exportConfig(): Promise<FileResult>
+    importConfig(): Promise<FileResult>
   }
   system: {
     drives(): Promise<DriveInfo[]>
@@ -76,6 +107,8 @@ export interface BcApi {
     pickFolders(opts?: { multi?: boolean; title?: string }): Promise<PickResult>
     pickFiles(opts?: { title?: string }): Promise<PickResult>
     stats(): Promise<DashboardStats>
+    /** Soma arquivos/bytes das origens com os filtros (tempo limite ~4 s). */
+    estimateSize(sources: string[], filters?: Filters): Promise<SizeEstimate>
   }
   on: {
     progress(cb: (p: RunProgress) => void): () => void
@@ -93,6 +126,7 @@ export const IPC_CHANNELS = {
   appShowInFolder: 'app:show-in-folder',
   appOpenExternal: 'app:open-external',
   appWindow: 'app:window',
+  appSetResolvedTheme: 'app:set-resolved-theme',
   routinesList: 'routines:list',
   routinesGet: 'routines:get',
   routinesSave: 'routines:save',
@@ -102,6 +136,7 @@ export const IPC_CHANNELS = {
   routinesRunNow: 'routines:run-now',
   routinesCancel: 'routines:cancel',
   routinesNextRuns: 'routines:next-runs',
+  routinesValidate: 'routines:validate',
   runsList: 'runs:list',
   runsGet: 'runs:get',
   runsActive: 'runs:active',
@@ -110,11 +145,14 @@ export const IPC_CHANNELS = {
   settingsUpdate: 'settings:update',
   settingsSaveSmtp: 'settings:save-smtp',
   settingsTestSmtp: 'settings:test-smtp',
+  settingsExport: 'settings:export',
+  settingsImport: 'settings:import',
   systemDrives: 'system:drives',
   systemDiskSpace: 'system:disk-space',
   systemPickFolders: 'system:pick-folders',
   systemPickFiles: 'system:pick-files',
-  systemStats: 'system:stats'
+  systemStats: 'system:stats',
+  systemEstimateSize: 'system:estimate-size'
 } as const
 
 export const IPC_EVENTS = {
