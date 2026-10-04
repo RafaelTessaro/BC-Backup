@@ -1,0 +1,413 @@
+/* BC Backup — design system v1 (docs/research/02-design-system.md §3–§5, §10) */
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+:root {
+  color-scheme: light;
+  --bg: #fafafb;
+  --surface: #f4f4f6;
+  --surface-raised: #ffffff;
+  --surface-hover: #eeeef1;
+  --surface-sunken: #f1f1f4;
+  --border: #e4e4e8;
+  --border-strong: #d1d1d8;
+  --text-primary: #16171b;
+  --text-secondary: #4f5059;
+  --text-tertiary: #696a73;
+  --accent: #3254f0;
+  --accent-hover: #2843d6;
+  --accent-soft: #eef1fe;
+  --accent-text: #2b48db;
+  --accent-foreground: #ffffff;
+  --success: #16794a;
+  --success-soft: #e7f6ee;
+  --success-bar: #22a06b;
+  --warning: #9c540a;
+  --warning-soft: #fdf3e3;
+  --warning-bar: #e09b2d;
+  --danger: #c42727;
+  --danger-soft: #fdeded;
+  --danger-bar: #e5484d;
+  --info: #1a62c0;
+  --info-soft: #eaf2fd;
+  --ring: #3254f0;
+  --overlay: rgb(16 17 20 / 0.32);
+  --segment-active: #ffffff;
+  --tooltip-bg: #16171b;
+  --tooltip-fg: #fafafb;
+  --sh-xs: 0 1px 2px rgb(16 17 20 / 0.05);
+  --sh-card: 0 1px 2px rgb(16 17 20 / 0.04), 0 1px 3px rgb(16 17 20 / 0.03);
+  --sh-pop: 0 0 0 1px rgb(16 17 20 / 0.06), 0 4px 12px -2px rgb(16 17 20 / 0.1), 0 2px 4px -2px rgb(16 17 20 / 0.06);
+  --sh-dialog: 0 0 0 1px rgb(16 17 20 / 0.06), 0 24px 48px -12px rgb(16 17 20 / 0.22), 0 8px 16px -8px rgb(16 17 20 / 0.1);
+  --hero-glow: rgb(50 84 240 / 0.06);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #111215;
+  --surface: #0c0d0f;
+  --surface-raised: #18191d;
+  --surface-hover: #212227;
+  --surface-sunken: #0e0f12;
+  --border: #2a2b31;
+  --border-strong: #3a3b42;
+  --text-primary: #ededf0;
+  --text-secondary: #a6a7b0;
+  --text-tertiary: #8a8b95;
+  --accent: #4566fa;
+  --accent-hover: #3b5bef;
+  --accent-soft: #1a2140;
+  --accent-text: #93a6ff;
+  --accent-foreground: #ffffff;
+  --success: #3dd68c;
+  --success-soft: #0f2a1e;
+  --success-bar: #2fbf7a;
+  --warning: #f2b24c;
+  --warning-soft: #2e2310;
+  --warning-bar: #f2b24c;
+  --danger: #ff6b6b;
+  --danger-soft: #331616;
+  --danger-bar: #ff6b6b;
+  --info: #6cb0ff;
+  --info-soft: #102338;
+  --ring: #6f8bff;
+  --overlay: rgb(0 0 0 / 0.6);
+  --segment-active: #2a2b31;
+  --tooltip-bg: #ededf0;
+  --tooltip-fg: #111215;
+  --sh-xs: 0 1px 2px rgb(0 0 0 / 0.4);
+  --sh-card: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 1px 2px rgb(0 0 0 / 0.4);
+  --sh-pop: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 0 1px rgb(255 255 255 / 0.06), 0 8px 24px -4px rgb(0 0 0 / 0.55);
+  --sh-dialog: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 0 0 1px rgb(255 255 255 / 0.08), 0 24px 64px -12px rgb(0 0 0 / 0.7);
+  --hero-glow: rgb(69 102 250 / 0.08);
+}
+
+/* Variáveis de runtime → utilitários (bg-surface-raised, text-fg-muted, shadow-card…) */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--text-primary);
+  --color-fg-muted: var(--text-secondary);
+  --color-fg-subtle: var(--text-tertiary);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-bar: var(--success-bar);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-bar: var(--warning-bar);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-bar: var(--danger-bar);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
+  --color-segment-active: var(--segment-active);
+  --color-tooltip: var(--tooltip-bg);
+  --color-tooltip-fg: var(--tooltip-fg);
+  --shadow-xs: var(--sh-xs);
+  --shadow-card: var(--sh-card);
+  --shadow-pop: var(--sh-pop);
+  --shadow-dialog: var(--sh-dialog);
+}
+
+/* Valores estáticos */
+@theme {
+  --font-sans: 'Geist Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Cascadia Mono', Consolas, monospace;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --text-display: 28px;
+  --text-display--line-height: 36px;
+  --text-display--letter-spacing: -0.02em;
+  --text-title: 22px;
+  --text-title--line-height: 28px;
+  --text-title--letter-spacing: -0.015em;
+  --text-section: 16px;
+  --text-section--line-height: 24px;
+  --text-section--letter-spacing: -0.01em;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-small: 13px;
+  --text-small--line-height: 18px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-mono: 12px;
+  --text-mono--line-height: 18px;
+  --text-stat: 24px;
+  --text-stat--line-height: 32px;
+  --text-stat--letter-spacing: -0.02em;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+
+  --animate-spin-slow: spin 1s linear infinite;
+  --animate-fade-in: fade-in 180ms var(--ease-out);
+  --animate-fade-out: fade-out 126ms var(--ease-in);
+  --animate-pop-in: pop-in 180ms var(--ease-out);
+  --animate-pop-out: pop-out 126ms var(--ease-in);
+  --animate-dialog-in: dialog-in 260ms var(--ease-out);
+  --animate-dialog-out: dialog-out 180ms var(--ease-in);
+  --animate-drawer-in: drawer-in 260ms var(--ease-out);
+  --animate-drawer-out: drawer-out 180ms var(--ease-in);
+  --animate-step-in: step-in 260ms var(--ease-out);
+  --animate-indeterminate: indeterminate 1.2s var(--ease-in-out) infinite;
+  --animate-collapse-down: collapse-down 180ms var(--ease-out);
+  --animate-collapse-up: collapse-up 126ms var(--ease-in);
+  --animate-pulse-dot: pulse-dot 2.4s var(--ease-in-out) infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+  }
+  @keyframes pop-out {
+    to {
+      opacity: 0;
+      transform: translateY(2px) scale(0.99);
+    }
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.98);
+    }
+  }
+  @keyframes dialog-out {
+    to {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.98);
+    }
+  }
+  @keyframes drawer-in {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+  }
+  @keyframes drawer-out {
+    to {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+  }
+  @keyframes step-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(340%);
+    }
+  }
+  @keyframes collapse-down {
+    from {
+      height: 0;
+      opacity: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+      opacity: 1;
+    }
+  }
+  @keyframes collapse-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+      opacity: 1;
+    }
+    to {
+      height: 0;
+      opacity: 0;
+    }
+  }
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 40%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 0%, transparent);
+    }
+  }
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 20px;
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv11', 'ss01';
+    user-select: none;
+    cursor: default;
+  }
+  #root {
+    height: 100%;
+  }
+  input,
+  textarea,
+  [data-selectable] {
+    user-select: text;
+  }
+  button,
+  [role='button'],
+  a {
+    cursor: default;
+  }
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  ::placeholder {
+    color: var(--text-tertiary);
+    opacity: 1;
+  }
+
+  /* Barras de rolagem finas, discretas */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--text-tertiary) 35%, transparent) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--text-tertiary) 30%, transparent);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--text-tertiary) 55%, transparent);
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Região arrastável da barra de título (Electron). */
+@utility drag {
+  -webkit-app-region: drag;
+}
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+@utility text-overline {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Faixa hachurada (espaço que o próximo backup vai usar) */
+@utility hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--accent) 45%, transparent) 0 2px,
+    color-mix(in srgb, var(--accent) 18%, transparent) 2px 4px
+  );
+}
+
+.titlebar :is(button, input, a, [role='button']) {
+  -webkit-app-region: no-drag;
+}
+
+/* Sonner: usamos toast.custom; só zeramos o invólucro padrão. */
+[data-sonner-toaster] {
+  --width: 360px;
+  font-family: var(--font-sans);
+}
+[data-sonner-toast][data-styled='true'] {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after {
+  transition: none !important;
+}
