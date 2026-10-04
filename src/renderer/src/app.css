@@ -1,4 +1,5 @@
-/* BC Backup — design system v1 (docs/research/02-design-system.md §3–§5, §10) */
+/* BC Backup — design system v1 (docs/research/02-design-system.md §3–§5, §10)
+   Cores: identidade preto · menta · branco (docs/research/06-identidade-preto-verde.md). */
 @import 'tailwindcss';
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
@@ -7,89 +8,100 @@
 
 :root {
   color-scheme: light;
-  --bg: #fafafb;
-  --surface: #f4f4f6;
+  /* Superfícies: branco nítido com um toque frio-esverdeado quase imperceptível. */
+  --bg: #f8faf9;
+  --surface: #f1f4f3;
   --surface-raised: #ffffff;
-  --surface-hover: #eeeef1;
-  --surface-sunken: #f1f1f4;
-  --border: #e4e4e8;
-  --border-strong: #d1d1d8;
-  --text-primary: #16171b;
-  --text-secondary: #4f5059;
-  --text-tertiary: #696a73;
-  --accent: #3254f0;
-  --accent-hover: #2843d6;
-  --accent-soft: #eef1fe;
-  --accent-text: #2b48db;
-  --accent-foreground: #ffffff;
-  --success: #16794a;
-  --success-soft: #e7f6ee;
-  --success-bar: #22a06b;
+  --surface-hover: #eaefed;
+  --surface-sunken: #eef2f0;
+  --border: #e0e6e3;
+  --border-strong: #c9d2ce;
+  /* Texto: o "preto" da marca (#001A13) neutralizado. */
+  --text-primary: #0a1310;
+  --text-secondary: #46524d;
+  --text-tertiary: #5c6863;
+  /* Menta = o único acento. Texto sobre menta é sempre escuro (branco não passa: 2,2:1). */
+  --accent: #00c795;
+  --accent-hover: #00b386;
+  --accent-soft: #e3f8f0;
+  --accent-text: #00765a;
+  --accent-foreground: #00140f;
+  /* Contorno/realce de controles em menta com ≥ 3:1 sobre branco (switch, checkbox, campo em foco). */
+  --accent-edge: #009c73;
+  --success: #24782f;
+  --success-soft: #eaf6ea;
+  --success-bar: #3ba14a;
   --warning: #9c540a;
   --warning-soft: #fdf3e3;
   --warning-bar: #e09b2d;
   --danger: #c42727;
   --danger-soft: #fdeded;
   --danger-bar: #e5484d;
-  --info: #1a62c0;
-  --info-soft: #eaf2fd;
-  --ring: #3254f0;
-  --overlay: rgb(16 17 20 / 0.32);
+  --info: #2e5e86;
+  --info-soft: #edf2f6;
+  --ring: #009c73;
+  --overlay: rgb(4 14 11 / 0.36);
   --segment-active: #ffffff;
-  --tooltip-bg: #16171b;
-  --tooltip-fg: #fafafb;
-  --sh-xs: 0 1px 2px rgb(16 17 20 / 0.05);
-  --sh-card: 0 1px 2px rgb(16 17 20 / 0.04), 0 1px 3px rgb(16 17 20 / 0.03);
+  --tooltip-bg: #0a1310;
+  --tooltip-fg: #f8faf9;
+  --sh-xs: 0 1px 2px rgb(4 20 14 / 0.06);
+  --sh-card: 0 1px 2px rgb(4 20 14 / 0.04), 0 1px 3px rgb(4 20 14 / 0.03);
   --sh-pop:
-    0 0 0 1px rgb(16 17 20 / 0.06), 0 4px 12px -2px rgb(16 17 20 / 0.1), 0 2px 4px -2px rgb(16 17 20 / 0.06);
+    0 0 0 1px rgb(4 20 14 / 0.06), 0 4px 12px -2px rgb(4 20 14 / 0.1), 0 2px 4px -2px rgb(4 20 14 / 0.06);
   --sh-dialog:
-    0 0 0 1px rgb(16 17 20 / 0.06), 0 24px 48px -12px rgb(16 17 20 / 0.22),
-    0 8px 16px -8px rgb(16 17 20 / 0.1);
-  --hero-glow: rgb(50 84 240 / 0.06);
+    0 0 0 1px rgb(4 20 14 / 0.06), 0 24px 48px -12px rgb(4 20 14 / 0.22), 0 8px 16px -8px rgb(4 20 14 / 0.1);
+  --sh-accent: inset 0 1px 0 rgb(255 255 255 / 0.28), inset 0 0 0 1px rgb(0 92 66 / 0.18),
+    0 1px 2px rgb(0 60 42 / 0.18);
+  --hero-glow: rgb(0 199 149 / 0.07);
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
-  --bg: #111215;
-  --surface: #0c0d0f;
-  --surface-raised: #18191d;
-  --surface-hover: #212227;
-  --surface-sunken: #0e0f12;
-  --border: #2a2b31;
-  --border-strong: #3a3b42;
-  --text-primary: #ededf0;
-  --text-secondary: #a6a7b0;
-  --text-tertiary: #8a8b95;
-  --accent: #4566fa;
-  --accent-hover: #3b5bef;
-  --accent-soft: #1a2140;
-  --accent-text: #93a6ff;
-  --accent-foreground: #ffffff;
-  --success: #3dd68c;
-  --success-soft: #0f2a1e;
-  --success-bar: #2fbf7a;
+  /* Superfícies: o preto do ícone, quase neutro (matiz 160°, croma mínimo) — nada de "verde-escuro". */
+  --bg: #0a0d0c;
+  --surface: #060807;
+  --surface-raised: #101413;
+  --surface-hover: #171d1b;
+  --surface-sunken: #080b0a;
+  --border: #1e2623;
+  --border-strong: #2d3733;
+  --text-primary: #ecf2ef;
+  --text-secondary: #a3aea9;
+  --text-tertiary: #84918b;
+  --accent: #00d9a0;
+  --accent-hover: #2ee5b2;
+  --accent-soft: #0a2b21;
+  --accent-text: #3ee0b0;
+  --accent-foreground: #00140f;
+  --accent-edge: #00d9a0;
+  --success: #74cf78;
+  --success-soft: #132517;
+  --success-bar: #4fb45a;
   --warning: #f2b24c;
-  --warning-soft: #2e2310;
+  --warning-soft: #2b210f;
   --warning-bar: #f2b24c;
   --danger: #ff6b6b;
-  --danger-soft: #331616;
-  --danger-bar: #ff6b6b;
-  --info: #6cb0ff;
-  --info-soft: #102338;
-  --ring: #6f8bff;
-  --overlay: rgb(0 0 0 / 0.6);
-  --segment-active: #2a2b31;
-  --tooltip-bg: #ededf0;
-  --tooltip-fg: #111215;
-  --sh-xs: 0 1px 2px rgb(0 0 0 / 0.4);
-  --sh-card: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 1px 2px rgb(0 0 0 / 0.4);
+  --danger-soft: #311615;
+  --danger-bar: #f25f5f;
+  --info: #93b4d2;
+  --info-soft: #121b23;
+  --ring: #00d9a0;
+  --overlay: rgb(0 0 0 / 0.64);
+  --segment-active: #232b28;
+  --tooltip-bg: #ecf2ef;
+  --tooltip-fg: #0a0d0c;
+  --sh-xs: 0 1px 2px rgb(0 0 0 / 0.45);
+  --sh-card: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 1px 2px rgb(0 0 0 / 0.45);
   --sh-pop:
     inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 0 1px rgb(255 255 255 / 0.06),
-    0 8px 24px -4px rgb(0 0 0 / 0.55);
+    0 8px 24px -4px rgb(0 0 0 / 0.6);
   --sh-dialog:
     inset 0 1px 0 rgb(255 255 255 / 0.06), 0 0 0 1px rgb(255 255 255 / 0.08),
-    0 24px 64px -12px rgb(0 0 0 / 0.7);
-  --hero-glow: rgb(69 102 250 / 0.08);
+    0 24px 64px -12px rgb(0 0 0 / 0.75);
+  /* Primário no escuro: realce interno + um halo menta mínimo (o "brilho" do ícone, sem néon). */
+  --sh-accent: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 1px 2px rgb(0 0 0 / 0.5),
+    0 0 0 1px rgb(0 217 160 / 0.25), 0 4px 14px -6px rgb(0 217 160 / 0.45);
+  --hero-glow: rgb(0 217 160 / 0.08);
 }
 
 /* Variáveis de runtime → utilitários (bg-surface-raised, text-fg-muted, shadow-card…) */
@@ -109,6 +121,7 @@
   --color-accent-soft: var(--accent-soft);
   --color-accent-text: var(--accent-text);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-edge: var(--accent-edge);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-success-bar: var(--success-bar);
@@ -129,6 +142,7 @@
   --shadow-card: var(--sh-card);
   --shadow-pop: var(--sh-pop);
   --shadow-dialog: var(--sh-dialog);
+  --shadow-primary: var(--sh-accent);
 }
 
 /* Valores estáticos */

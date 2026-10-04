@@ -44,7 +44,7 @@ export function Select<T extends string>({
           inputBase,
           'inline-flex items-center justify-between gap-2 text-left data-[placeholder]:text-fg-subtle',
           size === 'sm' && 'h-7 text-small',
-          'data-[state=open]:border-accent',
+          'data-[state=open]:border-accent-edge',
           className
         )}
       >

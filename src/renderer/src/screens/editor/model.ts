@@ -87,7 +87,7 @@ export function duplicateTimes(times: string[]): string[] {
   return [...dup]
 }
 
-/** Igual ao `sanitizeName` do main: o nome da pasta da rotina dentro do destino. */
+/** Nome seguro de pasta/arquivo, igual ao `sanitizeName` do main. */
 export function folderName(name: string, fallback = 'Rotina'): string {
   // eslint-disable-next-line no-control-regex
   let s = name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim()
@@ -106,6 +106,20 @@ export function folderName(name: string, fallback = 'Rotina'): string {
 export function joinPath(base: string, ...parts: string[]): string {
   const sep = base.includes('\\') || /^[A-Za-z]:/.test(base) ? '\\' : '/'
   return [base.replace(/[\\/]+$/, ''), ...parts].join(sep)
+}
+
+/**
+ * Exemplo do que cada execução cria no destino (igual ao motor): "<destino>\<AAAA-MM-DD_HH-mm-ss>"
+ * (ou ".zip") direto na pasta escolhida — o nome da rotina não vira pasta.
+ */
+export function backupExamplePath(destPath: string, stamp: string, mode: RoutineInput['mode']): string {
+  return joinPath(destPath, `${stamp}${mode === 'zip' ? '.zip' : ''}`)
+}
+
+/** Raiz de uma unidade ("E:\", "E:", "/"): os backups ficariam soltos na raiz do disco. */
+export function isDriveRoot(path: string): boolean {
+  const p = path.trim()
+  return /^[A-Za-z]:[\\/]?$/.test(p) || p === '/'
 }
 
 /** Troca caminhos longos dentro de uma mensagem por versões curtas ("C:\Users\…\Backup"). */

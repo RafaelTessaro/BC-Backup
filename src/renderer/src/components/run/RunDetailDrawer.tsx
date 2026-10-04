@@ -628,7 +628,7 @@ export function RunDetailDrawer() {
                 value={t.v}
                 className={cn(
                   'relative -mb-px flex h-10 items-center gap-1.5 border-b-2 border-transparent text-small font-medium text-fg-muted transition-colors duration-[120ms] hover:text-fg',
-                  'data-[state=active]:border-accent data-[state=active]:text-fg focus-visible:outline-offset-[-2px]'
+                  'data-[state=active]:border-accent-edge data-[state=active]:text-fg focus-visible:outline-offset-[-2px]'
                 )}
               >
                 {t.l}

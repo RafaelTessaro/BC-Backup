@@ -1,6 +1,5 @@
 // Ações de rotina com feedback (toasts) — usadas por várias telas.
 import type { ID, Routine, RunSummary } from '@shared/types'
-import { BACKUP_ROOT_DIR } from '@shared/defaults'
 import { formatBytes } from '@shared/format'
 import { ROUTES } from '@shared/routes'
 import { bc, errorMessage } from './bc'
@@ -71,20 +70,12 @@ export async function removeRoutine(routine: Routine): Promise<void> {
   }
 }
 
-function joinPath(base: string, ...parts: string[]): string {
-  const sep = base.includes('/') && !base.includes('\\') ? '/' : '\\'
-  return [base.replace(/[\\/]+$/, ''), ...parts].join(sep)
-}
-
-export function routineFolder(routine: Routine, destPath: string): string {
-  return joinPath(destPath, BACKUP_ROOT_DIR, routine.name)
-}
-
+/** Abre o destino: os backups ficam direto na pasta escolhida (uma pasta/ZIP por data e hora). */
 export async function openDestinationFolder(routine: Routine): Promise<void> {
   const dest = routine.destinations.find((d) => d.enabled !== false) ?? routine.destinations[0]
   if (!dest) return
   try {
-    await bc.app.openPath(routineFolder(routine, dest.path))
+    await bc.app.openPath(dest.path)
   } catch (err) {
     notify.error('Não foi possível abrir a pasta', { description: errorMessage(err) })
   }

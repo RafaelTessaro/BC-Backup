@@ -25,14 +25,14 @@ export function Switch({ checked, onCheckedChange, disabled, id, label, classNam
       className={cn(
         'group relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-[background-color,box-shadow] duration-[120ms] ease-out',
         'bg-fg-subtle/25 shadow-[inset_0_0_0_1px_var(--text-tertiary)]',
-        'data-[state=checked]:bg-accent data-[state=checked]:shadow-[inset_0_0_0_1px_var(--accent)]',
+        'data-[state=checked]:bg-accent data-[state=checked]:shadow-[inset_0_0_0_1px_var(--accent-edge)]',
         'disabled:cursor-not-allowed disabled:opacity-45',
         className
       )}
     >
       <S.Thumb
         className={cn(
-          'pointer-events-none block size-3.5 translate-x-[3px] rounded-full bg-white shadow-[0_1px_2px_rgb(16_17_20/0.25)]',
+          'pointer-events-none block size-3.5 translate-x-[3px] rounded-full bg-white shadow-[0_1px_2px_rgb(4_20_14/0.3)]',
           'transition-transform duration-[120ms] ease-out data-[state=checked]:translate-x-[19px]'
         )}
       />

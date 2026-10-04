@@ -8,7 +8,6 @@ import { appendFile, mkdir, readFile, readdir, rename, rm, stat, symlink, writeF
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { MoveSources, Routine, RunProgress } from '@shared/types'
-import { BACKUP_ROOT_DIR, ROUTINE_MARKER_FILE } from '@shared/defaults'
 import { backupStamp } from '@shared/format'
 import { runJob, type JobOptions } from '../src/main/engine/job'
 import type { EngineEvent, JobSpec } from '../src/main/engine/types'
@@ -210,7 +209,8 @@ describe.skipIf(!BIND)(
         )
         expect(r.status).toBe('failed')
         expect(r.destinations[0].error).toMatch(/dentro da origem/)
-        expect(await exists(join(src, BACKUP_ROOT_DIR))).toBe(false)
+        // Nada foi criado dentro da origem (nem pasta datada, nem reserva "em andamento").
+        expect((await readdir(src)).filter((n) => /^\d{4}-/.test(n))).toEqual([])
         for (const f of ALL) expect(await exists(srcPath(f))).toBe(true)
         // Sem "Mover" também: o backup copiaria a si mesmo a cada execução.
         await mkdir(join(src, 'Sub'))
@@ -242,10 +242,8 @@ describe('keepWork: a única cópia daquele destino não pode sumir na limpeza d
     const r2 = await run(routineWith(), { now: () => new Date(Date.now() + 3 * 3600_000) })
     ctl.manifestBusy = false
     expect(r2.destinations.every((d) => d.status !== 'failed')).toBe(true)
-    expect(await readFile(join(work, 'Backup', 'erp-01.fbk'), 'utf8')).toBe('backup do dia 1')
-    expect(await readFile(join(work, 'Backup', 'Diario', 'erp-02.fbk'), 'utf8')).toBe(
-      'backup do dia 2 (maior)'
-    )
+    expect(await readFile(join(work, 'erp-01.fbk'), 'utf8')).toBe('backup do dia 1')
+    expect(await readFile(join(work, 'Diario', 'erp-02.fbk'), 'utf8')).toBe('backup do dia 2 (maior)')
   })
 })
 
@@ -275,7 +273,7 @@ describe('varredura do "Mover" não fica muda', () => {
       progressIntervalMs: 0,
       hooks: {
         beforeProbe: (item, stage) => {
-          if (stage === 'scan' && item.rel.includes('/lote/'))
+          if (stage === 'scan' && item.rel.startsWith('lote/'))
             throw Object.assign(new Error('busy'), { code: 'EBUSY' })
         }
       },
@@ -317,9 +315,7 @@ describe('importar configurações não liga o "Mover" sem a confirmação do ed
 describe('arquivo vazio (0 bytes) não conta como backup do sistema', () => {
   it('ERP que passou a gerar só arquivos vazios: sem backup novo, sem retenção, Atenção', async () => {
     // 4 backups reais antigos (10 a 13 dias) com manifesto desta rotina; retenção 7 dias, mínimo 3.
-    const rd = join(dir, 'd1', BACKUP_ROOT_DIR, ROUTINE_NAME)
-    await mkdir(rd, { recursive: true })
-    await writeFile(join(rd, ROUTINE_MARKER_FILE), JSON.stringify({ routineId: 'rot-1' }))
+    const rd = join(dir, 'd1')
     const old = [10, 11, 12, 13].map((d) => backupStamp(new Date(Date.now() - d * 86_400_000)))
     for (const s of old) await makeSnapshotDir(rd, s, manifest({ routineName: ROUTINE_NAME }))
     // O gbak falhou: deixou o arquivo do dia com 0 bytes.

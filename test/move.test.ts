@@ -17,7 +17,7 @@ import {
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { MoveSources, Routine } from '@shared/types'
-import { BACKUP_ROOT_DIR, MANIFEST_FILE, ROUTINE_MARKER_FILE } from '@shared/defaults'
+import { MANIFEST_FILE } from '@shared/defaults'
 import { backupStamp } from '@shared/format'
 import { runJob, type JobOptions } from '../src/main/engine/job'
 import { readZipManifest } from '../src/main/engine/manifest'
@@ -105,22 +105,21 @@ async function run(
   return runJob(spec, () => {}, ac.signal, { now: later, probeRetryMs: 1, ...opts })
 }
 
-const routineDir = (dest: string) => join(dir, dest, BACKUP_ROOT_DIR, ROUTINE_NAME)
+/** A pasta escolhida como destino: os backups ficam direto nela. */
+const destDir = (dest: string) => join(dir, dest)
 const exists = (p: string) =>
   stat(p).then(
     () => true,
     () => false
   )
 const snapshots = async (dest: string) =>
-  (await readdir(routineDir(dest)).catch(() => [] as string[])).filter((n) => /^\d{4}-/.test(n))
+  (await readdir(destDir(dest)).catch(() => [] as string[])).filter((n) => /^\d{4}-/.test(n))
 const ALL = ['erp-01.fbk', 'Diario/erp-02.fbk', 'Diario/Antigos/erp-00.fbk']
 const srcPath = (rel: string) => join(src, ...rel.split('/'))
 
 /** 3 backups antigos (há 10+ dias) com manifesto desta rotina. */
 async function oldSnapshots(dest: string): Promise<string[]> {
-  const rd = routineDir(dest)
-  await mkdir(rd, { recursive: true })
-  await writeFile(join(rd, ROUTINE_MARKER_FILE), JSON.stringify({ routineId: 'rot-1' }))
+  const rd = destDir(dest)
   const stamps = [10, 11, 12].map((d) => backupStamp(new Date(Date.now() - d * 86_400_000)))
   for (const s of stamps) await makeSnapshotDir(rd, s, manifest({ routineName: ROUTINE_NAME }))
   return stamps
@@ -139,10 +138,9 @@ describe('fluxo completo', () => {
     // As cópias existem nos 2 destinos, iguais ao original.
     for (const d of ['d1', 'd2']) {
       const out = r.destinations.find((x) => x.destinationId === d)!.outputPath!
-      expect(await readFile(join(out, 'Backup', 'erp-01.fbk'), 'utf8')).toBe('backup do dia 1')
-      expect(await readFile(join(out, 'Backup', 'Diario', 'erp-02.fbk'), 'utf8')).toBe(
-        'backup do dia 2 (maior)'
-      )
+      // Uma origem só: o conteúdo da pasta direto na pasta datada.
+      expect(await readFile(join(out, 'erp-01.fbk'), 'utf8')).toBe('backup do dia 1')
+      expect(await readFile(join(out, 'Diario', 'erp-02.fbk'), 'utf8')).toBe('backup do dia 2 (maior)')
       const m = JSON.parse(await readFile(join(out, MANIFEST_FILE), 'utf8'))
       expect(m).toMatchObject({ moveSources: true, verify: 'full', verified: true })
     }
@@ -191,7 +189,7 @@ describe('elegibilidade (idade e uso)', () => {
     for (const f of ALL) expect(await exists(srcPath(f))).toBe(true)
     // Nenhum backup novo; os antigos ficam (a retenção nem roda).
     expect((await snapshots('d1')).sort()).toEqual(old.sort())
-    expect(await exists(join(dir, 'd2', BACKUP_ROOT_DIR))).toBe(false)
+    expect(await readdir(join(dir, 'd2'))).toEqual([])
     expect(r.destinations.map((d) => d.status)).toEqual(['success', 'success'])
     expect(r.destinations.every((d) => d.pruned.length === 0)).toBe(true)
   })
@@ -219,7 +217,7 @@ describe('elegibilidade (idade e uso)', () => {
     expect(await exists(srcPath('erp-01.fbk'))).toBe(true)
     expect(await exists(srcPath('Diario/erp-02.fbk'))).toBe(false)
     // O arquivo aguardando nem foi copiado.
-    expect(await exists(join(r.destinations[0].outputPath!, 'Backup', 'erp-01.fbk'))).toBe(false)
+    expect(await exists(join(r.destinations[0].outputPath!, 'erp-01.fbk'))).toBe(false)
   })
 
   it('ageProblem usa o mais recente entre mtime, ctime e birthtime', () => {
@@ -252,7 +250,7 @@ describe('elegibilidade (idade e uso)', () => {
     })
     expect(r.status).toBe('warning')
     expect(r.move?.postponed).toEqual([{ path: srcPath('erp-01.fbk'), reason: 'Em uso por outro programa' }])
-    expect(calls.filter((c) => c === 'scan:Backup/erp-01.fbk').length).toBe(3)
+    expect(calls.filter((c) => c === 'scan:erp-01.fbk').length).toBe(3)
     // Os outros passam de novo pelo teste antes de apagar.
     expect(calls.filter((c) => c.startsWith('delete:')).length).toBe(2)
     expect(await exists(srcPath('erp-01.fbk'))).toBe(true)
@@ -345,6 +343,24 @@ describe('lista congelada e arquivo alterado', () => {
     })
     expect(r.move?.kept.map((k) => k.path)).toEqual([srcPath('erp-01.fbk')])
     expect(await readFile(srcPath('erp-01.fbk'), 'utf8')).toBe('BACKUP DO DIA 1')
+  })
+
+  it('arquivo alterado DURANTE a leitura (2×, nos dois destinos): pulado e nunca apagado da origem', async () => {
+    const r = await run(routineWith(), {
+      hooks: {
+        afterRead: async (item) => {
+          if (item.rel === 'erp-01.fbk') await appendFile(item.abs, '+')
+        }
+      }
+    })
+    expect(r.status).toBe('warning')
+    for (const d of r.destinations)
+      expect(d.skipped).toEqual([{ path: srcPath('erp-01.fbk'), reason: 'Arquivo alterado durante a cópia' }])
+    expect(r.move?.kept).toEqual([
+      { path: srcPath('erp-01.fbk'), reason: 'Não copiado para todos os destinos' }
+    ])
+    expect(await exists(srcPath('erp-01.fbk'))).toBe(true)
+    expect(r.move?.removedCount).toBe(2)
   })
 
   it('arquivo que cresce durante a cópia (bytes ≠ tamanho da varredura) é mantido', async () => {
@@ -463,7 +479,7 @@ describe('porta de exclusão: qualquer destino com falha → nada é apagado', (
     const r = await run(routineWith(), {
       hooks: {
         beforeVerify: async (out, i) => {
-          if (i === 1) await writeFile(join(out, 'Backup', 'erp-01.fbk'), 'BACKUP DO DIA 1')
+          if (i === 1) await writeFile(join(out, 'erp-01.fbk'), 'BACKUP DO DIA 1')
         }
       }
     })
@@ -587,7 +603,7 @@ describe('sem arquivo novo', () => {
     const r = await run(routineWith({ moveSources: { ...MOVE, warnIfEmpty: false } }))
     expect(r.status).toBe('success')
     expect(r.move?.notice).toBe('Nada novo para mover.')
-    expect(await exists(join(dir, 'd1', BACKUP_ROOT_DIR))).toBe(false)
+    expect(await readdir(join(dir, 'd1'))).toEqual([])
   })
 
   it('pasta vazia, mas destino indisponível → Falha', async () => {
@@ -651,8 +667,8 @@ describe('proteções da origem', () => {
         '~bloqueio.fbk'
       ].sort()
     )
-    const copied = await readdir(join(r.destinations[0].outputPath!, 'Backup'))
-    expect(copied.sort()).toEqual(['Diario', 'erp-01.fbk'])
+    const copied = await readdir(r.destinations[0].outputPath!)
+    expect(copied.sort()).toEqual(['Diario', MANIFEST_FILE, 'erp-01.fbk'].sort())
     expect(r.log.some((l) => /10 arquivo\(s\) de programa, atalho ou temporário/.test(l.message))).toBe(true)
   })
 
@@ -684,7 +700,7 @@ describe('proteções da origem', () => {
     const r = await run(routineWith({ sources: [{ id: 's1', path: homedir(), kind: 'folder' }] }))
     expect(r.status).toBe('failed')
     expect(r.errorMessage).toMatch(/^"Mover" recusado: .* é uma unidade inteira ou pasta do sistema/)
-    expect(await exists(join(dir, 'd1', BACKUP_ROOT_DIR))).toBe(false)
+    expect(await readdir(join(dir, 'd1'))).toEqual([])
   })
 
   it('o motor confere o caminho real: link para a raiz "/" é recusado', async () => {

@@ -11,16 +11,39 @@ export const DEFAULT_EXCLUDES = [
   '**/System Volume Information/**'
 ]
 
-/** Nome da pasta raiz criada dentro de cada destino. */
-export const BACKUP_ROOT_DIR = 'BC Backup'
-/** Sufixo da pasta enquanto a cópia não terminou. */
+/*
+ * Estrutura no destino: cada execução cria, DIRETO na pasta escolhida,
+ *   <destino>/<AAAA-MM-DD_HH-mm-ss>/        (ou "<carimbo>.zip")    — "_2", "_3"… se o nome já existir
+ * com os arquivos dentro: uma origem → o conteúdo dela direto; várias → uma subpasta por origem.
+ * O nome da rotina NÃO vira pasta. A pasta do destino pode ter outras coisas (outras rotinas, outro PC,
+ * arquivos do usuário): a retenção e a limpeza só mexem no que tem o manifesto/marcador desta rotina.
+ */
+
+/**
+ * LEGADO (versões anteriores): pasta raiz "<destino>/BC Backup/<rotina>/<carimbo>". Não é mais criada; a
+ * retenção ainda considera os backups antigos de lá (com o manifesto da rotina) para eles saírem no prazo.
+ */
+export const LEGACY_ROOT_DIR = 'BC Backup'
+/** @deprecated Use LEGACY_ROOT_DIR (o motor não cria mais esta pasta). */
+export const BACKUP_ROOT_DIR = LEGACY_ROOT_DIR
+/** Sufixo da pasta (ou do .zip) enquanto a cópia não terminou. */
 export const IN_PROGRESS_SUFFIX = '.em-andamento'
+/**
+ * Marcador gravado como PRIMEIRA coisa dentro de "<carimbo>.em-andamento" (pasta e ZIP): diz de qual
+ * rotina, execução e computador é a cópia em andamento. Sobras sem ele nunca são apagadas.
+ */
+export const IN_PROGRESS_MARKER_FILE = 'bcbackup-em-andamento.json'
 /** Sufixo aplicado antes de apagar um backup antigo. */
 export const DELETING_SUFFIX = '.excluindo'
 /** Manifesto gravado em cada backup (a retenção só apaga pastas com ele). */
 export const MANIFEST_FILE = 'bcbackup-manifesto.json'
-/** Marcador gravado na pasta da rotina dentro do destino. */
+/** LEGADO: marcador da pasta "<destino>/BC Backup/<rotina>" (usado só para achar backups antigos). */
 export const ROUTINE_MARKER_FILE = '.bcbackup-rotina.json'
+/**
+ * Sobra de OUTRO computador (ou sem identificação) só é considerada abandonada depois deste tempo
+ * sem nenhuma alteração: pode ser um backup rodando agora, numa pasta de rede compartilhada.
+ */
+export const STALE_LEFTOVER_MS = 12 * 3600_000
 
 /** "Mover" desligado por padrão; `createDefaultRoutine()` NÃO preenche o campo. */
 export const DEFAULT_MOVE_SOURCES: MoveSources = { enabled: false, minAgeMinutes: 30, warnIfEmpty: true }

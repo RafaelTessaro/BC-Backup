@@ -123,7 +123,7 @@ export function SourcesStep({
         'flex w-full items-center justify-center gap-3 rounded-lg border border-dashed text-small transition-[background-color,border-color,color] duration-[120ms]',
         empty ? 'h-36 flex-col' : 'h-14',
         dragging
-          ? 'border-accent bg-accent-soft text-accent-text'
+          ? 'border-accent-edge bg-accent-soft text-accent-text'
           : 'border-border-strong text-fg-subtle hover:border-fg-subtle/60 hover:bg-surface-hover/50 hover:text-fg-muted'
       )}
     >

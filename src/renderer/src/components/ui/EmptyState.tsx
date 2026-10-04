@@ -8,6 +8,8 @@ interface EmptyStateProps {
   description: ReactNode
   action?: ReactNode
   align?: 'center' | 'left'
+  /** `accent`: tile menta, para o primeiro uso ("Vamos proteger seus arquivos"). */
+  tone?: 'neutral' | 'accent'
   className?: string
 }
 
@@ -18,6 +20,7 @@ export function EmptyState({
   description,
   action,
   align = 'center',
+  tone = 'neutral',
   className
 }: EmptyStateProps) {
   return (
@@ -28,7 +31,12 @@ export function EmptyState({
         className
       )}
     >
-      <div className="flex size-12 items-center justify-center rounded-lg bg-surface-hover text-fg-muted">
+      <div
+        className={cn(
+          'flex size-12 items-center justify-center rounded-lg',
+          tone === 'accent' ? 'bg-accent-soft text-accent-text' : 'bg-surface-hover text-fg-muted'
+        )}
+      >
         <Icon className="size-6" strokeWidth={1.75} aria-hidden />
       </div>
       <div className={cn('flex flex-col gap-1', align === 'center' && 'max-w-[400px] items-center')}>

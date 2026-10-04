@@ -21,6 +21,8 @@ O BC Backup deve parecer uma **ferramenta calma e precisa que some quando tudo e
 
 ## 2. Marca
 
+> **Atualizado (04/10/2026):** a identidade oficial passou a ser **preto · menta · branco** (ícone em `build/brand/icone-original.png`). As cores abaixo são históricas; valem as de [06-identidade-preto-verde.md](06-identidade-preto-verde.md).
+
 **Cor primária: Azul Cobalto `#3254F0`** (dark: `#4566FA`). Azul comunica confiança/segurança — o território certo para um profissional de TI —, mas o cobalto puxado para o violeta se diferencia do azul padrão do Windows (`#0078D4`) e do `blue-600` genérico do Tailwind. Ele **não compete com o verde semântico** ("protegido" = success), então o status nunca fica ambíguo. Texto branco sobre ele: **5.73:1** (light) / **4.63:1** (dark).
 
 **Ícone (app, taskbar, instalador)** — squircle 32×32, `rx=8`, gradiente diagonal `#5674FF → #2843D6`, contorno interno branco 14 %; dentro, uma **seta circular anti-horária** (ciclo de backup, à la `lucide/history`) envolvendo um **check** (backup concluído). Validado renderizado em 16/24/32/256 px.
@@ -45,49 +47,35 @@ O BC Backup deve parecer uma **ferramenta calma e precisa que some quando tudo e
 
 ## 3. Tokens de cor
 
+> **Substituído por [06-identidade-preto-verde.md](06-identidade-preto-verde.md) §4–§5** (decisão, tabela completa e contrastes). Resumo dos valores atuais:
+
 | Token | Light | Dark | Uso |
 |---|---|---|---|
-| `bg` | `#FAFAFB` | `#111215` | Fundo da área de conteúdo; cor do titleBarOverlay |
-| `surface` | `#F4F4F6` | `#0C0D0F` | Sidebar (mais apagada que o conteúdo, à la Linear) |
-| `surface-raised` | `#FFFFFF` | `#18191D` | Cards, inputs, popovers, drawer, dialog |
-| `surface-hover` | `#EEEEF1` | `#212227` | Hover de linhas/itens, item ativo da sidebar |
-| `border` | `#E4E4E8` | `#2A2B31` | Bordas de cards, divisórias |
-| `border-strong` | `#D1D1D8` | `#3A3B42` | Inputs, botões secundários, hover de cards |
-| `text-primary` | `#16171B` | `#EDEDF0` | Títulos, corpo |
-| `text-secondary` | `#4F5059` | `#A6A7B0` | Descrições, labels, ícones de nav |
-| `text-tertiary` | `#696A73` | `#8A8B95` | Metadados, placeholders, timestamps |
-| `accent` | `#3254F0` | `#4566FA` | Botão primário, ProgressBar, seleção |
-| `accent-hover` | `#2843D6` | `#3B5BEF` | Hover/pressed do primário |
-| `accent-soft` | `#EEF1FE` | `#1A2140` | Fundo de chip selecionado, ícone-tile, pill "Agendado" |
-| `accent-text` | `#2B48DB` | `#93A6FF` | Links e texto/ícone em cor de marca sobre `bg`/`accent-soft` |
-| `accent-foreground` | `#FFFFFF` | `#FFFFFF` | Texto sobre `accent` |
-| `success` | `#16794A` | `#3DD68C` | "Concluído", "Tudo protegido" |
-| `success-soft` | `#E7F6EE` | `#0F2A1E` | Fundo da pill/ícone de sucesso |
-| `warning` | `#9C540A` | `#F2B24C` | "Com avisos", disco > 75 % |
-| `warning-soft` | `#FDF3E3` | `#2E2310` | |
-| `danger` | `#C42727` | `#FF6B6B` | "Falhou", disco > 90 %, botão destrutivo |
-| `danger-soft` | `#FDEDED` | `#331616` | |
-| `info` | `#1A62C0` | `#6CB0FF` | Dicas, "Em execução" secundário |
-| `info-soft` | `#EAF2FD` | `#102338` | |
-| `ring` (focus) | `#3254F0` | `#6F8BFF` | `outline: 2px solid; outline-offset: 2px` |
-| `overlay` | `rgb(16 17 20 / .32)` | `rgb(0 0 0 / .60)` | Scrim de dialog/drawer |
+| `bg` | `#F8FAF9` | `#0A0D0C` | Fundo da área de conteúdo; cor do titleBarOverlay |
+| `surface` | `#F1F4F3` | `#060807` | Sidebar (mais apagada que o conteúdo, à la Linear) |
+| `surface-raised` | `#FFFFFF` | `#101413` | Cards, inputs, popovers, drawer, dialog, painel da bandeja |
+| `surface-hover` | `#EAEFED` | `#171D1B` | Hover de linhas/itens, item ativo da sidebar |
+| `border` | `#E0E6E3` | `#1E2623` | Bordas de cards, divisórias |
+| `border-strong` | `#C9D2CE` | `#2D3733` | Inputs, botões secundários, hover de cards |
+| `text-primary` | `#0A1310` | `#ECF2EF` | Títulos, corpo |
+| `text-secondary` | `#46524D` | `#A3AEA9` | Descrições, labels, ícones de nav |
+| `text-tertiary` | `#5C6863` | `#84918B` | Metadados, placeholders, timestamps |
+| `accent` (menta) | `#00C795` | `#00D9A0` | Botão primário, ProgressBar, seleção — único acento |
+| `accent-hover` | `#00B386` | `#2EE5B2` | Hover/pressed do primário |
+| `accent-soft` | `#E3F8F0` | `#0A2B21` | Chip selecionado, ícone-tile, pill "Em execução" |
+| `accent-text` | `#00765A` | `#3EE0B0` | Links e texto/ícone em cor de marca |
+| `accent-foreground` | `#00140F` | `#00140F` | Texto **sobre** `accent` (preto: branco reprova) |
+| `accent-edge` | `#009C73` | `#00D9A0` | Contorno ≥ 3:1 de controles em menta, campo em foco |
+| `success` / `-soft` | `#24782F` / `#EAF6EA` | `#74CF78` / `#132517` | "Concluído", "Tudo protegido" (verde-folha ≠ menta) |
+| `warning` / `-soft` | `#9C540A` / `#FDF3E3` | `#F2B24C` / `#2B210F` | "Com avisos", disco > 75 % |
+| `danger` / `-soft` | `#C42727` / `#FDEDED` | `#FF6B6B` / `#311615` | "Falhou", disco > 90 %, botão destrutivo |
+| `info` / `-soft` | `#2E5E86` / `#EDF2F6` | `#93B4D2` / `#121B23` | "Agendada", dicas (azul-aço de baixo croma) |
+| `ring` (focus) | `#009C73` | `#00D9A0` | `outline: 2px solid; outline-offset: 2px` |
+| `overlay` | `rgb(4 14 11 / .36)` | `rgb(0 0 0 / .64)` | Scrim de dialog/drawer |
 
-**Contraste verificado (AA ≥ 4.5 texto, ≥ 3 não-texto)**
+Contrastes: todos os pares de texto ≥ 4.5:1 e os não-texto ≥ 3:1 — tabela em 06 §5.
 
-| Par | Light | Dark |
-|---|---|---|
-| text-primary / surface-raised · bg | 17.91 · 17.17 | 15.03 · 16.03 |
-| text-secondary / surface-raised · surface | 8.00 · 7.29 | 7.34 · 8.12 |
-| text-tertiary / surface-raised · surface · surface-hover | 5.37 · 4.89 · 4.64 | 5.19 · 5.75 · 4.69 |
-| accent-foreground / accent · accent-hover | 5.73 · 7.33 | 4.63 · 5.35 |
-| accent-text / surface-raised · accent-soft | 6.88 · 6.11 | 7.64 · 6.84 |
-| success / success-soft | 4.86 | 8.17 |
-| warning / warning-soft | 5.18 | 8.25 |
-| danger / danger-soft | 5.05 | 5.97 |
-| info / info-soft | 5.24 | 7.04 |
-| ring / bg (não-texto) | 5.50 | 6.08 |
-
-Regras: (1) cor semântica **sempre** acompanha ícone + texto (nunca só cor). (2) Bordas de input (`border-strong`, ~1.5:1) são decorativas; o controle é identificado por label + fundo `surface-raised` + foco ≥ 3:1; Checkbox e Switch desligados usam `text-tertiary` (≥ 4.6:1) no contorno/trilho. (3) Botão "danger" usa estilo *soft* (`danger` sobre `danger-soft`) nos dois temas — AA garantido sem token extra.
+Regras: (1) cor semântica **sempre** acompanha ícone + texto (nunca só cor). (2) Bordas de input (`border-strong`, ~1.5:1) são decorativas; o controle é identificado por label + fundo `surface-raised` + foco ≥ 3:1; Checkbox e Switch desligados usam `text-tertiary` (≥ 4.6:1) no contorno/trilho e, ligados, `accent-edge` (≥ 3:1). (3) Botão "danger" usa estilo *soft* (`danger` sobre `danger-soft`) nos dois temas — AA garantido sem token extra. (4) Menta sólido só em ação/seleção/progresso; nunca em áreas grandes.
 
 ## 4. Tipografia
 
@@ -166,9 +154,9 @@ Padding de página `32` (`px-8 py-6`); padding de card `20` (`p-5`); gap entre c
 const dark = nativeTheme.shouldUseDarkColors; // ou preferência salva
 const win = new BrowserWindow({
   width: 1200, height: 780, minWidth: 960, minHeight: 640, show: false,
-  backgroundColor: dark ? '#111215' : '#FAFAFB',
+  backgroundColor: dark ? '#0A0D0C' : '#F8FAF9',
   titleBarStyle: 'hidden',
-  titleBarOverlay: { color: dark ? '#111215' : '#FAFAFB', symbolColor: dark ? '#A6A7B0' : '#4F5059', height: 40 },
+  titleBarOverlay: { color: dark ? '#0A0D0C' : '#F8FAF9', symbolColor: dark ? '#A3AEA9' : '#46524D', height: 40 },
 });
 win.once('ready-to-show', () => win.show());
 ```
@@ -191,7 +179,7 @@ win.once('ready-to-show', () => win.show());
   sidebar 232 px (surface)            bg
 ```
 
-- **Sidebar 232 px**; abaixo de 1040 px de largura colapsa para **trilho de 64 px** (só ícones + Tooltip). Itens: altura 32, `radius-md`, px 10, ícone 16 px stroke 1.75, gap 10, `small` 13 px/500. Hover `surface-hover`; ativo `surface-hover` + `text-primary` + ícone `accent-text`; inativo `text-secondary`.
+- **Sidebar 232 px**; abaixo de 1040 px de largura colapsa para **trilho de 64 px** (só ícones + Tooltip). Itens: altura 32, `radius-md`, px 10, ícone 16 px stroke 1.75, gap 10, `small` 13 px/500. Hover `surface-hover`; ativo `surface-hover` + `text-primary` + ícone `accent-text` + pílula `accent` 3 × 16 px na borda esquerda (NavigationView do Windows 11); inativo `text-secondary`.
 - **Navegação (lucide-react):** Painel `LayoutDashboard` · Rotinas `CalendarClock` (contador = nº de rotinas, Badge neutro) · Histórico `History` (Badge `danger-soft` com nº de falhas não vistas) · Configurações `Settings` (fixo no rodapé). Botão "Nova rotina" `Plus` (secundário, largura total, Kbd `Ctrl N`). Rodapé: dot `success` + "Agendador ativo" (`caption`).
 - **Cabeçalho de página:** `title` + descrição `small text-secondary` à esquerda; ação primária à direita; 24 px abaixo começa o conteúdo.
 
@@ -346,13 +334,13 @@ Tooltip do ícone: "BC Backup — Tudo protegido · próximo às 22:00". Itens:
 
 | Componente | Especificação |
 |---|---|
-| **Button** | Alturas sm 28 / md 32 / lg 40; px 10/12/16; `radius-sm` (sm) ou `radius-md`; `caption`→`small` 500; ícone 16 px gap 6. **primary** `accent`/`accent-foreground`, hover `accent-hover`, `sh-xs`. **secondary** `surface-raised` + 1 px `border-strong` + `sh-xs`, hover `surface-hover`. **ghost** transparente, hover `surface-hover`, texto `text-secondary`→`text-primary`. **danger** `danger-soft` + texto `danger`, hover borda `danger`/30 %. Disabled 45 % opacidade. Loading: spinner substitui ícone, largura fixa. Só ícone: quadrado + Tooltip obrigatório. |
+| **Button** | Alturas sm 28 / md 32 / lg 40; px 10/12/16; `radius-sm` (sm) ou `radius-md`; `caption`→`small` 500; ícone 16 px gap 6. **primary** `accent`/`accent-foreground` (texto preto, 600), hover `accent-hover`, `shadow-primary`. **secondary** `surface-raised` + 1 px `border-strong` + `sh-xs`, hover `surface-hover`. **ghost** transparente, hover `surface-hover`, texto `text-secondary`→`text-primary`. **danger** `danger-soft` + texto `danger`, hover borda `danger`/30 %. Disabled 45 % opacidade. Loading: spinner substitui ícone, largura fixa. Só ícone: quadrado + Tooltip obrigatório. |
 | **Input** | 32 px, `surface-raised`, 1 px `border-strong`, `radius-md`, px 10, `body`; placeholder `text-tertiary`; foco: borda `accent` + `ring` 2 px offset 0 (dentro do campo); erro: borda `danger` + mensagem `caption danger` com `CircleAlert`. Prefixo/sufixo ("dias", "horas") em `text-tertiary`. |
 | **Select** | Igual Input + `ChevronDown` 16 px; lista em popover `radius-lg` `sh-pop`, itens 32 px `radius-sm`, selecionado com `Check` `accent-text`. (Radix Select / shadcn.) |
-| **Switch** | 36 × 20, thumb 16 px branco com `sh-xs`; off: trilho `text-tertiary`/30 % com contorno `text-tertiary`; on: `accent`. 120 ms `ease-out`. Rótulo à esquerda em linhas de configuração. |
+| **Switch** | 36 × 20, thumb 16 px branco com `sh-xs`; off: trilho `text-tertiary`/30 % com contorno `text-tertiary`; on: `accent` + contorno `accent-edge`. 120 ms `ease-out`. Rótulo à esquerda em linhas de configuração. |
 | **Segmented** | Trilho `surface-hover` (`radius-md`, padding 2); segmento ativo `surface-raised` + `sh-xs` + `text-primary` (light) / `#2A2B31` (dark); inativo `text-secondary`; altura 32; indicador desliza 180 ms. |
-| **Checkbox** | 16 px, `radius-xs`, contorno 1.5 px `text-tertiary`; marcado `accent` + `Check` branco 12 px stroke 3. |
-| **Stepper** (editor) | Itens 36 px; círculo 20 px: pendente contorno `border-strong` + nº `text-tertiary`; atual `accent` + nº branco; concluído `accent-soft` + `Check` `accent-text`; linha vertical 1 px `border` ligando círculos. |
+| **Checkbox** | 16 px, `radius-xs`, contorno 1.5 px `text-tertiary`; marcado `accent` + borda `accent-edge` + `Check` `accent-foreground` (preto) 12 px stroke 3. |
+| **Stepper** (editor) | Itens 36 px; círculo 20 px: pendente contorno `border-strong` + nº `text-tertiary`; atual `accent` + nº `accent-foreground`; concluído `accent-soft` + `Check` `accent-text`; linha vertical 1 px `border` ligando círculos. |
 | **NumberStepper** | Input 72 px centralizado `tabular-nums` + botões `Minus`/`Plus` ghost 28 px. |
 | **Card** | `surface-raised`, 1 px `border`, `radius-lg`, `sh-card`, `p-5`; cabeçalho opcional: `card-title` + ação ghost à direita, divisória opcional. |
 | **StatTile** | Card `p-4`; label `caption text-secondary`; valor `stat`; delta `caption` success/danger com seta. |
@@ -367,7 +355,7 @@ Tooltip do ícone: "BC Backup — Tudo protegido · próximo às 22:00". Itens:
 | **Kbd** | Altura 18, px 5, `mono` 11 px 500, `surface-hover`, 1 px `border`, borda inferior 2 px, `radius-xs`; "Ctrl", "N". |
 | **Badge** | Contador: altura 18, min-w 18, `radius-full`, `caption` 600 `tabular-nums`; neutro `surface-hover`/`text-secondary`; alerta `danger-soft`/`danger`. |
 | **TimePicker** | Input 96 px `mono`/`tabular-nums` com máscara `HH:mm` 24 h + popover com colunas de horas/minutos (passo 5 min); ícone `Clock`. Nada de AM/PM. |
-| **WeekdayPicker** | 7 chips 32 × 32 `radius-sm`: **D S T Q Q S S** (Tooltip "Domingo"…); off: `surface-raised` + `border-strong` + `text-secondary`; on: `accent` + branco. Atalhos abaixo: "Dias úteis" · "Fim de semana" · "Todos". Semana começa no domingo. |
+| **WeekdayPicker** | 7 chips 32 × 32 `radius-sm`: **D S T Q Q S S** (Tooltip "Domingo"…); off: `surface-raised` + `border-strong` + `text-secondary`; on: `accent` + `accent-foreground` + borda `accent-edge`. Atalhos abaixo: "Dias úteis" · "Fim de semana" · "Todos". Semana começa no domingo. |
 | **PathChip** | Altura 28, px 8, `radius-sm`, `surface-hover`; ícone `Folder`/`File`/`HardDrive`/`Server` (rede) 14 px `text-tertiary`; caminho `mono` truncado no meio (`C:\Clientes\…\NF-e 2026`); Tooltip com caminho completo; hover mostra `Copy` e `X`. |
 | **Callout** | Faixa `*-soft`, `radius-md`, p 12, ícone 16 + `small`; para dicas e avisos dentro de formulários. |
 
@@ -395,6 +383,8 @@ Tom: direto, tranquilo, "você"; verbos no infinitivo nos botões; nunca culpar 
 
 ## 10. Tokens em CSS (Tailwind v4)
 
+> Valores atualizados para a identidade preto · menta · branco ([06](06-identidade-preto-verde.md)). A fonte da verdade é `src/renderer/src/app.css`.
+
 ```css
 /* src/renderer/styles/globals.css */
 @import "tailwindcss";
@@ -405,34 +395,27 @@ Tom: direto, tranquilo, "você"; verbos no infinitivo nos botões; nunca culpar 
 
 :root {
   color-scheme: light;
-  --bg: #FAFAFB;            --surface: #F4F4F6;        --surface-raised: #FFFFFF;  --surface-hover: #EEEEF1;
-  --border: #E4E4E8;        --border-strong: #D1D1D8;
-  --text-primary: #16171B;  --text-secondary: #4F5059; --text-tertiary: #696A73;
-  --accent: #3254F0;        --accent-hover: #2843D6;   --accent-soft: #EEF1FE;     --accent-text: #2B48DB;
-  --accent-foreground: #FFFFFF;
-  --success: #16794A; --success-soft: #E7F6EE;  --warning: #9C540A; --warning-soft: #FDF3E3;
-  --danger:  #C42727; --danger-soft:  #FDEDED;  --info:    #1A62C0; --info-soft:    #EAF2FD;
-  --ring: #3254F0;    --overlay: rgb(16 17 20 / .32);
-  --sh-xs: 0 1px 2px rgb(16 17 20 / .05);
-  --sh-card: 0 1px 2px rgb(16 17 20 / .04), 0 1px 3px rgb(16 17 20 / .03);
-  --sh-pop: 0 0 0 1px rgb(16 17 20 / .06), 0 4px 12px -2px rgb(16 17 20 / .10), 0 2px 4px -2px rgb(16 17 20 / .06);
-  --sh-dialog: 0 0 0 1px rgb(16 17 20 / .06), 0 24px 48px -12px rgb(16 17 20 / .22), 0 8px 16px -8px rgb(16 17 20 / .10);
+  --bg: #F8FAF9;            --surface: #F1F4F3;        --surface-raised: #FFFFFF;  --surface-hover: #EAEFED;
+  --border: #E0E6E3;        --border-strong: #C9D2CE;
+  --text-primary: #0A1310;  --text-secondary: #46524D; --text-tertiary: #5C6863;
+  --accent: #00C795;        --accent-hover: #00B386;   --accent-soft: #E3F8F0;     --accent-text: #00765A;
+  --accent-foreground: #00140F; --accent-edge: #009C73;
+  --success: #24782F; --success-soft: #EAF6EA;  --warning: #9C540A; --warning-soft: #FDF3E3;
+  --danger:  #C42727; --danger-soft:  #FDEDED;  --info:    #2E5E86; --info-soft:    #EDF2F6;
+  --ring: #009C73;    --overlay: rgb(4 14 11 / .36);
+  /* sombras: mesma forma de antes, tinta rgb(4 20 14); --sh-accent só no botão primário (ver app.css) */
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #111215;            --surface: #0C0D0F;        --surface-raised: #18191D;  --surface-hover: #212227;
-  --border: #2A2B31;        --border-strong: #3A3B42;
-  --text-primary: #EDEDF0;  --text-secondary: #A6A7B0; --text-tertiary: #8A8B95;
-  --accent: #4566FA;        --accent-hover: #3B5BEF;   --accent-soft: #1A2140;     --accent-text: #93A6FF;
-  --accent-foreground: #FFFFFF;
-  --success: #3DD68C; --success-soft: #0F2A1E;  --warning: #F2B24C; --warning-soft: #2E2310;
-  --danger:  #FF6B6B; --danger-soft:  #331616;  --info:    #6CB0FF; --info-soft:    #102338;
-  --ring: #6F8BFF;    --overlay: rgb(0 0 0 / .60);
-  --sh-xs: 0 1px 2px rgb(0 0 0 / .40);
-  --sh-card: inset 0 1px 0 rgb(255 255 255 / .03), 0 1px 2px rgb(0 0 0 / .40);
-  --sh-pop: inset 0 1px 0 rgb(255 255 255 / .05), 0 0 0 1px rgb(255 255 255 / .06), 0 8px 24px -4px rgb(0 0 0 / .55);
-  --sh-dialog: inset 0 1px 0 rgb(255 255 255 / .06), 0 0 0 1px rgb(255 255 255 / .08), 0 24px 64px -12px rgb(0 0 0 / .70);
+  --bg: #0A0D0C;            --surface: #060807;        --surface-raised: #101413;  --surface-hover: #171D1B;
+  --border: #1E2623;        --border-strong: #2D3733;
+  --text-primary: #ECF2EF;  --text-secondary: #A3AEA9; --text-tertiary: #84918B;
+  --accent: #00D9A0;        --accent-hover: #2EE5B2;   --accent-soft: #0A2B21;     --accent-text: #3EE0B0;
+  --accent-foreground: #00140F; --accent-edge: #00D9A0;
+  --success: #74CF78; --success-soft: #132517;  --warning: #F2B24C; --warning-soft: #2B210F;
+  --danger:  #FF6B6B; --danger-soft:  #311615;  --info:    #93B4D2; --info-soft:    #121B23;
+  --ring: #00D9A0;    --overlay: rgb(0 0 0 / .64);
 }
 
 /* Mapeia variáveis de runtime → utilitários (bg-surface-raised, text-fg-muted, border-border-strong, shadow-card…) */

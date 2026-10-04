@@ -17,10 +17,10 @@ import { log } from './logger'
 
 export type ResolvedTheme = 'light' | 'dark'
 
-/** Tokens do design (02-design-system §3): bg + text-secondary para os símbolos. */
+/** Tokens do design (06-identidade-preto-verde §3): bg + text-secondary para os símbolos. */
 export const THEME_COLORS: Record<ResolvedTheme, { bg: string; symbol: string }> = {
-  light: { bg: '#FAFAFB', symbol: '#4F5059' },
-  dark: { bg: '#111215', symbol: '#A6A7B0' }
+  light: { bg: '#F8FAF9', symbol: '#46524D' },
+  dark: { bg: '#0A0D0C', symbol: '#A3AEA9' }
 }
 
 export const TITLEBAR_HEIGHT = 40

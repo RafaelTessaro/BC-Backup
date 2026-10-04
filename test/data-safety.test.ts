@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Routine, Schedule } from '@shared/types'
-import { BACKUP_ROOT_DIR, MANIFEST_FILE, ROUTINE_MARKER_FILE } from '@shared/defaults'
+import { MANIFEST_FILE } from '@shared/defaults'
 import { backupStamp } from '@shared/format'
 import { runJob, sourceSlots, type JobOptions } from '../src/main/engine/job'
 import { copyTree } from '../src/main/engine/copy'
@@ -18,7 +18,15 @@ import { checkOpenablePath } from '../src/main/ipc-validate'
 import { JsonFile } from '../src/main/store'
 import { Outbox } from '../src/main/mail/outbox'
 import { DEFAULT_SETTINGS } from '@shared/defaults'
-import { makeRoutine, makeSnapshotDir, manifest, tempDir, writeTree } from './helpers'
+import {
+  inProgressMarker,
+  makeInProgressDir,
+  makeRoutine,
+  makeSnapshotDir,
+  manifest,
+  tempDir,
+  writeTree
+} from './helpers'
 
 let dir: string
 let cleanup: () => Promise<void>
@@ -58,7 +66,14 @@ async function run(
   return runJob(spec, () => {}, new AbortController().signal, { now: () => now, ...opts })
 }
 
-const routineDir = (dest = 'd1') => join(dir, dest, BACKUP_ROOT_DIR, 'Financeiro diário')
+/** A pasta escolhida pelo usuário: os backups ficam direto nela. */
+const destDir = (dest = 'd1') => join(dir, dest)
+const cleanupCtx = (routineId = 'rot-1') => ({
+  routineId,
+  runId: 'run-atual',
+  hostname: 'pc-teste',
+  now: new Date()
+})
 
 describe('retenção nunca apaga o backup que acabou de ser criado', () => {
   it('execução que atravessa a meia-noite com dias=1 e mínimo=0 mantém o backup novo', async () => {
@@ -70,7 +85,7 @@ describe('retenção nunca apaga o backup que acabou de ser criado', () => {
     )
     expect(result.status).toBe('success')
     const out = result.destinations[0].outputPath!
-    expect(out).toBe(join(routineDir(), backupStamp(start)))
+    expect(out).toBe(join(destDir(), backupStamp(start)))
     expect(result.destinations[0].pruned).toEqual([])
     expect((await stat(out)).isDirectory()).toBe(true)
   })
@@ -92,9 +107,7 @@ describe('retenção nunca apaga o backup que acabou de ser criado', () => {
 describe('backup sem nenhum arquivo copiado não conta como backup', () => {
   for (const mode of ['copy', 'zip'] as const) {
     it(`todos os arquivos em uso (${mode}) → destino falha e a retenção não apaga os antigos`, async () => {
-      const rd = routineDir()
-      await mkdir(rd, { recursive: true })
-      await writeFile(join(rd, ROUTINE_MARKER_FILE), JSON.stringify({ routineId: 'rot-1' }))
+      const rd = destDir()
       // 3 backups bons e antigos (fora da janela de 1 dia).
       const old = [1, 2, 3].map((d) => backupStamp(new Date(2026, 8, d, 3)))
       for (const s of old) await makeSnapshotDir(rd, s)
@@ -117,14 +130,15 @@ describe('backup sem nenhum arquivo copiado não conta como backup', () => {
       expect(result.destinations[0].pruned).toEqual([])
       const left = await readdir(rd)
       for (const s of old) expect(left).toContain(s)
-      // Nenhum "backup" vazio finalizado.
+      // Nenhum "backup" vazio finalizado (nem a pasta reservada sobrou).
       expect(left.filter((n) => n.startsWith(backupStamp(start).slice(0, 10)))).toEqual([])
+      expect(left.sort()).toEqual([...old].sort())
     })
   }
 })
 
 describe('destino dentro da origem é recusado na execução (não só no editor)', () => {
-  it('destino é subpasta da origem → falha sem criar "BC Backup" dentro da origem', async () => {
+  it('destino é subpasta da origem → falha sem criar nada dentro da origem', async () => {
     const inside = join(dir, 'origem', 'backups')
     await mkdir(inside)
     const result = await run(
@@ -145,7 +159,7 @@ describe('destino dentro da origem é recusado na execução (não só no editor
     )
     expect(result.status).toBe('failed')
     expect(result.destinations[0].error).toMatch(/dentro da origem/)
-    expect(await readdir(join(dir, 'origem'))).not.toContain(BACKUP_ROOT_DIR)
+    expect((await readdir(join(dir, 'origem'))).sort()).toEqual(['a.txt', 'sub'])
   })
 
   it('destino que é um link para dentro da origem → falha (compara o caminho real)', async () => {
@@ -160,11 +174,11 @@ describe('destino dentro da origem é recusado na execução (não só no editor
     expect(result.destinations[0].error).toMatch(/dentro da origem/)
   })
 
-  it('origem dentro da pasta "BC Backup" do destino (backup dos backups) → falha', async () => {
-    const bcRoot = join(dir, 'd1', BACKUP_ROOT_DIR)
-    await writeTree(bcRoot, { 'x.txt': '1' })
+  it('origem dentro da pasta do destino (backup dos backups) → falha', async () => {
+    const inDest = join(dir, 'd1', 'Pasta dentro do destino')
+    await writeTree(inDest, { 'x.txt': '1' })
     const result = await run(
-      routineWith({ sources: [{ id: 's', path: bcRoot, kind: 'folder' }] }),
+      routineWith({ sources: [{ id: 's', path: inDest, kind: 'folder' }] }),
       new Date(2026, 9, 8, 18),
       new Date(2026, 9, 8, 18, 1)
     )
@@ -194,22 +208,29 @@ describe('limpeza de sobras só apaga o que é comprovadamente lixo desta rotina
   it('".em-andamento" com manifesto de OUTRA rotina não é apagado', async () => {
     const name = `${backupStamp(new Date(2026, 9, 1, 3))}.em-andamento`
     await makeSnapshotDir(dir, name, manifest({ routineId: 'outra-rotina' }))
-    await cleanupLeftovers(dir, 'rot-1')
+    await cleanupLeftovers(dir, cleanupCtx())
     expect(await readdir(dir)).toContain(name)
+  })
+
+  it('".em-andamento" sem marcador (de quem?) nunca é apagado, por mais antigo que seja', async () => {
+    const name = `${backupStamp(new Date(2026, 9, 1, 3))}.em-andamento`
+    await makeInProgressDir(dir, name, null, 30 * 86_400_000)
+    await cleanupLeftovers(dir, cleanupCtx())
+    expect(await readdir(join(dir, name))).toContain('parcial.txt')
   })
 
   it('".em-andamento" completo desta rotina cujo nome final já existe não é apagado', async () => {
     const stamp = backupStamp(new Date(2026, 9, 1, 3))
     await makeSnapshotDir(dir, stamp)
     await makeSnapshotDir(dir, `${stamp}.em-andamento`, manifest({ snapshotId: 'outro-run' }))
-    await cleanupLeftovers(dir, 'rot-1')
+    await cleanupLeftovers(dir, cleanupCtx())
     const left = await readdir(dir)
     expect(left).toContain(stamp)
     expect(left).toContain(`${stamp}.em-andamento`)
   })
 })
 
-describe('links/junções na pasta da rotina nunca são seguidos na limpeza nem na retenção', () => {
+describe('links/junções na pasta do destino nunca são seguidos na limpeza nem na retenção', () => {
   it('link com nome de sobra ou de backup antigo não é tocado (nem o alvo)', async () => {
     const rd = join(dir, 'rotina')
     await mkdir(rd)
@@ -221,7 +242,7 @@ describe('links/junções na pasta da rotina nunca são seguidos na limpeza nem 
     const oldSnap = backupStamp(new Date(2026, 8, 2, 3))
     await symlink(alvo, join(rd, inProgress), 'dir')
     await symlink(alvo, join(rd, oldSnap), 'dir')
-    await cleanupLeftovers(rd, 'rot-1')
+    await cleanupLeftovers(rd, cleanupCtx())
     const pruned = await applyRetention(
       rd,
       'rot-1',
@@ -234,7 +255,7 @@ describe('links/junções na pasta da rotina nunca são seguidos na limpeza nem 
   })
 })
 
-describe('importar configurações gera ids novos (outro PC não compartilha a pasta da rotina)', () => {
+describe('importar configurações gera ids novos (outro PC nunca mexe nas cópias deste)', () => {
   it('mesmo sem colisão local, o id importado é novo', () => {
     const r = makeRoutine({ id: 'r1', name: 'Docs' })
     const file = buildExport(DEFAULT_SETTINGS, [r], '0.1.0')
@@ -243,21 +264,33 @@ describe('importar configurações gera ids novos (outro PC não compartilha a p
     expect(plan.routines[0].name).toBe('Docs')
   })
 
-  it('cenário: rotina exportada do PC A e importada no PC B, mesmo destino de rede → pastas separadas', async () => {
+  it('cenário: rotina exportada do PC A e importada no PC B, mesmo destino de rede → nada do A é tocado', async () => {
     const a = routineWith({ id: 'id-pc-a' })
     const [b] = planImport(
       JSON.parse(JSON.stringify(buildExport(DEFAULT_SETTINGS, [a], '0.1.0'))),
       []
     ).routines
-    // O PC A está no meio de uma cópia neste destino.
-    const rdA = routineDir()
-    await mkdir(rdA, { recursive: true })
-    await writeFile(join(rdA, ROUTINE_MARKER_FILE), JSON.stringify({ routineId: a.id }))
+    // O PC A está no meio de uma cópia neste destino (e tem uma reserva sem marcador ainda).
+    const shared = destDir()
     const running = `${backupStamp(new Date(2026, 9, 8, 17, 59))}.em-andamento`
-    await makeSnapshotDir(rdA, running, null)
-    const result = await run(b, new Date(2026, 9, 8, 18), new Date(2026, 9, 8, 18, 1))
+    await makeInProgressDir(shared, running, inProgressMarker({ routineId: a.id, hostname: 'pc-a' }))
+    const reserving = `${backupStamp(new Date(2026, 9, 8, 17, 58))}.em-andamento`
+    await makeInProgressDir(shared, reserving, null)
+    // Backups antigos do A: a retenção do B não os enxerga.
+    const oldA = backupStamp(new Date(2026, 8, 1, 3))
+    await makeSnapshotDir(shared, oldA, manifest({ routineId: a.id }))
+    const result = await run(
+      { ...b, retention: { enabled: true, days: 1, minKeep: 0 } },
+      new Date(2026, 9, 8, 18),
+      new Date(2026, 9, 8, 18, 1)
+    )
     expect(result.status).toBe('success')
-    expect(await readdir(rdA)).toContain(running)
+    expect(result.destinations[0].pruned).toEqual([])
+    const left = await readdir(shared)
+    expect(left).toEqual(
+      expect.arrayContaining([running, reserving, oldA, backupStamp(new Date(2026, 9, 8, 18))])
+    )
+    expect(await readdir(join(shared, running))).toContain('parcial.txt')
   })
 })
 
@@ -332,7 +365,7 @@ describe('nomes', () => {
   it('sanitizeName cobre CONIN$, CONOUT$, COM¹ e "CON .txt"', () => {
     for (const n of ['CONIN$', 'conout$', 'COM¹', 'LPT³', 'CON .txt', 'nul .tar.gz'])
       expect(sanitizeName(n).startsWith('_')).toBe(true)
-    // Nunca sai da pasta "BC Backup": sem separadores, sem "." / ".." e sem ponto/espaço final.
+    // Nunca vira caminho: sem separadores, sem "." / ".." e sem ponto/espaço final.
     for (const n of ['..', '.', ' . . ', '../..', '..\\..\\Windows', 'C:\\x', '/etc/passwd', 'a/../../b'])
       expect(sanitizeName(n)).not.toMatch(/[\\/:]|^\.{1,2}$|[. ]$/)
     expect(sanitizeName('..')).toBe('Rotina')
@@ -407,8 +440,10 @@ describe('cópia: nomes que colidem no destino', () => {
     )
     expect(result.status).toBe('success')
     expect(result.filesCopied).toBe(2)
+    // Uma origem só: o conteúdo dela direto na pasta datada.
     const out = result.destinations[0].outputPath!
-    expect(await readFile(join(out, 'origem', 'sub', 'b.txt'), 'utf8')).toBe('mundo')
+    expect(await readFile(join(out, 'sub', 'b.txt'), 'utf8')).toBe('mundo')
+    expect(await readFile(join(out, 'a.txt'), 'utf8')).toBe('hello')
   })
 })
 

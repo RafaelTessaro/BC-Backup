@@ -1,8 +1,16 @@
 // Cópia em modo "pasta": streaming arquivo a arquivo, preservando a data de modificação.
 // Node puro.
+//
+// Integridade: cada arquivo é lido UMA vez (o sha256 é calculado sobre os mesmos bytes gravados no
+// destino) e, antes e depois da leitura, o tamanho e as datas (mtime/ctime) são conferidos pelo próprio
+// handle aberto. Se mudaram, a leitura pode ter misturado a versão antiga e a nova ("leitura rasgada"):
+// a cópia é descartada e refeita uma vez; se mudar de novo, o arquivo é pulado com o motivo
+// "Arquivo alterado durante a cópia" (aviso). Assim a verificação completa, que compara o destino com o
+// que foi lido, nunca certifica uma cópia rasgada.
 
 import { createHash, type Hash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
+import type { Stats } from 'node:fs'
 import { mkdir, open, rm, stat, utimes } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Transform, Writable } from 'node:stream'
@@ -34,6 +42,11 @@ export interface EngineHooks {
    * pode lançar um erro com `code` (EBUSY simula outro programa com o arquivo aberto).
    */
   beforeProbe?: (item: FileItem, stage: 'scan' | 'delete') => void | Promise<void>
+  /**
+   * Depois de ler o arquivo inteiro e antes de conferir se ele mudou durante a leitura (simula outro
+   * programa gravando no meio da cópia). `attempt` começa em 1.
+   */
+  afterRead?: (item: FileItem, attempt: number) => void | Promise<void>
   /** Depois da cópia e antes da verificação de um destino (ex.: corromper a cópia). */
   beforeVerify?: (outputPath: string, destinationIndex: number) => void | Promise<void>
   /** Depois de terminar cada destino (ex.: alterar a origem entre a cópia e a exclusão). */
@@ -50,6 +63,23 @@ export interface CopiedFile {
   hash?: string
   /** false = o destino não aceitou preservar a data (alguns compartilhamentos de rede). */
   mtimeSet: boolean
+  /** Data de modificação da versão copiada (a da leitura; pode ser mais nova que a da varredura). */
+  mtime?: Date
+}
+
+/** Motivo (pt-BR) do arquivo que mudou durante a leitura duas vezes seguidas. */
+export const CHANGED_DURING_COPY = 'Arquivo alterado durante a cópia'
+/** Código interno da leitura "rasgada" (o arquivo mudou enquanto era lido). */
+export const ECHANGED = 'ECHANGED'
+
+/** O arquivo mudou entre os dois stats (do mesmo handle)? Tamanho, mtime ou ctime diferentes. */
+export function changedBetween(before: Stats, after: Stats): boolean {
+  return before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
+}
+
+/** Erro de leitura rasgada (lado da origem: o arquivo é refeito uma vez e depois pulado). */
+export function changedError(path: string): Error {
+  return Object.assign(new Error(`${CHANGED_DURING_COPY}: ${path}`), { code: ECHANGED, side: 'src' })
 }
 
 export interface CopyTreeResult {
@@ -76,7 +106,8 @@ export function destPathFor(root: string, rel: string): string {
 
 /**
  * Copia um arquivo. Lança erro com `side` = 'src' (problema na origem → pular) ou
- * 'dst' (problema no destino → falha do destino).
+ * 'dst' (problema no destino → falha do destino). Leitura rasgada → erro ECHANGED ('src'), com o
+ * arquivo parcial já gravado no destino (quem chama remove).
  */
 export async function copyOne(
   item: FileItem,
@@ -87,11 +118,15 @@ export async function copyOne(
   hooks?: EngineHooks,
   madeDirs?: Set<string>,
   /** "Mover": força os dados no disco (fsync) antes de fechar — a origem será apagada depois. */
-  durable = false
+  durable = false,
+  attempt = 1,
+  /** Caminho relativo no destino (padrão: item.rel; o ZIP usa um nome temporário). */
+  dstRel = item.rel
 ): Promise<CopiedFile> {
-  const dst = destPathFor(destRoot, item.rel)
+  const dst = destPathFor(destRoot, dstRel)
   // Abre a origem primeiro: arquivo em uso/sem permissão é detectado aqui, antes de criar o destino.
   let fh
+  let before: Stats
   try {
     await hooks?.beforeOpen?.(item)
     fh = await open(item.abs, 'r')
@@ -102,6 +137,12 @@ export async function copyOne(
   let written = 0
   const hasher: Hash | null = hash ? createHash('sha256') : null
   try {
+    try {
+      // Pelo handle aberto (fstat): é exatamente o arquivo que vamos ler, mesmo que troquem o nome.
+      before = await fh.stat()
+    } catch (e) {
+      throw Object.assign(e as Error, { side: 'src' })
+    }
     try {
       const parent = dirname(dst)
       if (!madeDirs?.has(parent)) {
@@ -128,17 +169,26 @@ export async function copyOne(
     } catch (e) {
       throw Object.assign(e as Error, { side: side ?? 'dst' })
     }
+    await hooks?.afterRead?.(item, attempt)
+    let after: Stats
+    try {
+      after = await fh.stat()
+    } catch (e) {
+      throw Object.assign(e as Error, { side: 'src' })
+    }
+    // Leitura rasgada: o arquivo mudou enquanto era lido (ou o que foi lido não bate com o tamanho).
+    if (changedBetween(before, after) || written !== before.size) throw changedError(item.abs)
   } finally {
     await fh.close().catch(() => {})
   }
   let mtimeSet = true
   try {
-    await utimes(dst, item.atime, item.mtime)
+    await utimes(dst, before.atime, before.mtime)
   } catch {
     // Alguns compartilhamentos de rede não aceitam utimes — não é motivo para falhar.
     mtimeSet = false
   }
-  return { item, bytes: written, hash: hasher?.digest('hex'), mtimeSet }
+  return { item, bytes: written, hash: hasher?.digest('hex'), mtimeSet, mtime: before.mtime }
 }
 
 /** Copia todos os itens para `destRoot` (que já deve existir). */
@@ -156,43 +206,59 @@ export async function copyTree(
   for (const item of items) {
     signal.throwIfAborted()
     tracker.file(item.rel)
-    let partial = 0
-    try {
-      const r = await copyOne(
-        item,
-        destRoot,
-        (n) => {
-          partial += n
-          tracker.addBytes(n)
-        },
-        signal,
-        opts.hash,
-        opts.hooks,
-        madeDirs,
-        opts.durable
-      )
-      copied.push(r)
-      bytes += r.bytes
-    } catch (e) {
-      if (signal.aborted) throw signal.reason ?? e
-      const code = errCode(e)
-      const side = (e as { side?: string }).side
-      if (side === 'src' && SKIPPABLE_SOURCE.has(code)) {
-        skipped.push({ path: item.abs, reason: skipReason(code) })
-        // Mantém o percentual coerente e remove o arquivo parcial do destino.
-        tracker.addBytes(Math.max(0, item.size - partial))
-        await rm(destPathFor(destRoot, item.rel), { force: true }).catch(() => {})
-      } else if (side === 'dst' && code === 'EEXIST') {
-        // Destino sem diferença de maiúsculas/acentos (exFAT, NTFS, APFS) e origem com "Foto.jpg" e
-        // "foto.jpg": pula só este arquivo. NÃO apaga o caminho — ele é a cópia do outro arquivo.
-        skipped.push({
-          path: item.abs,
-          reason:
-            'Já existe um arquivo com o mesmo nome no destino (só muda maiúsculas/minúsculas ou acentos)'
-        })
-        tracker.addBytes(Math.max(0, item.size - partial))
-      } else {
-        throw new DestinationError(destinationErrorMessage(code, e), code || 'EDEST', e)
+    // Bytes já contados no progresso deste arquivo: uma nova tentativa só soma o que passar disso.
+    let counted = 0
+    for (let attempt = 1; ; attempt++) {
+      let partial = 0
+      try {
+        const r = await copyOne(
+          item,
+          destRoot,
+          (n) => {
+            partial += n
+            if (partial > counted) {
+              tracker.addBytes(partial - counted)
+              counted = partial
+            }
+          },
+          signal,
+          opts.hash,
+          opts.hooks,
+          madeDirs,
+          opts.durable,
+          attempt
+        )
+        copied.push(r)
+        bytes += r.bytes
+        break
+      } catch (e) {
+        if (signal.aborted) throw signal.reason ?? e
+        const code = errCode(e)
+        const side = (e as { side?: string }).side
+        if (side === 'src' && code === ECHANGED) {
+          // O arquivo parcial é nosso (criado com "wx" nesta tentativa): sai antes de tentar de novo.
+          await rm(destPathFor(destRoot, item.rel), { force: true }).catch(() => {})
+          if (attempt < 2) continue
+          skipped.push({ path: item.abs, reason: CHANGED_DURING_COPY })
+          tracker.addBytes(Math.max(0, item.size - counted))
+        } else if (side === 'src' && SKIPPABLE_SOURCE.has(code)) {
+          skipped.push({ path: item.abs, reason: skipReason(code) })
+          // Mantém o percentual coerente e remove o arquivo parcial do destino.
+          tracker.addBytes(Math.max(0, item.size - counted))
+          await rm(destPathFor(destRoot, item.rel), { force: true }).catch(() => {})
+        } else if (side === 'dst' && code === 'EEXIST') {
+          // Destino sem diferença de maiúsculas/acentos (exFAT, NTFS, APFS) e origem com "Foto.jpg" e
+          // "foto.jpg": pula só este arquivo. NÃO apaga o caminho — ele é a cópia do outro arquivo.
+          skipped.push({
+            path: item.abs,
+            reason:
+              'Já existe um arquivo com o mesmo nome no destino (só muda maiúsculas/minúsculas ou acentos)'
+          })
+          tracker.addBytes(Math.max(0, item.size - counted))
+        } else {
+          throw new DestinationError(destinationErrorMessage(code, e), code || 'EDEST', e)
+        }
+        break
       }
     }
     tracker.fileDone()
@@ -245,7 +311,10 @@ export interface VerifyIssue {
   reason: string
 }
 
-/** Verificação do modo pasta: quick = tamanho + data; full = relê o destino e compara o sha256. */
+/**
+ * Verificação do modo pasta: quick = tamanho + data; full = abre de novo CADA arquivo no destino (outro
+ * handle, lido do disco — não do fluxo que gravou) e compara o sha256 com o da leitura da origem.
+ */
 export async function verifyCopiedFiles(
   copied: CopiedFile[],
   destRoot: string,
@@ -265,11 +334,14 @@ export async function verifyCopiedFiles(
         issues.push({ path: dst, reason: `Tamanho diferente do original (${st.size} ≠ ${c.bytes} bytes)` })
       } else if (
         c.mtimeSet &&
-        mtimeComparable(c.item.mtime) &&
-        Math.abs(st.mtime.getTime() - c.item.mtime.getTime()) > MTIME_TOLERANCE_MS
+        mtimeComparable(c.mtime ?? c.item.mtime) &&
+        Math.abs(st.mtime.getTime() - (c.mtime ?? c.item.mtime).getTime()) > MTIME_TOLERANCE_MS
       ) {
         issues.push({ path: dst, reason: 'Data de modificação diferente do original' })
-      } else if (mode === 'full' && c.hash) {
+      } else if (mode === 'full' && !c.hash) {
+        // Nunca "aprova" sem comparar: verificação completa exige o sha256 da leitura da origem.
+        issues.push({ path: dst, reason: 'Sem o sha256 da origem para conferir' })
+      } else if (mode === 'full') {
         const h = createHash('sha256')
         await pipeline(
           createReadStream(dst, { highWaterMark: 1 << 20 }),

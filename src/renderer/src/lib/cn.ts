@@ -9,7 +9,7 @@ const twMerge = extendTailwindMerge({
       'font-size': [
         { text: ['display', 'title', 'section', 'body', 'small', 'caption', 'mono', 'stat', 'overline'] }
       ],
-      shadow: [{ shadow: ['xs', 'card', 'pop', 'dialog'] }]
+      shadow: [{ shadow: ['xs', 'card', 'pop', 'dialog', 'primary'] }]
     }
   }
 })

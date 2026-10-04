@@ -94,7 +94,7 @@ export function RetentionStep({
                     className={cn(
                       'h-7 rounded-sm border px-2.5 text-caption font-medium transition-colors duration-[120ms]',
                       r.days === d
-                        ? 'border-accent bg-accent-soft text-accent-text'
+                        ? 'border-accent-edge bg-accent-soft text-accent-text'
                         : 'border-border-strong bg-surface-raised text-fg-muted hover:text-fg'
                     )}
                   >

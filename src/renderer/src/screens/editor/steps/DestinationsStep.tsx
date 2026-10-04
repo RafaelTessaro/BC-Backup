@@ -12,7 +12,6 @@ import {
 import { RadioGroup } from 'radix-ui'
 import { useEffect, useRef, useState, type Ref } from 'react'
 import type { RoutineInput, ValidationIssue } from '@shared/api'
-import { BACKUP_ROOT_DIR } from '@shared/defaults'
 import { backupStamp, formatBytes } from '@shared/format'
 import type { Destination, DiskSpace, DriveInfo } from '@shared/types'
 import { Button, IconButton } from '@renderer/components/ui/Button'
@@ -36,7 +35,7 @@ import { useNow } from '@renderer/lib/clock'
 import { baseName, formatPercent, isNetworkPath } from '@renderer/lib/format'
 import { useApp } from '@renderer/lib/store'
 import { notify } from '@renderer/lib/toast'
-import { ZIP_LEVELS, folderName, joinPath, newId, pathKey, type Update } from '../model'
+import { ZIP_LEVELS, backupExamplePath, isDriveRoot, joinPath, newId, pathKey, type Update } from '../model'
 import type { SourceSizes } from '../sizes'
 import { IssueList, SectionTitle } from './shared'
 
@@ -385,7 +384,7 @@ function ModeCard({
       className={cn(
         'flex flex-1 items-start gap-3 rounded-lg border p-4 text-left transition-[border-color,background-color,box-shadow] duration-[120ms]',
         active
-          ? 'border-accent bg-accent-soft/50 shadow-[0_0_0_1px_var(--accent)]'
+          ? 'border-accent-edge bg-accent-soft/50 shadow-[0_0_0_1px_var(--accent-edge)]'
           : 'border-border bg-surface-raised shadow-card hover:border-border-strong'
       )}
     >
@@ -427,6 +426,8 @@ export function DestinationsStep({
   const missing = general.some((i) => i.level === 'error') && draft.destinations.length === 0
   // Exemplo com o destino de caminho mais curto (o mais legível).
   const example = [...draft.destinations].sort((a, b) => a.path.length - b.path.length)[0]
+  // Destino na raiz do disco: os backups ficariam soltos na raiz (sugere uma pasta, ex.: E:\Backups).
+  const rootDest = draft.destinations.find((d) => isDriveRoot(d.path))
 
   // Depois de adicionar ou remover, o foco volta para "Adicionar destino" (o menu fechado ou o
   // cartão removido não existem mais).
@@ -512,19 +513,28 @@ export function DestinationsStep({
             computador (\\servidor\pasta) protege contra a falha de um deles.
           </Callout>
         )}
+        {rootDest && (
+          <Callout tone="info">
+            <span className="font-medium">Dica:</span> escolha uma pasta, ex.:{' '}
+            {joinPath(rootDest.path, 'Backups')}. Os backups ficam direto na pasta escolhida, um por data e
+            hora.
+          </Callout>
+        )}
         {example && (
           <div className="flex flex-col gap-1.5 rounded-md bg-surface-hover/70 px-3 py-2.5">
             <span className="text-caption text-fg-subtle">
-              Cada execução cria {draft.mode === 'zip' ? 'um arquivo novo' : 'uma pasta nova'}, por exemplo:
+              Cada execução cria {draft.mode === 'zip' ? 'um arquivo novo' : 'uma pasta nova'} direto no
+              destino, com a data e a hora, por exemplo:
             </span>
             <span className="font-mono text-mono break-all text-fg-muted" data-selectable>
-              {joinPath(
-                example.path,
-                BACKUP_ROOT_DIR,
-                folderName(draft.name),
-                `${backupStamp(now)}${draft.mode === 'zip' ? '.zip' : ''}`
-              )}
+              {backupExamplePath(example.path, backupStamp(now), draft.mode)}
             </span>
+            {draft.sources.length > 1 && (
+              <span className="text-caption text-fg-subtle">
+                Com várias origens, cada uma fica numa subpasta dentro{' '}
+                {draft.mode === 'zip' ? 'do ZIP' : 'dela'}.
+              </span>
+            )}
           </div>
         )}
       </section>

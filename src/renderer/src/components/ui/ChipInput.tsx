@@ -61,8 +61,9 @@ export function ChipInput({
         className={cn(
           'flex min-h-8 w-full cursor-text flex-wrap items-center gap-1 rounded-md border border-border-strong bg-surface-raised px-1 py-[3px] shadow-xs',
           'transition-[border-color,box-shadow] duration-[120ms]',
-          'focus-within:border-accent focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)]',
-          (invalid || hasErrors) && 'border-danger',
+          'focus-within:border-accent-edge focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_22%,transparent)]',
+          (invalid || hasErrors) &&
+            'border-danger focus-within:border-danger focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--danger)_18%,transparent)]',
           className
         )}
         onClick={() => inputRef.current?.focus()}

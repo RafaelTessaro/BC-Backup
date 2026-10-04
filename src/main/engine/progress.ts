@@ -80,6 +80,12 @@ export class ProgressTracker {
     this.tick(true)
   }
 
+  /** O destino atual recomeça a cópia do zero (ZIP montado de novo): zera arquivos e bytes feitos. */
+  restartDestination(): void {
+    this.p = { ...this.p, phase: 'copying', filesDone: 0, bytesDone: 0, currentFile: undefined }
+    this.tick(true)
+  }
+
   /** Reinicia contadores para a fase de verificação do destino atual. */
   startVerify(filesTotal: number, bytesTotal: number): void {
     this.p = {

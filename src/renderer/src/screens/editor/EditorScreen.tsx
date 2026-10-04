@@ -274,7 +274,7 @@ function Editor({ existing }: { existing?: Routine }) {
       {drop.dragging && (
         <div aria-hidden className="pointer-events-none absolute inset-0 z-20">
           <div className="sticky top-0 flex h-[calc(100vh-56px)] max-h-full p-3">
-            <div className="flex flex-1 items-end justify-center rounded-xl border-2 border-dashed border-accent bg-accent-soft/40 pb-24">
+            <div className="flex flex-1 items-end justify-center rounded-xl border-2 border-dashed border-accent-edge bg-accent-soft/40 pb-24">
               <span className="flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-small font-medium text-accent-foreground shadow-pop">
                 <Upload className="size-4" strokeWidth={1.75} />
                 Solte para adicionar à origem

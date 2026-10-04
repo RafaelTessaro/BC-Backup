@@ -143,7 +143,7 @@ export function EmailTab() {
                 className={cn(
                   'h-8 rounded-md border px-2.5 text-small font-medium transition-[background-color,border-color,color] duration-[120ms]',
                   'border-border-strong bg-surface-raised text-fg-muted shadow-xs hover:text-fg',
-                  'data-[state=checked]:border-accent data-[state=checked]:bg-accent-soft data-[state=checked]:text-accent-text'
+                  'data-[state=checked]:border-accent-edge data-[state=checked]:bg-accent-soft data-[state=checked]:text-accent-text'
                 )}
               >
                 {p.label}

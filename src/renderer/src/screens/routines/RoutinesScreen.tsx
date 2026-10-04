@@ -335,6 +335,7 @@ export function RoutinesScreen() {
         <Card className="flex min-h-[380px] items-center justify-center rounded-xl p-10">
           <EmptyState
             icon={FolderSync}
+            tone="accent"
             title="Vamos proteger seus arquivos"
             description="Crie sua primeira rotina: escolha o que copiar, para onde e quando. Leva menos de um minuto."
             action={

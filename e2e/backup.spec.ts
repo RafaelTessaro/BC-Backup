@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import type { BcApi, RoutineInput } from '../src/shared/api'
 import {
   createDefaultRoutine,
-  BACKUP_ROOT_DIR,
+  IN_PROGRESS_MARKER_FILE,
+  LEGACY_ROOT_DIR,
   MANIFEST_FILE,
   ROUTINE_MARKER_FILE
 } from '../src/shared/defaults'
@@ -12,6 +13,8 @@ import { backupStamp } from '../src/shared/format'
 import { launch, mainWindow, makeDir, makeSourceTree } from './fixtures'
 
 type G = { bc: BcApi }
+
+const SNAP = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?$/
 
 function routineInput(name: string, source: string, dests: string[]): RoutineInput {
   const r = createDefaultRoutine()
@@ -25,48 +28,32 @@ function routineInput(name: string, source: string, dests: string[]): RoutineInp
   }
 }
 
-test('backup completo para dois destinos, com manifesto e retenção segura', async () => {
-  const l = await launch()
-  const page = await mainWindow(l)
-  const source = makeSourceTree()
-  const destA = makeDir('bcb-destA-')
-  const destB = makeDir('bcb-destB-')
+/** Backup "antigo" com o manifesto da rotina (dias atrás, às 18:00). */
+function oldSnapshot(parent: string, routineId: string, daysAgo: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - daysAgo)
+  d.setHours(18, 0, 0, 0)
+  const stamp = backupStamp(d)
+  mkdirSync(join(parent, stamp), { recursive: true })
+  writeFileSync(
+    join(parent, stamp, MANIFEST_FILE),
+    JSON.stringify({
+      format: 'bcbackup-manifesto',
+      version: 1,
+      routineId,
+      snapshotId: stamp,
+      startedAt: d.toISOString(),
+      finishedAt: d.toISOString(),
+      status: 'success',
+      mode: 'copy',
+      files: 1,
+      bytes: 1
+    })
+  )
+  return stamp
+}
 
-  // Backups "antigos" no destino A: 3 com manifesto da rotina (10, 9 e 8 dias atrás) + 1 pasta alheia sem manifesto.
-  const input = routineInput('Financeiro diário', source, [destA, destB])
-  const saved = await page.evaluate((i) => (globalThis as unknown as G).bc.routines.save(i), input)
-  expect(saved.id).toBeTruthy()
-
-  const routineDirA = join(destA, BACKUP_ROOT_DIR, 'Financeiro diário')
-  mkdirSync(routineDirA, { recursive: true })
-  const oldStamps: string[] = []
-  for (const daysAgo of [10, 9, 8, 2]) {
-    const d = new Date()
-    d.setDate(d.getDate() - daysAgo)
-    d.setHours(18, 0, 0, 0)
-    const stamp = backupStamp(d)
-    oldStamps.push(stamp)
-    mkdirSync(join(routineDirA, stamp), { recursive: true })
-    writeFileSync(
-      join(routineDirA, stamp, MANIFEST_FILE),
-      JSON.stringify({
-        format: 'bcbackup-manifesto',
-        version: 1,
-        routineId: saved.id,
-        snapshotId: stamp,
-        startedAt: d.toISOString(),
-        finishedAt: d.toISOString(),
-        status: 'success',
-        mode: 'copy',
-        files: 1,
-        bytes: 1
-      })
-    )
-  }
-  const foreign = join(routineDirA, '2020-01-01_00-00-00')
-  mkdirSync(foreign, { recursive: true })
-  writeFileSync(join(foreign, 'arquivo-do-usuario.txt'), 'não apague')
-
+async function runAndWait(page: Awaited<ReturnType<typeof mainWindow>>, routineId: string) {
   const finished = page.evaluate(
     (id) =>
       new Promise<{ status: string; id: string }>((resolve) => {
@@ -77,48 +64,114 @@ test('backup completo para dois destinos, com manifesto e retenção segura', as
           }
         })
       }),
-    saved.id
+    routineId
   )
-  await page.evaluate((id) => (globalThis as unknown as G).bc.routines.runNow(id), saved.id)
-  const result = await finished
+  await page.evaluate((id) => (globalThis as unknown as G).bc.routines.runNow(id), routineId)
+  return finished
+}
+
+test('backup completo para dois destinos: pasta datada direto no destino, manifesto e retenção segura', async () => {
+  const l = await launch()
+  const page = await mainWindow(l)
+  const source = makeSourceTree()
+  const destA = makeDir('bcb-destA-')
+  const destB = makeDir('bcb-destB-')
+
+  const input = routineInput('Financeiro diário', source, [destA, destB])
+  const saved = await page.evaluate((i) => (globalThis as unknown as G).bc.routines.save(i), input)
+  expect(saved.id).toBeTruthy()
+
+  // Destino A (estrutura nova): 4 backups da rotina (10, 9, 8 e 2 dias atrás), uma pasta com nome de
+  // backup mas sem manifesto e um arquivo do usuário — a pasta do destino é dele.
+  const oldA = [10, 9, 8, 2].map((d) => oldSnapshot(destA, saved.id, d))
+  const foreign = join(destA, '2020-01-01_00-00-00')
+  mkdirSync(foreign, { recursive: true })
+  writeFileSync(join(foreign, 'arquivo-do-usuario.txt'), 'não apague')
+  writeFileSync(join(destA, 'planilha do usuário.xlsx'), 'não apague')
+  // Destino B (estrutura ANTIGA, "BC Backup/<rotina>"): os backups de lá também saem no prazo.
+  const legacyB = join(destB, LEGACY_ROOT_DIR, 'Financeiro diário')
+  mkdirSync(legacyB, { recursive: true })
+  writeFileSync(join(legacyB, ROUTINE_MARKER_FILE), JSON.stringify({ routineId: saved.id }))
+  const oldB = [10, 9, 8, 2].map((d) => oldSnapshot(legacyB, saved.id, d))
+
+  const result = await runAndWait(page, saved.id)
   expect(result.status).toBe('success')
 
+  const today = backupStamp(new Date()).slice(0, 10)
   for (const dest of [destA, destB]) {
-    const dir = join(dest, BACKUP_ROOT_DIR, 'Financeiro diário')
-    expect(existsSync(join(dir, ROUTINE_MARKER_FILE))).toBe(true)
-    const snaps = readdirSync(dir).filter((n) => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(n))
-    const today = backupStamp(new Date()).slice(0, 10)
-    const newest = snaps
-      .filter((n) => n.startsWith(today))
+    const newest = readdirSync(dest)
+      .filter((n) => SNAP.test(n) && n.startsWith(today))
       .sort()
       .pop()
-    expect(newest, `backup de hoje em ${dest}`).toBeTruthy()
-    const snap = join(dir, newest!)
+    expect(newest, `backup de hoje direto em ${dest}`).toBeTruthy()
+    const snap = join(dest, newest!)
     const manifest = JSON.parse(readFileSync(join(snap, MANIFEST_FILE), 'utf8'))
-    expect(manifest.routineId).toBe(saved.id)
-    // Conteúdo copiado (rótulo da origem = nome da pasta) e filtro padrão aplicado.
-    const files = readdirSync(snap, { recursive: true }).map(String)
-    expect(files.some((f) => f.endsWith('NF-0012.xml'))).toBe(true)
-    expect(files.some((f) => f.endsWith('Fluxo de caixa.xlsx'))).toBe(true)
-    expect(files.some((f) => f.endsWith('Thumbs.db'))).toBe(false)
-    expect(readdirSync(dir).some((n) => n.endsWith('.em-andamento'))).toBe(false)
+    expect(manifest).toMatchObject({ routineId: saved.id, layout: 'direct' })
+    // Uma origem: o conteúdo dela direto na pasta datada (sem pasta da rotina nem da origem).
+    expect(existsSync(join(snap, 'Notas fiscais', '2026', 'NF-0012.xml'))).toBe(true)
+    expect(existsSync(join(snap, 'Planilhas', 'Fluxo de caixa.xlsx'))).toBe(true)
+    expect(existsSync(join(snap, 'leia-me.txt'))).toBe(true)
+    expect(existsSync(join(snap, 'Planilhas', 'Thumbs.db'))).toBe(false)
+    expect(existsSync(join(snap, IN_PROGRESS_MARKER_FILE))).toBe(false)
+    // Nada de "em andamento" nem marcador de rotina na pasta do usuário.
+    expect(readdirSync(dest).some((n) => n.endsWith('.em-andamento'))).toBe(false)
+    expect(existsSync(join(dest, ROUTINE_MARKER_FILE))).toBe(false)
   }
+  // O destino A não ganhou a pasta "BC Backup"; o B continua com a pasta legada.
+  expect(existsSync(join(destA, LEGACY_ROOT_DIR))).toBe(false)
+  expect(existsSync(legacyB)).toBe(true)
 
-  // Retenção (7 dias, mínimo 3) no destino A: dentro da janela ficam hoje + 2 dias atrás; o mínimo de 3
-  // salva o mais novo dos antigos (8 dias); 10 e 9 dias atrás saem. A pasta sem manifesto NUNCA é tocada.
-  const remaining = readdirSync(routineDirA)
-  expect(remaining).not.toContain(oldStamps[0])
-  expect(remaining).not.toContain(oldStamps[1])
-  expect(remaining).toContain(oldStamps[2])
-  expect(remaining).toContain(oldStamps[3])
+  // Retenção (7 dias, mínimo 3): dentro da janela ficam hoje + 2 dias atrás; o mínimo de 3 salva o mais
+  // novo dos antigos (8 dias); 10 e 9 dias atrás saem. Pasta sem manifesto e arquivo do usuário: intactos.
+  const remainingA = readdirSync(destA)
+  expect(remainingA).not.toContain(oldA[0])
+  expect(remainingA).not.toContain(oldA[1])
+  expect(remainingA).toContain(oldA[2])
+  expect(remainingA).toContain(oldA[3])
   expect(existsSync(join(foreign, 'arquivo-do-usuario.txt'))).toBe(true)
+  expect(readFileSync(join(destA, 'planilha do usuário.xlsx'), 'utf8')).toBe('não apague')
+  const remainingB = readdirSync(legacyB)
+  expect(remainingB).not.toContain(oldB[0])
+  expect(remainingB).not.toContain(oldB[1])
+  expect(remainingB).toContain(oldB[2])
+  expect(remainingB).toContain(oldB[3])
 
   // Histórico registra a execução com os dois destinos.
   const record = await page.evaluate((id) => (globalThis as unknown as G).bc.runs.get(id), result.id)
   expect(record?.destinations).toHaveLength(2)
   expect(record?.destinations.every((d) => d.status === 'success')).toBe(true)
-  expect(record?.destinations[0].pruned.length).toBe(2)
+  expect(record?.destinations.map((d) => d.pruned.length)).toEqual([2, 2])
+  expect(record?.destinations[0].outputPath?.startsWith(join(destA, today))).toBe(true)
 
+  expect(l.errors).toEqual([])
+  await l.app.close()
+})
+
+test('duas rotinas na mesma pasta de destino: nomes distintos e uma não apaga os backups da outra', async () => {
+  const l = await launch()
+  const page = await mainWindow(l)
+  const shared = makeDir('bcb-shared-')
+  const strict = { enabled: true, days: 1, minKeep: 0 }
+  const a = await page.evaluate((i) => (globalThis as unknown as G).bc.routines.save(i), {
+    ...routineInput('Rotina A', makeSourceTree(), [shared]),
+    retention: strict
+  })
+  const b = await page.evaluate((i) => (globalThis as unknown as G).bc.routines.save(i), {
+    ...routineInput('Rotina B', makeSourceTree(), [shared]),
+    retention: strict
+  })
+  // Um backup antigo de A: a retenção de B (1 dia, mínimo 0) não pode enxergá-lo.
+  const oldOfA = oldSnapshot(shared, a.id, 5)
+  expect((await runAndWait(page, a.id)).status).toBe('success')
+  expect((await runAndWait(page, b.id)).status).toBe('success')
+  const snaps = readdirSync(shared).filter((n) => SNAP.test(n))
+  const byRoutine = (id: string) =>
+    snaps.filter((n) => JSON.parse(readFileSync(join(shared, n, MANIFEST_FILE), 'utf8')).routineId === id)
+  // A rodou com retenção de 1 dia: o antigo DELE saiu; B não mexeu em nada de A.
+  expect(byRoutine(a.id)).toHaveLength(1)
+  expect(byRoutine(a.id)).not.toContain(oldOfA)
+  expect(byRoutine(b.id)).toHaveLength(1)
+  expect(new Set(snaps).size).toBe(2)
   expect(l.errors).toEqual([])
   await l.app.close()
 })
@@ -203,11 +256,11 @@ test('"Mover": arquivos recém-gravados ficam na origem (Atenção, sem backup n
   expect(record?.move?.postponedCount).toBe(2)
   expect(record?.filesMoved).toBe(0)
   expect(record?.notice).toMatch(/2 arquivos ainda em gravação\/em uso/)
-  // Nada apagado, nada copiado: nem a pasta "BC Backup" foi criada nos destinos.
+  // Nada apagado, nada copiado: os destinos continuam vazios.
   expect(existsSync(join(source, 'ERP_hoje.fbk'))).toBe(true)
   expect(existsSync(join(source, 'Diario', 'NFE_hoje.zip'))).toBe(true)
-  expect(existsSync(join(destA, BACKUP_ROOT_DIR))).toBe(false)
-  expect(existsSync(join(destB, BACKUP_ROOT_DIR))).toBe(false)
+  expect(readdirSync(destA)).toEqual([])
+  expect(readdirSync(destB)).toEqual([])
   expect(l.errors).toEqual([])
   await l.app.close()
 })

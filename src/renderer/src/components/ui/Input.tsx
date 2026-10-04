@@ -6,7 +6,7 @@ export const inputBase =
   'h-8 w-full min-w-0 rounded-md border border-border-strong bg-surface-raised px-2.5 text-body text-fg shadow-xs ' +
   'transition-[border-color,box-shadow] duration-[120ms] placeholder:text-fg-subtle ' +
   'hover:border-[color-mix(in_srgb,var(--border-strong)_70%,var(--text-tertiary))] ' +
-  'focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] focus-visible:outline-none ' +
+  'focus:border-accent-edge focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_22%,transparent)] focus-visible:outline-none ' +
   'disabled:cursor-not-allowed disabled:opacity-55 aria-invalid:border-danger aria-invalid:focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--danger)_18%,transparent)]'
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {

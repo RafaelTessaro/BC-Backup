@@ -35,6 +35,13 @@ function NavItem({ icon: Icon, label, active, collapsed, onClick, badge, badgeLa
         active ? 'bg-surface-hover text-fg' : 'text-fg-muted hover:bg-surface-hover hover:text-fg'
       )}
     >
+      {/* Indicador de seleção (pílula menta, como o NavigationView do Windows 11). */}
+      {active && (
+        <span
+          aria-hidden
+          className="absolute top-1/2 left-0 h-4 w-[3px] -translate-y-1/2 rounded-full bg-accent"
+        />
+      )}
       <Icon
         className={cn(
           'size-4 shrink-0',

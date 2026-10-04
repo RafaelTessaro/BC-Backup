@@ -17,7 +17,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BcApi, RoutineInput } from '../src/shared/api'
-import { BACKUP_ROOT_DIR, MANIFEST_FILE, createDefaultRoutine } from '../src/shared/defaults'
+import { LEGACY_ROOT_DIR, MANIFEST_FILE, createDefaultRoutine } from '../src/shared/defaults'
 import { mainPage, trayPage } from './fixtures'
 
 type G = { bc: BcApi }
@@ -122,21 +122,28 @@ function routine(
   }
 }
 
+const SNAP = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?$/
+
 test('backup em pasta datada para dois destinos, com acentos e verificação completa', async () => {
   const source = makeSource()
-  const a = mkdtempSync(join(tmpdir(), 'bcb-win-a-'))
-  const b = mkdtempSync(join(tmpdir(), 'bcb-win-b-'))
+  // Como o dono usa: cria uma pasta "Backups" e escolhe ela como destino.
+  const a = join(mkdtempSync(join(tmpdir(), 'bcb-win-a-')), 'Backups')
+  const b = join(mkdtempSync(join(tmpdir(), 'bcb-win-b-')), 'Backups')
+  mkdirSync(a)
+  mkdirSync(b)
   const res = await runRoutine(routine('Financeiro – Ação', source, [a, b]))
   const record = await page.evaluate((id) => (globalThis as unknown as G).bc.runs.get(id), res.runId)
   expect(res.status, JSON.stringify(record?.log.slice(-10))).toBe('success')
   for (const dest of [a, b]) {
-    const dir = join(dest, BACKUP_ROOT_DIR, 'Financeiro – Ação')
-    const snap = readdirSync(dir).find((n) => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(n))
-    expect(snap, `pasta datada em ${dir}`).toBeTruthy()
-    const files = readdirSync(join(dir, snap!), { recursive: true }).map(String)
-    expect(files.some((f) => f.endsWith('balanço çãõ.txt'))).toBe(true)
-    expect(files.some((f) => f.endsWith('Thumbs.db'))).toBe(false)
-    expect(existsSync(join(dir, snap!, MANIFEST_FILE))).toBe(true)
+    // Abrindo "Backups": direto a pasta com dia e hora (sem "BC Backup" nem o nome da rotina)…
+    expect(readdirSync(dest).filter((n) => !SNAP.test(n))).toEqual([])
+    const snap = readdirSync(dest).find((n) => SNAP.test(n))
+    expect(snap, `pasta datada em ${dest}`).toBeTruthy()
+    // …e dentro dela, os arquivos da origem.
+    expect(existsSync(join(dest, snap!, 'Relatórios 2026', 'Ação & Cia', 'balanço çãõ.txt'))).toBe(true)
+    expect(existsSync(join(dest, snap!, 'Thumbs.db'))).toBe(false)
+    expect(existsSync(join(dest, snap!, MANIFEST_FILE))).toBe(true)
+    expect(existsSync(join(dest, LEGACY_ROOT_DIR))).toBe(false)
   }
   await page.screenshot({ path: join(shots, '02-painel-depois-do-backup.png') })
 })
@@ -146,8 +153,11 @@ test('backup em ZIP com verificação completa', async () => {
   const dest = mkdtempSync(join(tmpdir(), 'bcb-win-zip-'))
   const res = await runRoutine(routine('Contabilidade ZIP', source, [dest], { mode: 'zip' }))
   expect(res.status).toBe('success')
-  const dir = join(dest, BACKUP_ROOT_DIR, 'Contabilidade ZIP')
-  expect(readdirSync(dir).some((n) => n.endsWith('.zip'))).toBe(true)
+  // "<destino>\<carimbo>.zip" + o manifesto ao lado, direto na pasta escolhida.
+  const names = readdirSync(dest)
+  const zip = names.find((n) => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?\.zip$/.test(n))
+  expect(zip, JSON.stringify(names)).toBeTruthy()
+  expect(names.sort()).toEqual([zip!, `${zip}.manifesto.json`].sort())
 })
 
 test('arquivo aberto com bloqueio vira aviso, não falha', async () => {
@@ -167,6 +177,10 @@ test('arquivo aberto com bloqueio vira aviso, não falha', async () => {
     const record = await page.evaluate((id) => (globalThis as unknown as G).bc.runs.get(id), res.runId)
     const skipped = record?.destinations[0].skipped ?? []
     expect(skipped.some((s) => s.path.endsWith('banco-em-uso.mdb'))).toBe(true)
+    // O resto foi copiado direto na pasta datada; o arquivo bloqueado não aparece lá.
+    const out = record?.destinations[0].outputPath ?? ''
+    expect(existsSync(join(out, 'Relatórios 2026', 'planilha.xlsx'))).toBe(true)
+    expect(existsSync(join(out, 'banco-em-uso.mdb'))).toBe(false)
   } finally {
     closeSync(fd)
   }
@@ -267,7 +281,11 @@ test('"Mover": move o que está pronto e deixa na origem o arquivo que o sistema
   expect(existsSync(pronto)).toBe(false)
   expect(existsSync(gravando)).toBe(true)
   for (const dest of [a, b]) {
-    const files = readdirSync(join(dest, BACKUP_ROOT_DIR), { recursive: true }).map(String)
+    // Uma origem: os arquivos movidos ficam direto na pasta datada do destino.
+    const snap = readdirSync(dest).find((n) => SNAP.test(n))
+    expect(snap, `pasta datada em ${dest}`).toBeTruthy()
+    expect(existsSync(join(dest, snap!, 'erp-2026-10-04.fbk')), `em ${dest}`).toBe(true)
+    const files = readdirSync(dest, { recursive: true }).map(String)
     expect(
       files.some((f) => f.endsWith('erp-2026-10-04.fbk')),
       `em ${dest}`

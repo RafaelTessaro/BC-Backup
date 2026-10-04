@@ -41,7 +41,7 @@ import type {
   RunTrigger,
   SmtpInput
 } from '@shared/types'
-import { BACKUP_ROOT_DIR, DEFAULT_EXCLUDES, DEFAULT_NOTIFICATION, DEFAULT_SETTINGS } from '@shared/defaults'
+import { DEFAULT_EXCLUDES, DEFAULT_NOTIFICATION, DEFAULT_SETTINGS } from '@shared/defaults'
 import { backupStamp, formatBytes, formatDuration } from '@shared/format'
 import { nextRunAt, slotsForDay } from '@shared/schedule'
 
@@ -193,7 +193,7 @@ function seedRoutines(): Routine[] {
           { id: 's3', path: 'D:\\Contratos\\Clientes', kind: 'folder' }
         ],
         destinations: [
-          { id: 'd1', path: 'E:\\', label: 'HD externo azul', enabled: true },
+          { id: 'd1', path: 'E:\\Backups', label: 'HD externo azul', enabled: true },
           { id: 'd2', path: '\\\\SERVIDOR\\backup', label: 'Servidor', enabled: true }
         ],
         schedule: {
@@ -278,7 +278,7 @@ function seedRoutines(): Routine[] {
         color: 'sky',
         sources: [{ id: 's1', path: 'C:\\ERP\\Backup', kind: 'folder' }],
         destinations: [
-          { id: 'd1', path: 'E:\\', label: 'HD externo azul', enabled: true },
+          { id: 'd1', path: 'E:\\Backups', label: 'HD externo azul', enabled: true },
           { id: 'd2', path: '\\\\SERVIDOR\\backup', label: 'Servidor', enabled: true }
         ],
         verify: 'full',
@@ -313,7 +313,7 @@ function seedRoutines(): Routine[] {
           { id: 's2', path: 'D:\\Fiscal\\SPED', kind: 'folder' }
         ],
         destinations: [
-          { id: 'd1', path: 'E:\\', label: 'HD externo azul', enabled: true },
+          { id: 'd1', path: 'E:\\Backups', label: 'HD externo azul', enabled: true },
           { id: 'd2', path: 'F:\\Backup', enabled: true }
         ],
         schedule: {
@@ -447,7 +447,8 @@ function buildRecord(spec: GenSpec, rnd: () => number, smtpReady = true): RunRec
 
   dests.forEach((d, i) => {
     const drive = DRIVES.find((x) => d.path.toUpperCase().startsWith(x.path.toUpperCase()))
-    const outputPath = `${d.path.replace(/\\$/, '')}\\${BACKUP_ROOT_DIR}\\${routine.name}\\${stamp}${routine.mode === 'zip' ? '.zip' : ''}`
+    // Como no motor: "<destino>\\<carimbo>" (ou .zip) direto na pasta escolhida.
+    const outputPath = `${d.path.replace(/\\$/, '')}\\${stamp}${routine.mode === 'zip' ? '.zip' : ''}`
     push('info', `Destino ${i + 1}/${dests.length}: ${d.path}${d.label ? ` (${d.label})` : ''}`, 400)
     const destFails = status === 'failed' && (spec.failedDestination ?? dests.length - 1) === i
     if (destFails) {
@@ -504,9 +505,7 @@ function buildRecord(spec: GenSpec, rnd: () => number, smtpReady = true): RunRec
     const pruned: string[] = []
     if (!cancelled && routine.retention.enabled && rnd() > 0.35) {
       const old = new Date(start.getTime() - routine.retention.days * 86_400_000)
-      pruned.push(
-        `${d.path.replace(/\\$/, '')}\\${BACKUP_ROOT_DIR}\\${routine.name}\\${backupStamp(old)}${routine.mode === 'zip' ? '.zip' : ''}`
-      )
+      pruned.push(`${d.path.replace(/\\$/, '')}\\${backupStamp(old)}${routine.mode === 'zip' ? '.zip' : ''}`)
       push('info', `Retenção: 1 backup antigo removido (${backupStamp(old)})`, 900)
     }
     destinations.push({

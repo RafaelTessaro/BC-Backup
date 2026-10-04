@@ -1,24 +1,31 @@
 // Execução completa de uma rotina (doc 01 §3). Node puro: roda no utilityProcess
 // (src/main/engine/worker.ts) ou direto nos testes.
 //
+// Estrutura no destino (layout.ts): "<destino>/<AAAA-MM-DD_HH-mm-ss>/" (ou ".zip"), direto na pasta
+// escolhida — o nome da rotina NÃO vira pasta. Uma origem → o conteúdo dela direto na pasta datada
+// (um arquivo → o arquivo); várias origens → uma subpasta por origem (rótulo). A pasta do destino é do
+// usuário e pode ser compartilhada: nada fora do que esta execução reserva é sobrescrito, e a retenção e a
+// limpeza só enxergam o que tem o manifesto/marcador desta rotina.
+//
 // Fluxo: varre as origens UMA vez → para cada destino ativo, em sequência e de forma independente:
-//   1) destino acessível? 2) espaço livre ≥ bytes × 1,05? 3) pasta da rotina + marcador + limpeza de sobras
-//   4) copia (ou compacta) em "<carimbo>.em-andamento" preservando a data de modificação
-//   5) verifica 6) grava o manifesto e renomeia para o nome final 7) retenção (só se 1–6 deram certo)
+//   1) destino acessível? (e não se sobrepõe a uma origem) 2) limpa sobras DESTA rotina 3) espaço livre
+//   ≥ bytes × 1,05? 4) reserva "<nome>.em-andamento" (mkdir atômico, "_2"… se ocupado) + marcador
+//   5) copia (ou compacta) preservando a data de modificação 6) verifica 7) grava o manifesto e renomeia
+//   para o nome final 8) retenção (só se 1–7 deram certo; inclui os backups legados da rotina)
 // Status: success = tudo copiado em todos os destinos · warning = concluído com arquivos pulados ·
 // failed = origem ausente, nada a copiar, ou QUALQUER destino falhou · cancelled.
 // Um destino que não recebeu NENHUM arquivo (todos em uso/sem permissão) falha: um backup vazio
 // contaria na retenção e faria apagar os backups bons. Destino dentro da origem (ou a origem dentro
-// da pasta "BC Backup" do destino) também falha aqui, mesmo que o editor não tenha pego (importação,
-// link/junção, outra grafia do caminho): o backup copiaria a si mesmo a cada execução.
+// do destino) também falha aqui, mesmo que o editor não tenha pego (importação, link/junção, outra
+// grafia do caminho): o backup copiaria a si mesmo a cada execução.
 //
 // "Mover" (doc 04 §5): só entram arquivos elegíveis (idade + teste de uso); sem elegíveis não há
 // backup nem retenção. Depois de TODOS os destinos concluídos (sucesso/aviso), a fase "moving" apaga
 // da origem cada arquivo conferido com o mesmo tamanho e sha256 em todos os destinos e que continua
 // idêntico na origem. Qualquer destino com falha ou cancelamento antes da fase → nada é apagado.
 
-import { mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { realpath, rm, stat } from 'node:fs/promises'
+import { dirname, join, relative, resolve } from 'node:path'
 import type {
   DestinationResult,
   FinalRunStatus,
@@ -29,8 +36,8 @@ import type {
   SourceItem,
   VerifyMode
 } from '@shared/types'
-import { BACKUP_ROOT_DIR, IN_PROGRESS_SUFFIX, MANIFEST_FILE, MAX_MOVED_LISTED } from '@shared/defaults'
-import { formatBytes } from '@shared/format'
+import { IN_PROGRESS_MARKER_FILE, MANIFEST_FILE, MAX_MOVED_LISTED } from '@shared/defaults'
+import { backupStamp, formatBytes } from '@shared/format'
 import {
   DestinationError,
   copyTree,
@@ -49,11 +56,12 @@ import {
   withTimeout,
   writeJsonAtomic
 } from './fsutil'
+import { claimOutput, legacyRoutineDirs, type OutputClaim } from './layout'
 import {
+  IN_PROGRESS_FORMAT,
   MANIFEST_FORMAT,
   readRoutineMarker,
   writeFolderManifest,
-  writeRoutineMarker,
   zipSidecarPath,
   type BackupManifest
 } from './manifest'
@@ -70,7 +78,7 @@ import {
   unlinkReason
 } from './move'
 import { ProgressTracker } from './progress'
-import { applyRetention, cleanupLeftovers, uniqueStamp } from './retention'
+import { applyRetention, cleanupLeftovers } from './retention'
 import type { EngineEvent, JobResult, JobSpec } from './types'
 import { emptyWalkStats, makeFilter, skipReason, walk, type FileItem, type WalkIssue } from './walk'
 import { verifyZip, zipTree } from './zip'
@@ -89,6 +97,8 @@ export interface JobOptions {
   platform?: NodeJS.Platform
   /** "Mover": desloca o relógio SÓ da regra de idade mínima (E2E no Windows; ver e2eJobOptions). */
   moveAgeSkewMs?: number
+  /** Modo ZIP: limite da leitura para a memória (testes; padrão ZIP_BUFFER_MAX). */
+  zipBufferMax?: number
 }
 
 /**
@@ -122,7 +132,18 @@ export interface SourceSlot {
   name: string
   /** true = os arquivos ficam em "<name>/…"; false = arquivo único gravado como "<name>". */
   folder: boolean
+  /**
+   * Rotina com UMA origem: o conteúdo vai direto na pasta datada (pasta → o que tem dentro dela;
+   * arquivo → o próprio arquivo, com o nome dele). `name` só vira subpasta se o conteúdo colidir com
+   * os nomes reservados (manifesto/marcador).
+   */
+  direct: boolean
 }
+
+/** Nomes que o BC Backup grava dentro da pasta do backup (em minúsculas). */
+export const RESERVED_NAMES: ReadonlySet<string> = new Set(
+  [MANIFEST_FILE, IN_PROGRESS_MARKER_FILE].map((n) => n.toLowerCase())
+)
 
 function lastSegment(p: string): string {
   const parts = p.replace(/[\\/]+$/, '').split(/[\\/]/)
@@ -142,74 +163,33 @@ function withSuffix(name: string, n: number, isFile: boolean): string {
   return dot > 0 ? `${name.slice(0, dot)} (${n})${name.slice(dot)}` : `${name} (${n})`
 }
 
-/** Nomes das origens dentro do backup, únicos (sem diferenciar maiúsculas). */
-export function sourceSlots(sources: SourceItem[]): SourceSlot[] {
-  // O nome do manifesto é reservado: um arquivo de origem com esse nome seria sobrescrito por ele.
-  const used = new Set<string>([MANIFEST_FILE.toLowerCase()])
-  return sources.map((source) => {
-    const explicit = source.label?.trim()
-    const folder = source.kind !== 'file' || !!explicit
-    const base = sanitizeName(explicit || defaultSourceName(source.path), 'Origem')
-    let name = base
-    for (let n = 2; used.has(name.toLowerCase()); n++) name = withSuffix(base, n, !folder)
-    used.add(name.toLowerCase())
-    return { source, name, folder }
-  })
+/** Nome livre (sem diferenciar maiúsculas) diante de `used`: "x", "x (2)", "x (3)"… */
+function uniqueName(base: string, used: Set<string>, isFile: boolean): string {
+  let name = base
+  for (let n = 2; used.has(name.toLowerCase()); n++) name = withSuffix(base, n, isFile)
+  used.add(name.toLowerCase())
+  return name
 }
 
-/**
- * Pasta "<destino>/BC Backup/<rotina>" com o marcador `.bcbackup-rotina.json`.
- * Se a rotina mudou de nome, reaproveita (e tenta renomear) a pasta antiga marcada com o mesmo id;
- * se o nome já pertence a outra rotina, usa "<nome> (2)".
- */
-export async function resolveRoutineDir(
-  destPath: string,
-  routine: { id: string; name: string },
-  log: (level: LogLevel, message: string) => void = () => {}
-): Promise<string> {
-  const base = join(destPath, BACKUP_ROOT_DIR)
-  try {
-    await mkdir(base, { recursive: true })
-  } catch (e) {
-    const code = errCode(e)
-    throw new DestinationError(destinationErrorMessage(code, e), code || 'EDEST', e)
-  }
-  const desired = sanitizeName(routine.name)
-  let entries: string[]
-  try {
-    entries = (await readdir(base, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name)
-  } catch {
-    entries = []
-  }
-  for (const name of entries) {
-    const marker = await readRoutineMarker(join(base, name))
-    if (marker?.routineId !== routine.id) continue
-    if (name !== desired && !(await pathExists(join(base, desired)))) {
-      try {
-        await renameRetry(join(base, name), join(base, desired), 3)
-        log('info', `Pasta da rotina renomeada de "${name}" para "${desired}".`)
-        return join(base, desired)
-      } catch {
-        // Pasta aberta no Explorer, por exemplo: segue usando o nome antigo.
-      }
-    }
-    return join(base, name)
-  }
-  for (let n = 1; n <= 50; n++) {
-    const candidate = n === 1 ? desired : `${desired} (${n})`
-    const dir = join(base, candidate)
-    const marker = await readRoutineMarker(dir)
-    if (marker && marker.routineId !== routine.id) continue
-    try {
-      await mkdir(dir, { recursive: true })
-      await writeRoutineMarker(dir, routine.id, routine.name)
-    } catch (e) {
-      const code = errCode(e)
-      throw new DestinationError(destinationErrorMessage(code, e), code || 'EDEST', e)
-    }
-    return dir
-  }
-  throw new DestinationError('Não foi possível criar a pasta da rotina no destino.', 'EDEST')
+/** Nome de um arquivo de origem gravado direto na pasta do backup (fora dos nomes reservados). */
+export function directFileName(path: string): string {
+  return uniqueName(sanitizeName(defaultSourceName(path), 'Origem'), new Set(RESERVED_NAMES), true)
+}
+
+/** Nomes das origens dentro do backup, únicos (sem diferenciar maiúsculas). */
+export function sourceSlots(sources: SourceItem[]): SourceSlot[] {
+  const direct = sources.length === 1
+  // Os nomes do manifesto e do marcador são reservados: um arquivo de origem com esse nome seria
+  // sobrescrito por eles (ou os sobrescreveria).
+  const used = new Set<string>(RESERVED_NAMES)
+  return sources.map((source) => {
+    const explicit = source.label?.trim()
+    if (direct && source.kind === 'file')
+      return { source, name: directFileName(source.path), folder: false, direct }
+    const folder = source.kind !== 'file' || !!explicit
+    const base = sanitizeName(explicit || defaultSourceName(source.path), 'Origem')
+    return { source, name: uniqueName(base, used, !folder), folder, direct }
+  })
 }
 
 /** Caminho real (resolve links/junções/unidades substituídas); se falhar, o caminho absoluto. */
@@ -248,7 +228,7 @@ async function physicallyInside(inner: string, outer: string, timeoutMs: number)
 }
 
 const INSIDE_SOURCE_MESSAGE =
-  'O destino fica dentro da origem (ou a origem dentro da pasta "BC Backup" do destino): o backup copiaria a si mesmo. Escolha outro destino.'
+  'O destino fica dentro da origem (ou a origem dentro do destino): o backup copiaria a si mesmo. Escolha outro destino.'
 
 function nothingCopiedMessage(): string {
   return 'Nenhum arquivo pôde ser copiado (em uso, sem permissão ou removidos durante o backup). Os backups anteriores foram mantidos.'
@@ -418,7 +398,14 @@ export async function runJob(
     const scanNow = now().getTime() + (opts.moveAgeSkewMs ?? 0)
     for (const [i, slot] of slots.entries()) {
       for await (const f of walk(slot.source.path, filter, issues, stats, signal)) {
-        const rel = slot.folder || isDir[i] ? `${slot.name}/${f.rel}` : slot.name
+        // Uma origem: direto na pasta do backup. Várias: "<rótulo>/…" (ou o arquivo como "<rótulo>").
+        const rel = slot.direct
+          ? isDir[i]
+            ? f.rel
+            : directFileName(slot.source.path)
+          : slot.folder || isDir[i]
+            ? `${slot.name}/${f.rel}`
+            : slot.name
         const item: FileItem = { ...f, rel }
         if (report) {
           // Progresso a cada arquivo examinado, não só a cada elegível: com muitos recentes ou em uso
@@ -452,6 +439,21 @@ export async function runJob(
     tracker.scanned(items.length, totalBytes)
     result.filesTotal = items.length
     result.bytesTotal = totalBytes
+    // Uma origem (pasta) com um arquivo/pasta na raiz chamado como o manifesto ou o marcador (ex.: o
+    // backup de uma pasta de backup): o conteúdo vai para a subpasta da origem, sem colidir.
+    let layout: BackupManifest['layout'] = slots.length === 1 ? 'direct' : 'subfolders'
+    if (
+      layout === 'direct' &&
+      isDir[0] &&
+      items.some((it) => RESERVED_NAMES.has(it.rel.split('/')[0].toLowerCase()))
+    ) {
+      for (const it of items) it.rel = `${slots[0].name}/${it.rel}`
+      layout = 'subfolders'
+      L(
+        'info',
+        `A origem tem arquivos com nomes reservados do BC Backup; o conteúdo vai na subpasta "${slots[0].name}".`
+      )
+    }
 
     const walkSkipped: SkippedFile[] = issues.map((i) => ({
       path: i.path,
@@ -591,22 +593,29 @@ export async function runJob(
             }
           }
         }
-        // 1b) destino dentro da origem? (antes de criar qualquer coisa no destino)
-        const backupRoot = join(await realPathOf(dest.path, accessTimeout), BACKUP_ROOT_DIR)
-        if (sourceDirs.some((src) => isInside(backupRoot, src) || isInside(src, backupRoot))) {
+        // 1b) destino dentro da origem (ou a origem dentro do destino)? Antes de criar qualquer coisa.
+        const realDest = await realPathOf(dest.path, accessTimeout)
+        if (sourceDirs.some((src) => isInside(realDest, src) || isInside(src, realDest))) {
           throw new DestinationError(INSIDE_SOURCE_MESSAGE, 'EINSIDE')
         }
         // …também por outra grafia que o caminho real não resolve (\\PC\D$, unidade mapeada).
         for (const src of sourceDirs) {
           if (
             (await physicallyInside(dest.path, src, accessTimeout)) ||
-            (await physicallyInside(src, backupRoot, accessTimeout))
+            (await physicallyInside(src, dest.path, accessTimeout))
           )
             throw new DestinationError(INSIDE_SOURCE_MESSAGE, 'EINSIDE')
         }
-        // 2) pasta da rotina, marcador e sobras de execuções anteriores (libera espaço antes da checagem)
-        const routineDir = await resolveRoutineDir(dest.path, routine, L)
-        await cleanupLeftovers(routineDir, routine.id, L)
+        // 2) sobras de execuções anteriores DESTA rotina (libera espaço antes da checagem). A pasta pode
+        // ser compartilhada: o que é de outra rotina, ou de outro computador e recente, fica.
+        const cleanup = { routineId: routine.id, runId: spec.runId, hostname: spec.hostname, now: now() }
+        // Destino escolhido = a antiga pasta desta rotina ("BC Backup/<rotina>", com o marcador dela):
+        // as sobras sem marcador lá são da versão anterior (tratadas como legadas).
+        const destIsLegacy = (await readRoutineMarker(dest.path))?.routineId === routine.id
+        await cleanupLeftovers(dest.path, { ...cleanup, legacy: destIsLegacy }, L)
+        // Backups antigos em "<destino>/BC Backup/<rotina>" (versões anteriores): só retenção e limpeza.
+        const legacyDirs = await legacyRoutineDirs(dest.path, routine.id)
+        for (const dir of legacyDirs) await cleanupLeftovers(dir, { ...cleanup, legacy: true }, L)
         // 3) espaço livre ≥ bytes × 1,05
         const need = Math.ceil(totalBytes * 1.05)
         const space = await diskSpaceOf(dest.path, accessTimeout).catch(() => null)
@@ -616,13 +625,27 @@ export async function runJob(
             'ENOSPC'
           )
         }
-        if (routineDir.length + longest + 25 > 240) {
+        // "<destino>\<carimbo>.em-andamento\" + o caminho relativo mais longo.
+        if (dest.path.length + 40 + longest > 240) {
           L(
             'warn',
             'Alguns caminhos no destino passam de 240 caracteres; o Explorer do Windows pode ter dificuldade para abri-los.'
           )
         }
-        const stamp = await uniqueStamp(routineDir, startedAt)
+        // 4) reserva o nome (mkdir atômico; "_2", "_3"… se outra rotina/outro PC já usou este segundo)
+        // e grava o marcador de "em andamento" antes de qualquer arquivo.
+        const claim: OutputClaim = await claimOutput(dest.path, backupStamp(startedAt), routine.mode, {
+          format: IN_PROGRESS_FORMAT,
+          version: 1,
+          routineId: routine.id,
+          routineName: routine.name,
+          runId: spec.runId,
+          hostname: spec.hostname,
+          pid: process.pid,
+          startedAt: now().toISOString()
+        })
+        workPath = claim.workDir
+        const markerPath = join(claim.workDir, IN_PROGRESS_MARKER_FILE)
         const manifest = (
           files: number,
           bytes: number,
@@ -646,28 +669,34 @@ export async function runJob(
           appVersion: spec.appVersion,
           hostname: spec.hostname,
           sources: slots.map((s) => ({ label: s.name, path: s.source.path })),
-          ...(move ? { moveSources: true as const } : {})
+          ...(move ? { moveSources: true as const } : {}),
+          layout
         })
         /** "Mover": o que este destino conferiu (preenchido só depois da verificação completa). */
         const verified = new Map<string, { bytes: number; sha256: string }>()
 
         if (routine.mode === 'zip') {
-          // 4) compacta em "<carimbo>.zip.em-andamento"
-          const finalPath = join(routineDir, `${stamp}.zip`)
-          const work = `${finalPath}${IN_PROGRESS_SUFFIX}`
-          workPath = work
+          // 5) compacta em "<nome>.em-andamento/<nome>.zip"
+          const work = claim.workZip!
           const z = await zipTree(items, work, {
             level: routine.zipLevel ?? 6,
             tracker,
             signal,
             hooks: opts.hooks,
             manifest: (files, bytes, skipped) => manifest(files, bytes, skipped + walkSkipped.length),
-            durable: move
+            durable: move,
+            spoolDir: claim.workDir,
+            bufferMax: opts.zipBufferMax,
+            onRedo: (changed, attempt) =>
+              L(
+                'warn',
+                `${plural(changed.length, 'arquivo grande mudou', 'arquivos grandes mudaram')} durante a leitura (${changed[0].abs}); o ZIP será montado de novo (tentativa ${attempt}).`
+              )
           })
           skippedAll = [...walkSkipped, ...z.skipped]
           if (!z.added.length) throw new DestinationError(nothingCopiedMessage(), 'ENOFILES')
           await opts.hooks?.beforeVerify?.(work, i)
-          // 5) verifica (completa: CRC-32 e sha256 de cada entrada)
+          // 6) verifica (completa: relê o .zip do disco, CRC-32 e sha256 de cada entrada)
           if (verify !== 'none') {
             const vi = await verifyZip(work, z.added, verify, tracker, signal)
             if (vi.length) throw new DestinationError(verifyFailureMessage(vi), 'EVERIFY')
@@ -679,24 +708,29 @@ export async function runJob(
               for (const f of z.added)
                 if (f.abs && f.sha256) verified.set(f.abs, { bytes: f.bytes, sha256: f.sha256 })
           }
-          // 6) nome final + manifesto ao lado (fonte da retenção)
-          await renameRetry(work, finalPath)
-          workPath = null
+          // 7) nome final (para fora da pasta reservada) + manifesto ao lado (fonte da retenção).
+          // O nome é nosso (reservado), mas confere de novo: um rename por cima apagaria o arquivo de alguém.
+          if (await pathExists(claim.finalPath))
+            throw new DestinationError(
+              `Já existe ${claim.finalPath} no destino (criado por outro programa durante o backup).`,
+              'EEXIST'
+            )
+          await renameRetry(work, claim.finalPath)
+          res.outputPath = claim.finalPath
           await writeJsonAtomic(
-            zipSidecarPath(finalPath),
+            zipSidecarPath(claim.finalPath),
             manifest(z.added.length, z.bytes, skippedAll.length, verify !== 'none')
           )
-          res.outputPath = finalPath
+          // A pasta reservada só tem o marcador agora.
+          await rm(claim.workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(
+            () => {}
+          )
+          workPath = null
           res.filesCopied = z.added.length
           res.bytesCopied = z.bytes
         } else {
-          // 4) copia para "<carimbo>.em-andamento"
-          const finalPath = join(routineDir, stamp)
-          const work = `${finalPath}${IN_PROGRESS_SUFFIX}`
-          workPath = work
-          await mkdir(work, { recursive: true }).catch((e) => {
-            throw new DestinationError(destinationErrorMessage(errCode(e), e), errCode(e) || 'EDEST', e)
-          })
+          // 5) copia para "<nome>.em-andamento" (já reservada, com o marcador)
+          const work = claim.workDir
           const c = await copyTree(items, work, tracker, signal, {
             hash: verify === 'full',
             hooks: opts.hooks,
@@ -706,7 +740,7 @@ export async function runJob(
           skippedAll = [...walkSkipped, ...c.skipped]
           if (!c.copied.length) throw new DestinationError(nothingCopiedMessage(), 'ENOFILES')
           await opts.hooks?.beforeVerify?.(work, i)
-          // 5) verifica (completa: relê o destino e compara o sha256 da leitura da origem)
+          // 6) verifica (completa: relê o destino e compara o sha256 da leitura da origem)
           if (verify !== 'none') {
             const vi = await verifyCopiedFiles(c.copied, work, verify, tracker, signal)
             if (vi.length) throw new DestinationError(verifyFailureMessage(vi), 'EVERIFY')
@@ -715,16 +749,17 @@ export async function runJob(
               for (const f of c.copied)
                 if (f.hash) verified.set(f.item.abs, { bytes: f.bytes, sha256: f.hash })
           }
-          // 6) manifesto + rename
+          // 7) manifesto, tira o marcador e dá o nome final
           await writeFolderManifest(
             work,
             manifest(c.copied.length, c.bytes, skippedAll.length, verify === 'none' ? undefined : true)
           )
+          await rm(markerPath, { force: true, maxRetries: 3, retryDelay: 100 }).catch(() => {})
           res.filesCopied = c.copied.length
           res.bytesCopied = c.bytes
           try {
-            await renameRetry(work, finalPath)
-            res.outputPath = finalPath
+            await renameRetry(work, claim.finalPath)
+            res.outputPath = claim.finalPath
             workPath = null
           } catch (e) {
             // Backup completo e com manifesto: fica com o nome provisório e é finalizado na próxima execução.
@@ -753,12 +788,15 @@ export async function runJob(
             (skippedAll.length ? `, ${skippedAll.length} ignorado(s).` : '.')
         )
 
-        // 7) retenção — só depois de um backup concluído neste destino (nunca apaga o que acabou de ser criado)
+        // 8) retenção — só depois de um backup concluído neste destino (nunca apaga o que esta execução
+        // criou, em nenhum destino). Só vê backups com o manifesto desta rotina.
         if (routine.retention.enabled && !keepWork && res.outputPath) {
           tracker.phase('pruning')
-          res.pruned = await applyRetention(routineDir, routine.id, routine.retention, now(), L, [
-            basename(res.outputPath)
-          ])
+          res.pruned = await applyRetention(dest.path, routine.id, routine.retention, now(), L, {
+            protect: [res.outputPath],
+            protectSnapshotId: spec.runId,
+            extraDirs: legacyDirs
+          })
         }
       } catch (e) {
         if (workPath && !keepWork)

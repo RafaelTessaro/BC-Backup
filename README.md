@@ -20,9 +20,13 @@ do Windows e e-mail.
 
 - **Rotinas** com nome próprio: criar, editar, duplicar, pausar/retomar e excluir.
 - **Várias origens** (pastas e arquivos) e **vários destinos por rotina** — cada destino com status próprio.
-- **Pasta datada** (`BC Backup\<Rotina>\2026-10-04_18-00-00\`) ou **ZIP** por execução.
+- **Pasta datada** direto no destino escolhido (`E:\Backups\2026-10-04_18-00-00\` com os arquivos dentro) ou
+  **ZIP** (`E:\Backups\2026-10-04_18-00-00.zip`) por execução. O nome da rotina não vira pasta; com várias
+  origens, cada uma fica numa subpasta dentro da pasta datada.
 - **Filtros** de inclusão/exclusão (com exclusões padrão: `Thumbs.db`, `~$*`, `*.tmp`, lixeira…).
-- **Verificação da cópia**: rápida (tamanho + data) ou completa (relendo o destino).
+- **Verificação completa** sempre: o sha256 de cada arquivo lido da origem é comparado com o destino relido do
+  disco. Arquivo que muda **durante** a cópia é copiado de novo; se mudar outra vez, fica de fora com o aviso
+  "Arquivo alterado durante a cópia" (nunca entra uma cópia "rasgada").
 - **Agendamento interno**: dias da semana e até 6 horários, a cada N horas (com janela), ao iniciar o computador ou
   manual. **Backup atrasado** (PC desligado no horário) roda uma vez ao ligar.
 - **Retenção** por dias de calendário + **mínimo garantido** de backups ("manter 7 dias, nunca menos de 3").
@@ -152,8 +156,8 @@ Tudo fica na pasta de dados do usuário (`userData` do Electron):
 
 Dentro dela: `config.json` (rotinas, configurações e a senha SMTP cifrada), `state.json` (estado do agendador), `history.ndjson` e
 `runs/` (histórico e detalhes de cada execução) e `logs/bc-backup.log`. Os **backups** em si ficam nos destinos
-escolhidos, em `BC Backup\<Rotina>\<data>\`, cada um com o manifesto `bcbackup-manifesto.json`. Desinstalar o
-programa **não** apaga essa pasta nem os backups.
+escolhidos, direto na pasta de cada destino (`<destino>\<data>\` ou `<destino>\<data>.zip`), cada um com o
+manifesto `bcbackup-manifesto.json`. Desinstalar o programa **não** apaga essa pasta nem os backups.
 
 ## Segurança
 
@@ -166,4 +170,7 @@ programa **não** apaga essa pasta nem os backups.
   verificação de integridade do `app.asar` e carregamento só a partir dele.
 - **E-mails** sem imagens ou conteúdo remoto e com todo texto vindo do usuário ou do disco escapado (nomes de
   arquivo não injetam HTML); quebras de linha são removidas do assunto.
-- A **retenção só apaga** pastas/ZIPs com manifesto válido da própria rotina — nunca arquivos do usuário.
+- A **retenção só apaga** pastas/ZIPs com manifesto válido da própria rotina — nunca arquivos do usuário. A pasta de
+  destino pode ser compartilhada (outras rotinas, outro computador): o nome de cada backup é reservado de forma
+  atômica (`_2`, `_3`… se o segundo já foi usado) e cópias em andamento de outra rotina ou de outro computador
+  nunca são apagadas pela limpeza.

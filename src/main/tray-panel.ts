@@ -19,7 +19,7 @@ import { currentResolvedTheme, isQuitting, setQuitting, type ResolvedTheme } fro
 
 export const PANEL_SIZE = { width: 360, height: 480 }
 /** `surface-raised` dos dois temas: também é o fundo da janela (sem flash ao mostrar). */
-const PANEL_BG: Record<ResolvedTheme, string> = { light: '#FFFFFF', dark: '#18191D' }
+const PANEL_BG: Record<ResolvedTheme, string> = { light: '#FFFFFF', dark: '#101413' }
 /** O clique no ícone que acabou de causar o blur não reabre o painel. */
 const REOPEN_GUARD_MS = 300
 /** Blur logo depois do show (o Explorer ainda processando o clique): devolve o foco ao painel. */

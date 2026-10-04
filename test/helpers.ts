@@ -1,11 +1,21 @@
 // Utilitários compartilhados pelos testes.
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Routine } from '@shared/types'
-import { createDefaultRoutine } from '@shared/defaults'
-import { MANIFEST_FILE } from '@shared/defaults'
-import { MANIFEST_FORMAT, type BackupManifest } from '../src/main/engine/manifest'
+import {
+  IN_PROGRESS_MARKER_FILE,
+  LEGACY_ROOT_DIR,
+  MANIFEST_FILE,
+  ROUTINE_MARKER_FILE,
+  createDefaultRoutine
+} from '@shared/defaults'
+import {
+  IN_PROGRESS_FORMAT,
+  MANIFEST_FORMAT,
+  type BackupManifest,
+  type InProgressMarker
+} from '../src/main/engine/manifest'
 import type { StoredRoutine } from '../src/main/store'
 
 export async function tempDir(prefix = 'bcb-'): Promise<{ dir: string; cleanup: () => Promise<void> }> {
@@ -66,4 +76,54 @@ export async function makeSnapshotDir(
   await writeFile(join(p, 'arquivo.txt'), 'x')
   if (m) await writeFile(join(p, MANIFEST_FILE), JSON.stringify(m))
   return p
+}
+
+/** Marcador de cópia em andamento (padrão: rotina rot-1, outra execução, este computador de teste). */
+export function inProgressMarker(patch: Partial<InProgressMarker> = {}): InProgressMarker {
+  return {
+    format: IN_PROGRESS_FORMAT,
+    version: 1,
+    routineId: 'rot-1',
+    routineName: 'Financeiro diário',
+    runId: 'run-antigo',
+    hostname: 'pc-teste',
+    pid: 1234,
+    startedAt: new Date().toISOString(),
+    ...patch
+  }
+}
+
+/**
+ * Pasta "<nome>.em-andamento" com arquivos parciais e, opcionalmente, o marcador.
+ * `ageMs` envelhece a pasta e o marcador (mtime) — sobras de outro PC só saem depois de 12 h paradas.
+ */
+export async function makeInProgressDir(
+  dir: string,
+  name: string,
+  marker: InProgressMarker | null,
+  ageMs = 0
+): Promise<string> {
+  const p = join(dir, name)
+  await mkdir(p, { recursive: true })
+  if (marker) await writeFile(join(p, IN_PROGRESS_MARKER_FILE), JSON.stringify(marker))
+  await writeFile(join(p, 'parcial.txt'), 'metade')
+  if (ageMs) {
+    const t = new Date(Date.now() - ageMs)
+    if (marker) await utimes(join(p, IN_PROGRESS_MARKER_FILE), t, t)
+    await utimes(join(p, 'parcial.txt'), t, t)
+    await utimes(p, t, t)
+  }
+  return p
+}
+
+/** Pasta legada "<destino>/BC Backup/<rotina>" com o marcador da rotina (versões anteriores). */
+export async function makeLegacyRoutineDir(
+  dest: string,
+  routineName = 'Financeiro diário',
+  routineId = 'rot-1'
+): Promise<string> {
+  const rd = join(dest, LEGACY_ROOT_DIR, routineName)
+  await mkdir(rd, { recursive: true })
+  await writeFile(join(rd, ROUTINE_MARKER_FILE), JSON.stringify({ format: 'bcbackup-rotina', routineId }))
+  return rd
 }
