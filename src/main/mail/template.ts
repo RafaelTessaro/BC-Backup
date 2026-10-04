@@ -55,7 +55,7 @@ export interface TestEmailContext {
 export const MAX_LISTED_ISSUES = 20
 
 /* ------------------------------------------------------------------ */
-/* Paleta (docs/research/02-design-system.md §3, tema claro)           */
+/* Paleta (tema claro + marca: preto com verde-menta, do ícone oficial)  */
 /* ------------------------------------------------------------------ */
 
 const C = {
@@ -66,11 +66,14 @@ const C = {
   text: '#16171B',
   text2: '#4F5059',
   text3: '#696A73',
-  accent: '#3254F0',
-  accentDark: '#2843D6',
-  accentLight: '#5674FF',
-  accentSoft: '#EEF1FE',
-  accentText: '#2B48DB'
+  /** Preto da marca (quadrado do ícone). */
+  ink: '#0B0F0D',
+  inkTop: '#0B2119',
+  /** Verde-menta da marca: só acentos (nunca texto sobre branco, nem confundir com o verde de sucesso). */
+  mint: '#00D9A0',
+  mintBright: '#14F6C8',
+  /** Texto secundário sobre a faixa preta. */
+  onInk: '#B4E9DA'
 } as const
 
 interface StatusTheme {
@@ -82,9 +85,21 @@ interface StatusTheme {
   soft: string
   /** Texto secundário sobre a faixa (cor sólida: o Outlook não entende rgba). */
   onColor: string
-  /** Símbolo dentro do círculo branco da faixa (entidade HTML). */
+  /** Símbolo dentro do círculo da faixa (entidade HTML). */
   symbol: string
+  /** Círculo do símbolo (padrão: branco com o símbolo na cor da faixa). */
+  symbolBg?: string
+  symbolColor?: string
 }
+
+/** Faixa da marca (preta, símbolo menta): e-mail de teste e estados "em andamento". */
+const BRAND_THEME = {
+  color: C.ink,
+  soft: '#E9F8F2',
+  onColor: C.onInk,
+  symbolBg: C.mint,
+  symbolColor: C.ink
+} as const
 
 const STATUS: Record<RunStatus, StatusTheme> = {
   success: {
@@ -122,17 +137,13 @@ const STATUS: Record<RunStatus, StatusTheme> = {
   running: {
     label: 'Em execução',
     title: 'Backup em execução',
-    color: C.accent,
-    soft: C.accentSoft,
-    onColor: '#DCE3FD',
+    ...BRAND_THEME,
     symbol: '&#8635;'
   },
   queued: {
     label: 'Na fila',
     title: 'Backup na fila',
-    color: C.accent,
-    soft: C.accentSoft,
-    onColor: '#DCE3FD',
+    ...BRAND_THEME,
     symbol: '&#8635;'
   }
 }
@@ -534,7 +545,10 @@ ${opts.footer}
 `
 }
 
-/** Cabeçalho com a marca desenhada em CSS (sem imagens) e, à direita, a empresa do técnico. */
+/**
+ * Cabeçalho com a marca desenhada em CSS (sem imagens): quadrado preto arredondado com "BC" em menta,
+ * como o ícone do app, e, à direita, a empresa do técnico. O Outlook ignora o gradiente e usa o bgcolor.
+ */
 function brandHeader(companyName: string): string {
   const company = oneLine(companyName)
   const right = isDefaultBrand(company)
@@ -546,7 +560,7 @@ function brandHeader(companyName: string): string {
 <tr>
 <td valign="middle" width="28" style="width:28px;">
 <table ${TABLE}><tr>
-<td width="28" height="28" align="center" valign="middle" bgcolor="${C.accent}" style="width:28px;height:28px;border-radius:7px;background-color:${C.accent};background-image:linear-gradient(135deg,${C.accentLight} 0%,${C.accentDark} 100%);font-family:${FONT};font-size:11px;line-height:28px;font-weight:700;letter-spacing:-0.2px;color:#FFFFFF;text-align:center;mso-line-height-rule:exactly;">BC</td>
+<td width="28" height="28" align="center" valign="middle" bgcolor="${C.ink}" style="width:28px;height:28px;border-radius:7px;background-color:${C.ink};background-image:linear-gradient(180deg,${C.inkTop} 0%,#000000 100%);font-family:${FONT};font-size:11px;line-height:28px;font-weight:700;letter-spacing:-0.2px;color:${C.mintBright};text-align:center;mso-line-height-rule:exactly;">BC</td>
 </tr></table>
 </td>
 <td valign="middle" style="padding-left:10px;font-family:${FONT};font-size:16px;line-height:20px;color:${C.text};letter-spacing:-0.2px;"><span style="font-weight:600;color:${C.text};">BC</span> <span style="font-weight:400;color:${C.text2};">Backup</span></td>
@@ -563,13 +577,15 @@ function statusBanner(theme: StatusTheme, titleHtml: string, subtitle: string[])
     .filter(Boolean)
     .map((part) => `<span style="white-space:nowrap;">${escapeHtml(part)}</span>`)
     .join(' &middot; ')
+  const symbolBg = theme.symbolBg ?? '#FFFFFF'
+  const symbolColor = theme.symbolColor ?? theme.color
   return `<tr>
 <td class="bc-px" bgcolor="${theme.color}" style="background-color:${theme.color};padding:22px 32px;border-radius:12px 12px 0 0;">
 <table ${TABLE} width="100%">
 <tr>
 <td valign="middle" width="36" style="width:36px;">
 <table ${TABLE}><tr>
-<td width="36" height="36" align="center" valign="middle" bgcolor="#FFFFFF" style="width:36px;height:36px;border-radius:18px;background-color:#FFFFFF;font-family:${FONT};font-size:19px;line-height:36px;font-weight:700;color:${theme.color};text-align:center;mso-line-height-rule:exactly;">${theme.symbol}</td>
+<td width="36" height="36" align="center" valign="middle" bgcolor="${symbolBg}" style="width:36px;height:36px;border-radius:18px;background-color:${symbolBg};font-family:${FONT};font-size:19px;line-height:36px;font-weight:700;color:${symbolColor};text-align:center;mso-line-height-rule:exactly;">${theme.symbol}</td>
 </tr></table>
 </td>
 <td valign="middle" style="padding-left:14px;">
@@ -790,11 +806,12 @@ function highlight(textHtml: string, theme: StatusTheme): string {
 </table>`
 }
 
+/** Destaque neutro com o filete menta da marca (próximo backup, dica). */
 function callout(label: string, valueHtml: string): string {
   return `<table ${TABLE} width="100%" style="width:100%;margin-top:28px;">
 <tr>
-<td bgcolor="${C.accentSoft}" style="background-color:${C.accentSoft};border-radius:10px;padding:14px 16px;font-family:${FONT};font-size:14px;line-height:20px;color:${C.text};">
-<span style="color:${C.accentText};font-weight:600;">${escapeHtml(label)}</span>&nbsp; ${valueHtml}
+<td bgcolor="${C.tile}" style="background-color:${C.tile};border-left:3px solid ${C.mint};border-radius:8px;padding:14px 16px;font-family:${FONT};font-size:14px;line-height:20px;color:${C.text};">
+<span style="color:${C.ink};font-weight:700;">${escapeHtml(label)}</span>&nbsp; ${valueHtml}
 </td>
 </tr>
 </table>`
@@ -1044,7 +1061,7 @@ export function renderTestEmail(ctx: TestEmailContext): RenderedEmail {
     ? `[BC Backup] E-mail de teste – ${computer.name}`
     : '[BC Backup] E-mail de teste'
   const footer = footerLine(ctx.companyName, ctx.appVersion)
-  const theme: StatusTheme = { ...STATUS.success, color: C.accent, onColor: '#DCE3FD', soft: C.accentSoft }
+  const theme: StatusTheme = { ...STATUS.success, ...BRAND_THEME }
   const title = 'Tudo certo com o envio de e-mails'
   const greeting = client ? `Olá, ${client}!` : 'Olá!'
   const intro = (who: string) =>
