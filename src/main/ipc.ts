@@ -1,9 +1,9 @@
 // Handlers IPC para TODOS os métodos de `BcApi` (src/shared/api.ts).
 // Cada chamada valida o remetente (só a nossa interface) e os argumentos.
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import { BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions, type WebFrameMain } from 'electron'
-import { IPC_CHANNELS, type BcApi, type FileResult, type PickResult } from '@shared/api'
+import { IPC_CHANNELS, type BcApi, type FileResult, type PathInfo, type PickResult } from '@shared/api'
 import type { AppSettings, ID, Routine } from '@shared/types'
 import { buildExport, planImport } from './config-io'
 import type { AppContext } from './context'
@@ -70,6 +70,7 @@ interface HandlerMap {
   systemPickFiles: A['system']['pickFiles']
   systemStats: A['system']['stats']
   systemEstimateSize: A['system']['estimateSize']
+  systemInspectPaths: A['system']['inspectPaths']
 }
 
 // Garante que todo canal de IPC_CHANNELS tem handler (e vice-versa).
@@ -443,6 +444,18 @@ export function registerIpc(ctx: AppContext): void {
   handle('systemStats', () => computeStats(store.routines(), history.records(), scheduler.nextRuns()))
   handle('systemEstimateSize', (sources, filters) =>
     estimateSize(asPathList(sources), asFilters(filters), 4000)
+  )
+  handle('systemInspectPaths', (paths): Promise<PathInfo[]> =>
+    Promise.all(
+      asPathList(paths, 'caminhos').map(async (p): Promise<PathInfo> => {
+        try {
+          const st = await stat(p)
+          return { path: p, kind: st.isDirectory() ? 'folder' : st.isFile() ? 'file' : null }
+        } catch {
+          return { path: p, kind: null }
+        }
+      })
+    )
   )
 }
 

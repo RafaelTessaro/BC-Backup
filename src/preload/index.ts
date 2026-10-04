@@ -3,7 +3,7 @@
 // cada `on.*` assina um evento de IPC_EVENTS e devolve a função para cancelar a assinatura.
 // O renderer nunca recebe o ipcRenderer cru.
 
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { IPC_CHANNELS, IPC_EVENTS, type BcApi } from '@shared/api'
 
 type Channel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
@@ -62,7 +62,16 @@ const api: BcApi = {
     pickFolders: (opts) => invoke(IPC_CHANNELS.systemPickFolders, opts),
     pickFiles: (opts) => invoke(IPC_CHANNELS.systemPickFiles, opts),
     stats: () => invoke(IPC_CHANNELS.systemStats),
-    estimateSize: (sources, filters) => invoke(IPC_CHANNELS.systemEstimateSize, sources, filters)
+    estimateSize: (sources, filters) => invoke(IPC_CHANNELS.systemEstimateSize, sources, filters),
+    // File.path foi removido no Electron 32: o caminho vem do webUtils (só funciona no preload).
+    pathForFile: (file) => {
+      try {
+        return webUtils.getPathForFile(file)
+      } catch {
+        return ''
+      }
+    },
+    inspectPaths: (paths) => invoke(IPC_CHANNELS.systemInspectPaths, paths)
   },
   on: {
     progress: (cb) => subscribe(IPC_EVENTS.progress, cb),

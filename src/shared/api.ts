@@ -53,6 +53,12 @@ export interface SizeEstimate {
   partial: boolean
 }
 
+export interface PathInfo {
+  path: string
+  /** null = caminho não existe ou não pôde ser lido. */
+  kind: 'file' | 'folder' | null
+}
+
 export interface FileResult {
   canceled: boolean
   path?: string
@@ -109,6 +115,13 @@ export interface BcApi {
     stats(): Promise<DashboardStats>
     /** Soma arquivos/bytes das origens com os filtros (tempo limite ~4 s). */
     estimateSize(sources: string[], filters?: Filters): Promise<SizeEstimate>
+    /**
+     * Caminho real de um arquivo/pasta solto na janela (arrastar e soltar). Síncrono.
+     * Devolve '' quando não há caminho (ex.: conteúdo arrastado de um navegador).
+     */
+    pathForFile(file: File): string
+    /** Diz se cada caminho é arquivo ou pasta (para origens soltas na janela). */
+    inspectPaths(paths: string[]): Promise<PathInfo[]>
   }
   on: {
     progress(cb: (p: RunProgress) => void): () => void
@@ -152,7 +165,8 @@ export const IPC_CHANNELS = {
   systemPickFolders: 'system:pick-folders',
   systemPickFiles: 'system:pick-files',
   systemStats: 'system:stats',
-  systemEstimateSize: 'system:estimate-size'
+  systemEstimateSize: 'system:estimate-size',
+  systemInspectPaths: 'system:inspect-paths'
 } as const
 
 export const IPC_EVENTS = {

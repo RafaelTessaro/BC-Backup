@@ -187,3 +187,17 @@ describe('senha SMTP salva não vaza para outro servidor', () => {
     expect(store.settings.smtp.hasPassword).toBe(true)
   })
 })
+
+describe('system.inspectPaths (origens soltas na janela)', () => {
+  it('diz se é pasta, arquivo ou inexistente', async () => {
+    registerIpc(fakeCtx(fakeStore([])))
+    const file = join(dir, 'planilha.xlsx')
+    await writeFile(file, 'x')
+    const res = await call(IPC_CHANNELS.systemInspectPaths, [dir, file, join(dir, 'sumiu')])
+    expect(res).toEqual([
+      { path: dir, kind: 'folder' },
+      { path: file, kind: 'file' },
+      { path: join(dir, 'sumiu'), kind: null }
+    ])
+  })
+})
