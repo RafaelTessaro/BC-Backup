@@ -1,0 +1,28 @@
+# .github/workflows/build.yml
+name: build
+on: { push: { tags: ['v*'] }, pull_request: {}, workflow_dispatch: {} }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - { uses: actions/setup-node@v7, with: { node-version: 24, cache: npm } }
+      - run: npm ci                          # postinstall downloads Electron (cached in ~/.cache/electron)
+      - run: npm run typecheck && npm test
+      - run: npx playwright install-deps chromium   # Electron's system libs (nss, gbm, asound…)
+      - run: npm run build && xvfb-run -a npx playwright test
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - { uses: actions/setup-node@v7, with: { node-version: 24, cache: npm } }
+      - uses: actions/cache@v6               # Electron zip + electron-builder toolsets (NSIS, icons)
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: eb-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci
+      - { run: npm run dist:win, env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' } }   # unsigned for now
+      - { uses: actions/upload-artifact@v7, with: { name: BC-Backup-Setup, path: dist/*.exe, if-no-files-found: error } }

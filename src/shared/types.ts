@@ -296,7 +296,7 @@ export interface DiskSpace {
 export interface AppInfo {
   name: string
   version: string
-  platform: NodeJS.Platform | 'browser'
+  platform: 'win32' | 'darwin' | 'linux' | 'browser' | (string & {})
   dataPath: string
   logsPath: string
   hostname: string
