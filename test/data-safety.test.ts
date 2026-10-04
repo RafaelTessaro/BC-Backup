@@ -7,13 +7,16 @@ import type { Routine, Schedule } from '@shared/types'
 import { BACKUP_ROOT_DIR, MANIFEST_FILE, ROUTINE_MARKER_FILE } from '@shared/defaults'
 import { backupStamp } from '@shared/format'
 import { runJob, sourceSlots, type JobOptions } from '../src/main/engine/job'
-import { cleanupLeftovers, selectForDeletion } from '../src/main/engine/retention'
+import { copyTree } from '../src/main/engine/copy'
+import { ProgressTracker } from '../src/main/engine/progress'
+import { applyRetention, cleanupLeftovers, selectForDeletion } from '../src/main/engine/retention'
 import { sanitizeName } from '../src/main/engine/fsutil'
 import type { JobSpec } from '../src/main/engine/types'
 import { Scheduler, decideSlot, type SchedRoutine } from '../src/main/scheduler'
 import { buildExport, planImport } from '../src/main/config-io'
 import { checkOpenablePath } from '../src/main/ipc-validate'
 import { JsonFile } from '../src/main/store'
+import { Outbox } from '../src/main/mail/outbox'
 import { DEFAULT_SETTINGS } from '@shared/defaults'
 import { makeRoutine, makeSnapshotDir, manifest, tempDir, writeTree } from './helpers'
 
@@ -76,8 +79,11 @@ describe('retenção nunca apaga o backup que acabou de ser criado', () => {
     const now = new Date(2026, 9, 9, 0, 0, 10)
     const fresh = { name: 'novo', date: new Date(2026, 9, 8, 23, 59, 50) }
     const future = { name: 'futuro', date: new Date(2030, 0, 1, 3) }
-    const del = selectForDeletion([fresh, future], { enabled: true, days: 1, minKeep: 1 }, now, (s) =>
-      s === fresh
+    const del = selectForDeletion(
+      [fresh, future],
+      { enabled: true, days: 1, minKeep: 1 },
+      now,
+      (s) => s === fresh
     )
     expect(del).toEqual([])
   })
@@ -203,6 +209,31 @@ describe('limpeza de sobras só apaga o que é comprovadamente lixo desta rotina
   })
 })
 
+describe('links/junções na pasta da rotina nunca são seguidos na limpeza nem na retenção', () => {
+  it('link com nome de sobra ou de backup antigo não é tocado (nem o alvo)', async () => {
+    const rd = join(dir, 'rotina')
+    await mkdir(rd)
+    const alvo = join(dir, 'pasta-importante')
+    await writeTree(alvo, { 'contrato.pdf': 'x' })
+    // Alvo com manifesto desta rotina (ex.: o usuário "atalhou" um backup para outro disco).
+    await writeFile(join(alvo, MANIFEST_FILE), JSON.stringify(manifest()))
+    const inProgress = `${backupStamp(new Date(2026, 8, 1, 3))}.em-andamento`
+    const oldSnap = backupStamp(new Date(2026, 8, 2, 3))
+    await symlink(alvo, join(rd, inProgress), 'dir')
+    await symlink(alvo, join(rd, oldSnap), 'dir')
+    await cleanupLeftovers(rd, 'rot-1')
+    const pruned = await applyRetention(
+      rd,
+      'rot-1',
+      { enabled: true, days: 1, minKeep: 0 },
+      new Date(2026, 9, 8)
+    )
+    expect(pruned).toEqual([])
+    expect((await readdir(rd)).sort()).toEqual([inProgress, oldSnap].sort())
+    expect(await readFile(join(alvo, 'contrato.pdf'), 'utf8')).toBe('x')
+  })
+})
+
 describe('importar configurações gera ids novos (outro PC não compartilha a pasta da rotina)', () => {
   it('mesmo sem colisão local, o id importado é novo', () => {
     const r = makeRoutine({ id: 'r1', name: 'Docs' })
@@ -214,7 +245,10 @@ describe('importar configurações gera ids novos (outro PC não compartilha a p
 
   it('cenário: rotina exportada do PC A e importada no PC B, mesmo destino de rede → pastas separadas', async () => {
     const a = routineWith({ id: 'id-pc-a' })
-    const [b] = planImport(JSON.parse(JSON.stringify(buildExport(DEFAULT_SETTINGS, [a], '0.1.0'))), []).routines
+    const [b] = planImport(
+      JSON.parse(JSON.stringify(buildExport(DEFAULT_SETTINGS, [a], '0.1.0'))),
+      []
+    ).routines
     // O PC A está no meio de uma cópia neste destino.
     const rdA = routineDir()
     await mkdir(rdA, { recursive: true })
@@ -298,6 +332,10 @@ describe('nomes', () => {
   it('sanitizeName cobre CONIN$, CONOUT$, COM¹ e "CON .txt"', () => {
     for (const n of ['CONIN$', 'conout$', 'COM¹', 'LPT³', 'CON .txt', 'nul .tar.gz'])
       expect(sanitizeName(n).startsWith('_')).toBe(true)
+    // Nunca sai da pasta "BC Backup": sem separadores, sem "." / ".." e sem ponto/espaço final.
+    for (const n of ['..', '.', ' . . ', '../..', '..\\..\\Windows', 'C:\\x', '/etc/passwd', 'a/../../b'])
+      expect(sanitizeName(n)).not.toMatch(/[\\/:]|^\.{1,2}$|[. ]$/)
+    expect(sanitizeName('..')).toBe('Rotina')
     expect(sanitizeName('CONTAS')).toBe('CONTAS')
     expect(sanitizeName('Console')).toBe('Console')
   })
@@ -332,3 +370,85 @@ describe('persistência', () => {
   })
 })
 
+describe('cópia: nomes que colidem no destino', () => {
+  it('dois arquivos com o mesmo nome no destino (maiúsculas/minúsculas, NFC/NFD) → o 2º é pulado, o 1º fica intacto', async () => {
+    await writeTree(join(dir, 'src'), { 'Foto.JPG': 'primeira', 'foto.jpg': 'segunda' })
+    const out = join(dir, 'out')
+    await mkdir(out)
+    const st = await stat(join(dir, 'src', 'Foto.JPG'))
+    // Simula um destino que não diferencia maiúsculas: os dois caem no mesmo caminho.
+    const items = ['Foto.JPG', 'foto.jpg'].map((n) => ({
+      abs: join(dir, 'src', n),
+      rel: 'Fotos/foto.jpg',
+      size: 8,
+      mtime: st.mtime,
+      atime: st.atime
+    }))
+    const tracker = new ProgressTracker(
+      { runId: 'r', routineId: 'x', routineName: 'x', startedAt: '', destinationCount: 1 },
+      () => {}
+    )
+    const res = await copyTree(items, out, tracker, new AbortController().signal, { hash: false })
+    expect(res.copied.length).toBe(1)
+    expect(res.skipped).toEqual([
+      { path: join(dir, 'src', 'foto.jpg'), reason: expect.stringMatching(/mesmo nome/) }
+    ])
+    expect(await readFile(join(out, 'Fotos', 'foto.jpg'), 'utf8')).toBe('primeira')
+  })
+
+  it('origem marcada como "arquivo" que na verdade é uma pasta → copia a pasta normalmente', async () => {
+    const result = await run(
+      routineWith({ sources: [{ id: 's1', path: join(dir, 'origem'), kind: 'file' }] }),
+      new Date(2026, 9, 8, 18),
+      new Date(2026, 9, 8, 18, 1)
+    )
+    expect(result.status).toBe('success')
+    expect(result.filesCopied).toBe(2)
+    const out = result.destinations[0].outputPath!
+    expect(await readFile(join(out, 'origem', 'sub', 'b.txt'), 'utf8')).toBe('mundo')
+  })
+})
+
+describe('fila de e-mail com relógio corrigido para trás', () => {
+  it('item gravado com o relógio adiantado é tentado de novo (e expira em 24 h), não fica parado', async () => {
+    let now = new Date('2027-06-01T10:00:00Z') // relógio errado quando o envio falhou
+    let online = false
+    const sent: string[] = []
+    const expired: string[] = []
+    const ob = await Outbox.open({
+      file: join(dir, 'outbox.json'),
+      now: () => now,
+      send: async () => {
+        if (!online) throw Object.assign(new Error('offline'), { code: 'EDNS' })
+      },
+      onSent: (i) => {
+        sent.push(i.runId)
+      },
+      onExpired: (i) => {
+        expired.push(i.runId)
+      },
+      errorMessage: () => 'offline'
+    })
+    await ob.add('run-1', { to: ['a@b.com'], subject: 's', html: 'h', text: 't' }, 'offline')
+    await ob.add('run-2', { to: ['a@b.com'], subject: 's', html: 'h', text: 't' }, 'offline')
+    ob.stop()
+    now = new Date('2026-10-04T10:00:00Z') // relógio corrigido
+    online = true
+    await ob.processDue()
+    ob.stop()
+    expect(sent).toEqual(['run-1', 'run-2'])
+    expect(ob.items()).toEqual([])
+    // Sem rede: a janela de 24 h recomeça a partir do relógio correto (não fica para sempre).
+    online = false
+    await ob.add('run-3', { to: ['a@b.com'], subject: 's', html: 'h', text: 't' }, 'offline')
+    ob.stop()
+    now = new Date('2025-01-01T00:00:00Z') // voltou de novo
+    await ob.processDue()
+    ob.stop()
+    expect(ob.items()[0].attempts).toBe(2)
+    now = new Date('2025-01-02T00:00:01Z')
+    await ob.processDue()
+    ob.stop()
+    expect(expired).toEqual(['run-3'])
+  })
+})

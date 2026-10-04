@@ -9,11 +9,13 @@
 //   salva os `faltam` primeiros de cands; os demais: renomeia para ".excluindo" e apaga
 //   (do mais antigo ao mais novo).
 // A data vem do NOME da pasta/zip (carimbo), nunca do mtime.
+// Links simbólicos/junções na pasta da rotina nunca são seguidos (lstat): nem contam como backup,
+// nem são limpos — nós nunca os criamos.
 // Nada que não tenha o nosso manifesto (com o mesmo routineId) é apagado, e o backup que a
 // execução acabou de criar é sempre mantido (conta em `manter`): uma execução que atravessa a
 // meia-noite (ou um backup "do futuro" de quando o relógio estava errado) não pode apagá-lo.
 
-import { readFile, readdir, rm, stat } from 'node:fs/promises'
+import { lstat, readFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Retention } from '@shared/types'
 import { DELETING_SUFFIX, IN_PROGRESS_SUFFIX } from '@shared/defaults'
@@ -93,7 +95,7 @@ export async function listSnapshots(routineDir: string, routineId: string): Prom
     const path = join(routineDir, name)
     let st
     try {
-      st = await stat(path)
+      st = await lstat(path)
     } catch {
       continue
     }
@@ -169,8 +171,12 @@ export async function cleanupLeftovers(
     const path = join(routineDir, name)
     try {
       const inProgress = RE_IN_PROGRESS_DIR.exec(name)
+      const relevant =
+        inProgress || RE_IN_PROGRESS_ZIP.test(name) || RE_DELETING.test(name) || RE_SIDECAR.test(name)
+      if (!relevant) continue
+      const st = await lstat(path)
+      if (st.isSymbolicLink()) continue
       if (inProgress) {
-        const st = await stat(path)
         if (!st.isDirectory()) continue
         const manifest = await readFolderManifest(path)
         const finalPath = join(routineDir, inProgress[1])

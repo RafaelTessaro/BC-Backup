@@ -1,7 +1,7 @@
 // Utilitários de sistema de arquivos usados pelo motor de backup e pela persistência.
 // Node puro (sem electron) — testável com vitest.
 
-import { mkdir, open, rename, rm, stat, statfs } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, rm, stat, statfs } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 /** Códigos que o Windows devolve quando antivírus/indexador seguram o arquivo por instantes. */
@@ -65,6 +65,24 @@ export async function renameRetry(from: string, to: string, attempts = 10, baseD
     } catch (e) {
       if (!RENAME_RETRY_CODES.has(errCode(e)) || i >= attempts - 1) throw e
       await sleep(Math.min(baseDelayMs * 2 ** i, 2000))
+    }
+  }
+}
+
+/** Erros de leitura passageiros no Windows (antivírus/indexador segurando o arquivo, ex.: no login). */
+const READ_RETRY_CODES = new Set(['EBUSY', 'EPERM', 'EACCES', 'EMFILE', 'ENFILE'])
+
+/**
+ * readFile (utf8) com novas tentativas (~3 s) para erros passageiros: um arquivo bloqueado por
+ * instantes não pode ser tratado como corrompido/ausente (perderíamos configurações ou histórico).
+ */
+export async function readFileRetry(file: string, attempts = 6, baseDelayMs = 100): Promise<string> {
+  for (let i = 0; ; i++) {
+    try {
+      return await readFile(file, 'utf8')
+    } catch (e) {
+      if (!READ_RETRY_CODES.has(errCode(e)) || i >= attempts - 1) throw e
+      await sleep(baseDelayMs * 2 ** i)
     }
   }
 }

@@ -175,8 +175,8 @@ async function setAllEnabled(c: AppContext, enabled: boolean): Promise<void> {
     for (const id of ids) {
       const r = store.getRoutine(id)
       if (!r || r.enabled) continue
+      store.setRoutineState(id, { lastAttemptSlot: now }) // antes do upsert: um tick no meio não recupera horários
       await store.upsertRoutine({ ...r, enabled: true, updatedAt: now })
-      store.setRoutineState(id, { lastAttemptSlot: now })
     }
     delete store.state.data.pausedByTray
   }

@@ -8,7 +8,7 @@
 // Arquivo corrompido é preservado como "*.corrupt-<ts>" e o app tenta o "*.bak" da sessão anterior.
 
 import { randomUUID } from 'node:crypto'
-import { copyFile, readFile, rename } from 'node:fs/promises'
+import { copyFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   AppSettings,
@@ -38,7 +38,7 @@ import {
   createDefaultRoutine
 } from '@shared/defaults'
 import { parseTime } from '@shared/schedule'
-import { errCode, writeJsonAtomic } from './engine/fsutil'
+import { errCode, readFileRetry, writeJsonAtomic } from './engine/fsutil'
 
 export const CONFIG_SCHEMA_VERSION = 1
 export const STATE_SCHEMA_VERSION = 1
@@ -420,13 +420,13 @@ export class JsonFile<T> {
     let raw: unknown = undefined
     let loadedMain = false
     try {
-      raw = JSON.parse(await readFile(file, 'utf8'))
+      raw = JSON.parse(await readFileRetry(file))
       loadedMain = true
     } catch (e) {
       if (errCode(e) !== 'ENOENT') {
         await rename(file, `${file}.corrupt-${Date.now()}`).catch(() => {})
         try {
-          raw = JSON.parse(await readFile(`${file}.bak`, 'utf8'))
+          raw = JSON.parse(await readFileRetry(`${file}.bak`))
         } catch {
           raw = undefined
         }

@@ -9,7 +9,7 @@
 // Barras invertidas viram "/" (globs sempre enxergam "/"). No Windows e no macOS a
 // comparação ignora maiúsculas/minúsculas.
 
-import { opendir, stat } from 'node:fs/promises'
+import { lstat, opendir, stat } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import picomatch from 'picomatch'
 import type { Filters } from '@shared/types'
@@ -157,15 +157,31 @@ export async function* walk(
         signal?.throwIfAborted()
         const abs = join(dir, ent.name)
         const rel = toPosix(relative(root, abs))
+        let isDir = ent.isDirectory()
+        let isFile = ent.isFile()
         if (ent.isSymbolicLink()) {
-          stats.links++
-          continue
+          // No Windows o readdir marca QUALQUER ponto de reanálise como link — inclusive arquivos do
+          // OneDrive (Arquivos sob Demanda) e da deduplicação do Windows Server. O lstat só reporta
+          // link para symlinks e junções de verdade; o resto é arquivo/pasta comum e entra no backup.
+          let lst
+          try {
+            lst = await lstat(abs)
+          } catch (e) {
+            issues.push({ path: abs, code: errCode(e) || 'EUNKNOWN', message: errMessage(e) })
+            continue
+          }
+          if (lst.isSymbolicLink()) {
+            stats.links++
+            continue
+          }
+          isDir = lst.isDirectory()
+          isFile = lst.isFile()
         }
-        if (ent.isDirectory()) {
+        if (isDir) {
           if (!filter.dirExcluded(rel, ent.name)) stack.push(abs)
           continue
         }
-        if (!ent.isFile()) continue
+        if (!isFile) continue
         let st
         try {
           st = await stat(abs)

@@ -1,9 +1,10 @@
 // Fila de saída de e-mails (doc 01 §7): se o envio falhar (ex.: sem internet), tenta de novo
 // a cada 15 min por até 24 h. Persistida em outbox.json. Node puro (o envio é injetado).
+// Relógio corrigido para trás: próxima tentativa além de 15 min no futuro (ou criação no futuro)
+// só pode ter sido gravada com o relógio errado — o item é tentado já e a janela de 24 h recomeça.
 
 import { randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
-import { writeJsonAtomic } from '../engine/fsutil'
+import { readFileRetry, writeJsonAtomic } from '../engine/fsutil'
 import { isObj } from '../store'
 import type { OutgoingMail } from './smtp'
 
@@ -41,7 +42,7 @@ export class Outbox {
   static async open(d: OutboxDeps): Promise<Outbox> {
     const o = new Outbox(d)
     try {
-      const raw: unknown = JSON.parse(await readFile(d.file, 'utf8'))
+      const raw: unknown = JSON.parse(await readFileRetry(d.file))
       const items = isObj(raw) && Array.isArray(raw.items) ? raw.items : []
       o.list = items.filter(
         (i): i is OutboxItem =>
@@ -92,11 +93,18 @@ export class Outbox {
     this.timer = null
   }
 
+  /** Instante da próxima tentativa; "agora" se o valor gravado for inválido ou do relógio adiantado. */
+  private dueAt(item: OutboxItem, now: number): number {
+    const t = Date.parse(item.nextAttemptAt)
+    if (!Number.isFinite(t) || t - now > (this.d.retryEveryMs ?? RETRY_EVERY_MS)) return now
+    return t
+  }
+
   private arm(): void {
     this.stop()
     if (!this.list.length) return
     const now = this.now().getTime()
-    const next = Math.min(...this.list.map((i) => Date.parse(i.nextAttemptAt) || now))
+    const next = Math.min(...this.list.map((i) => this.dueAt(i, now)))
     const wait = Math.max(1_000, Math.min(next - now, 60 * 60_000))
     this.timer = setTimeout(() => void this.processDue(), wait)
     this.timer.unref?.()
@@ -110,7 +118,8 @@ export class Outbox {
       const maxAge = this.d.maxAgeMs ?? MAX_AGE_MS
       for (const item of [...this.list]) {
         const now = this.now().getTime()
-        if ((Date.parse(item.nextAttemptAt) || 0) > now) continue
+        if (this.dueAt(item, now) > now) continue
+        if (!((Date.parse(item.createdAt) || 0) <= now)) item.createdAt = new Date(now).toISOString()
         try {
           await this.d.send(item.mail)
           this.list = this.list.filter((i) => i.id !== item.id)

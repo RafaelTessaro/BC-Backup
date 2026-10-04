@@ -168,6 +168,15 @@ export async function copyTree(
         // Mantém o percentual coerente e remove o arquivo parcial do destino.
         tracker.addBytes(Math.max(0, item.size - partial))
         await rm(destPathFor(destRoot, item.rel), { force: true }).catch(() => {})
+      } else if (side === 'dst' && code === 'EEXIST') {
+        // Destino sem diferença de maiúsculas/acentos (exFAT, NTFS, APFS) e origem com "Foto.jpg" e
+        // "foto.jpg": pula só este arquivo. NÃO apaga o caminho — ele é a cópia do outro arquivo.
+        skipped.push({
+          path: item.abs,
+          reason:
+            'Já existe um arquivo com o mesmo nome no destino (só muda maiúsculas/minúsculas ou acentos)'
+        })
+        tracker.addBytes(Math.max(0, item.size - partial))
       } else {
         throw new DestinationError(destinationErrorMessage(code, e), code || 'EDEST', e)
       }

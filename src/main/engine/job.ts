@@ -270,8 +270,11 @@ export async function runJob(
     const missing: string[] = []
     /** Caminhos reais das origens que são pastas (para recusar destino dentro da origem). */
     const sourceDirs: string[] = []
+    /** O que está no disco manda: origem marcada como "arquivo" que é uma pasta vira subpasta. */
+    const isDir: boolean[] = []
     for (const slot of slots) {
       const st = await withTimeout(stat(slot.source.path), accessTimeout).catch(() => null)
+      isDir.push(!!st?.isDirectory())
       if (!st) missing.push(slot.source.path)
       else if (st.isDirectory()) sourceDirs.push(await realPathOf(slot.source.path, accessTimeout))
     }
@@ -288,9 +291,9 @@ export async function runJob(
     const issues: WalkIssue[] = []
     const stats = emptyWalkStats()
     let totalBytes = 0
-    for (const slot of slots) {
+    for (const [i, slot] of slots.entries()) {
       for await (const f of walk(slot.source.path, filter, issues, stats, signal)) {
-        const rel = slot.folder ? `${slot.name}/${f.rel}` : slot.name
+        const rel = slot.folder || isDir[i] ? `${slot.name}/${f.rel}` : slot.name
         items.push({ ...f, rel })
         totalBytes += f.size
         tracker.scanned(items.length, totalBytes)

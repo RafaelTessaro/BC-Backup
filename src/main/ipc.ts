@@ -181,11 +181,13 @@ export function registerIpc(ctx: AppContext): void {
     const prev = store.getRoutine(input.id)
     const now = new Date().toISOString()
     const routine: StoredRoutine = { ...input, createdAt: prev?.createdAt ?? now, updatedAt: now }
-    await store.upsertRoutine(routine)
     // Agenda nova/alterada ou rotina retomada: não dispara horários que já passaram.
+    // ANTES de gravar: a lista em memória muda já no upsert e um tick do agendador durante a
+    // gravação veria a agenda nova com a âncora velha (recuperaria um horário que não existia).
     if (!prev || scheduleKey(prev) !== scheduleKey(routine) || (!prev.enabled && routine.enabled)) {
       store.setRoutineState(routine.id, { lastAttemptSlot: now })
     }
+    await store.upsertRoutine(routine)
     ctx.routinesChanged()
     return ctx.withLastRun(routine)
   })
@@ -212,8 +214,8 @@ export function registerIpc(ctx: AppContext): void {
     }
     copy.sources = copy.sources.map((s) => ({ ...s, id: newId() }))
     copy.destinations = copy.destinations.map((d) => ({ ...d, id: newId() }))
+    store.setRoutineState(copy.id, { lastAttemptSlot: now }) // antes do upsert (ver routinesSave)
     await store.upsertRoutine(copy)
-    store.setRoutineState(copy.id, { lastAttemptSlot: now })
     ctx.routinesChanged()
     return ctx.withLastRun(copy)
   })
@@ -222,8 +224,8 @@ export function registerIpc(ctx: AppContext): void {
     const on = asBool(enabled, 'enabled')
     const now = new Date().toISOString()
     const next: StoredRoutine = { ...r, enabled: on, updatedAt: now }
+    if (on && !r.enabled) store.setRoutineState(r.id, { lastAttemptSlot: now }) // antes do upsert
     await store.upsertRoutine(next)
-    if (on && !r.enabled) store.setRoutineState(r.id, { lastAttemptSlot: now })
     const paused = store.state.data.pausedByTray
     if (on && paused?.includes(r.id)) {
       store.state.data.pausedByTray = paused.filter((x) => x !== r.id)
@@ -280,7 +282,13 @@ export function registerIpc(ctx: AppContext): void {
       if (!isValidEmail(e)) throw new Error(`E-mail inválido: ${e}`)
     }
     const prev = store.settings
-    if (password !== undefined) await store.setSmtpPassword(password ? await sealSecret(password) : undefined)
+    if (password !== undefined) {
+      await store.setSmtpPassword(password ? await sealSecret(password) : undefined)
+    } else if (smtpAccountChanged(prev.smtp, smtp)) {
+      // Servidor/usuário mudou sem senha nova: a senha salva não acompanha a troca (não pode ser
+      // reaproveitada para outro servidor).
+      await store.setSmtpPassword(undefined)
+    }
     await store.updateSettings({ smtp: { ...smtp, hasPassword: !!store.config.data.secrets.smtpPassword } })
     await ctx.settingsChanged(prev)
     return store.settings
@@ -293,9 +301,15 @@ export function registerIpc(ctx: AppContext): void {
     const { password: typed, ...smtp } = input
     if (!smtp.host) return { ok: false, message: 'Informe o servidor SMTP.' }
     if (!smtp.fromEmail && !smtp.user) return { ok: false, message: 'Informe o e-mail do remetente.' }
+    const saved = store.settings.smtp
+    if (typed === undefined && saved.hasPassword && smtpAccountChanged(saved, smtp)) {
+      return {
+        ok: false,
+        message: 'Você mudou o servidor ou o usuário: digite a senha novamente para testar.'
+      }
+    }
     try {
-      const password =
-        typed !== undefined ? typed : store.settings.smtp.hasPassword ? await ctx.getSmtpPassword() : ''
+      const password = typed !== undefined ? typed : saved.hasPassword ? await ctx.getSmtpPassword() : ''
       const security =
         smtp.security === 'ssl' ? 'SSL/TLS' : smtp.security === 'starttls' ? 'STARTTLS' : 'sem criptografia'
       const rendered = renderTestEmail({
@@ -364,8 +378,8 @@ export function registerIpc(ctx: AppContext): void {
       const prev = store.settings
       const now = new Date().toISOString()
       for (const r of plan.routines) {
+        store.setRoutineState(r.id, { lastAttemptSlot: now }) // antes do upsert (ver routinesSave)
         await store.upsertRoutine(r)
-        store.setRoutineState(r.id, { lastAttemptSlot: now })
       }
       if (plan.settings) {
         const keepPassword = !!store.config.data.secrets.smtpPassword
@@ -430,4 +444,16 @@ export function registerIpc(ctx: AppContext): void {
   handle('systemEstimateSize', (sources, filters) =>
     estimateSize(asPathList(sources), asFilters(filters), 4000)
   )
+}
+
+/**
+ * A senha SMTP salva só vale para o mesmo servidor e usuário: nunca a enviamos para um host
+ * diferente do que estava gravado quando ela foi digitada.
+ */
+function smtpAccountChanged(
+  saved: Pick<AppSettings['smtp'], 'host' | 'port' | 'user'>,
+  next: Pick<AppSettings['smtp'], 'host' | 'port' | 'user'>
+): boolean {
+  const norm = (v: string) => v.trim().toLowerCase()
+  return norm(saved.host) !== norm(next.host) || saved.port !== next.port || norm(saved.user) !== norm(next.user)
 }

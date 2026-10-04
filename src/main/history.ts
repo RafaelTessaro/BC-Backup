@@ -10,7 +10,7 @@ import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { HistoryQuery } from '@shared/api'
 import type { ID, LogEntry, RunRecord, RunSummary } from '@shared/types'
-import { errCode, renameRetry, writeJsonAtomic } from './engine/fsutil'
+import { errCode, readFileRetry, renameRetry, writeJsonAtomic } from './engine/fsutil'
 import { isObj } from './store'
 
 export type StoredRun = Omit<RunRecord, 'log'>
@@ -77,7 +77,7 @@ export class HistoryStore {
     await mkdir(h.logsDir, { recursive: true })
     let text = ''
     try {
-      text = await readFile(h.file, 'utf8')
+      text = await readFileRetry(h.file)
     } catch (e) {
       if (errCode(e) !== 'ENOENT') throw e
     }
@@ -137,13 +137,29 @@ export class HistoryStore {
       this.lines++
       if (appendLog?.length) {
         const lp = this.logPath(id)
-        if (lp) {
-          const log = await this.readLog(id)
-          await writeJsonAtomic(lp, [...log, ...appendLog], false)
-        }
+        // Log que não pôde ser lido (bloqueado, erro de disco) fica como está: regravar só com as
+        // linhas novas apagaria o log da execução.
+        const log = lp ? await this.readLogForUpdate(lp) : null
+        if (lp && log) await writeJsonAtomic(lp, [...log, ...appendLog], false)
       }
     })
     return next
+  }
+
+  /** Log atual para acrescentar linhas: [] se não existe/ilegível como JSON; null se não deu para ler. */
+  private async readLogForUpdate(lp: string): Promise<LogEntry[] | null> {
+    let text: string
+    try {
+      text = await readFileRetry(lp)
+    } catch (e) {
+      return errCode(e) === 'ENOENT' ? [] : null
+    }
+    try {
+      const v: unknown = JSON.parse(text)
+      return Array.isArray(v) ? (v as LogEntry[]) : []
+    } catch {
+      return []
+    }
   }
 
   private async readLog(id: ID): Promise<LogEntry[]> {
