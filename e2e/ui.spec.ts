@@ -79,13 +79,16 @@ test('seletores: bolinha do Switch centrada com 4 px de folga, ligado e desligad
     expect(all.length).toBeGreaterThan(0)
     for (const s of all) {
       expect([s.w, s.h], JSON.stringify(s)).toEqual([40, 20])
-      for (const g of s.gaps) expect(g, JSON.stringify(s)).toBeCloseTo(4, 1)
+      // [esquerda, direita, cima, baixo]: 4 px do lado da bolinha, em cima e embaixo; 24 px do outro lado.
+      const want = s.checked === 'true' ? [24, 4, 4, 4] : [4, 24, 4, 4]
+      s.gaps.forEach((g, i) => expect(g, JSON.stringify(s)).toBeCloseTo(want[i], 1))
     }
   }
 
   await settle()
   const before = await measure()
   check(before)
+  if (process.env.SHOTS) await page.screenshot({ path: 'docs/screenshots/electron-seletores.png' })
   // Troca o estado de todos (ligado ↔ desligado) e mede de novo.
   const n = await switches.count()
   for (let i = 0; i < n; i++) await switches.nth(i).click()
@@ -93,7 +96,6 @@ test('seletores: bolinha do Switch centrada com 4 px de folga, ligado e desligad
   const after = await measure()
   check(after)
   expect(after.map((s) => s.checked)).not.toEqual(before.map((s) => s.checked))
-  if (process.env.SHOTS) await page.screenshot({ path: 'docs/screenshots/electron-seletores.png' })
 
   expect(l.errors).toEqual([])
   await l.app.close()
