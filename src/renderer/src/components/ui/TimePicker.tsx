@@ -57,7 +57,7 @@ function Column({
   return (
     <div
       ref={ref}
-      className="flex h-[208px] w-14 flex-col gap-0.5 overflow-y-auto scrollbar-none py-1"
+      className="flex h-[208px] w-[56px] flex-col gap-[2px] overflow-y-auto scrollbar-none py-[4px]"
       aria-label={label}
       role="listbox"
     >
@@ -72,7 +72,7 @@ function Column({
             data-selected={active}
             onClick={() => onPick(n)}
             className={cn(
-              'h-7 shrink-0 rounded-sm font-mono text-small tnum transition-colors duration-[120ms]',
+              'h-[28px] shrink-0 rounded-sm font-mono text-small tnum transition-colors duration-[120ms]',
               active
                 ? 'bg-accent text-accent-foreground'
                 : 'text-fg-muted hover:bg-surface-hover hover:text-fg'
@@ -134,9 +134,9 @@ export function TimePicker({ value, onChange, id, label = 'Horário', className 
               type="button"
               tabIndex={-1}
               aria-label="Escolher horário"
-              className="absolute top-1/2 left-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-fg-subtle hover:text-fg"
+              className="absolute top-1/2 left-[4px] flex size-[24px] -translate-y-1/2 items-center justify-center rounded-sm text-fg-subtle hover:text-fg"
             >
-              <Clock className="size-4" strokeWidth={1.75} />
+              <Clock className="size-[16px]" strokeWidth={1.75} />
             </button>
           </Popover.Trigger>
           <input
@@ -145,7 +145,7 @@ export function TimePicker({ value, onChange, id, label = 'Horário', className 
             inputMode="numeric"
             aria-invalid={invalid || undefined}
             aria-describedby={invalid ? errorId : undefined}
-            className={cn(inputBase, 'pr-2 pl-8 font-mono text-[13px] tnum')}
+            className={cn(inputBase, 'pr-[8px] pl-[32px] font-mono text-[13px] tnum')}
             value={draft ?? value}
             onChange={(e) => {
               setDraft(e.target.value.replace(/[^\d:hH]/g, '').slice(0, 5))
@@ -175,7 +175,7 @@ export function TimePicker({ value, onChange, id, label = 'Horário', className 
           sideOffset={4}
           collisionPadding={8}
           onOpenAutoFocus={(e) => e.preventDefault()}
-          className="no-drag z-50 flex gap-1 rounded-lg border border-border bg-surface-raised p-1 shadow-pop data-[state=closed]:animate-pop-out data-[state=open]:animate-pop-in"
+          className="no-drag z-50 flex gap-[4px] rounded-lg border border-border bg-surface-raised p-[4px] shadow-pop data-[state=closed]:animate-pop-out data-[state=open]:animate-pop-in"
         >
           <Column
             label="Horas"

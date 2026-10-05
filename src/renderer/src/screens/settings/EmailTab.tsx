@@ -135,7 +135,7 @@ export function EmailTab() {
             value={draft.preset}
             onValueChange={pickPreset}
             aria-label="Provedor de e-mail"
-            className="flex flex-wrap gap-1.5"
+            className="flex flex-wrap gap-[6px]"
             orientation="horizontal"
           >
             {SMTP_PRESETS.map((p) => (
@@ -143,7 +143,7 @@ export function EmailTab() {
                 key={p.id}
                 value={p.id}
                 className={cn(
-                  'h-8 rounded-md border px-2.5 text-small font-medium transition-[background-color,border-color,color] duration-[120ms]',
+                  'h-[28px] rounded-md border px-[10px] text-small font-medium transition-[background-color,border-color,color] duration-[120ms]',
                   'border-border-strong bg-surface-raised text-fg-muted shadow-xs hover:text-fg',
                   'data-[state=checked]:border-accent-edge data-[state=checked]:bg-accent-soft data-[state=checked]:text-accent-text'
                 )}
@@ -238,7 +238,7 @@ export function EmailTab() {
                     type="button"
                     aria-label={showPass ? 'Ocultar senha' : 'Mostrar senha'}
                     onClick={() => setShowPass((v) => !v)}
-                    className="absolute top-1/2 right-1 flex size-7 -translate-y-1/2 items-center justify-center rounded-sm text-fg-subtle hover:text-fg"
+                    className="absolute top-1/2 right-[2px] flex size-[24px] -translate-y-1/2 items-center justify-center rounded-sm text-fg-subtle hover:text-fg"
                   >
                     {showPass ? (
                       <EyeOff className="size-4" strokeWidth={1.75} />

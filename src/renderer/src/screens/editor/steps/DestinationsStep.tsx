@@ -382,7 +382,7 @@ function ModeCard({
     <RadioGroup.Item
       value={value}
       className={cn(
-        'flex flex-1 items-start gap-3 rounded-lg border p-4 text-left transition-[border-color,background-color,box-shadow] duration-[120ms]',
+        'flex flex-1 items-start gap-[12px] rounded-lg border p-4 text-left transition-[border-color,background-color,box-shadow] duration-[120ms]',
         active
           ? 'border-accent-edge bg-accent-soft/50 shadow-[0_0_0_1px_var(--accent-edge)]'
           : 'border-border bg-surface-raised shadow-card hover:border-border-strong'
@@ -396,7 +396,7 @@ function ModeCard({
       >
         <Icon className="size-4" strokeWidth={1.75} />
       </span>
-      <span className="flex flex-col gap-0.5">
+      <span className="flex flex-col gap-[2px]">
         <span className="text-small font-medium text-fg">{title}</span>
         <span className="text-caption text-fg-subtle">{description}</span>
       </span>
@@ -544,7 +544,7 @@ export function DestinationsStep({
         <RadioGroup.Root
           value={draft.mode}
           onValueChange={(v) => update((d) => ({ ...d, mode: v as RoutineInput['mode'] }))}
-          className="flex gap-3"
+          className="flex gap-[12px]"
           aria-label="Formato da cópia"
         >
           <ModeCard

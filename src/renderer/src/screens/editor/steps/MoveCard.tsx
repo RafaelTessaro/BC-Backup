@@ -196,7 +196,7 @@ export function MoveCard({
                 onCheckedChange={(warnIfEmpty) => set({ warnIfEmpty })}
                 label={<span className="font-medium text-fg">Avisar se não houver arquivo novo</span>}
               />
-              <p className="mt-1 pl-6 text-caption text-fg-subtle">
+              <p className="mt-[4px] pl-[24px] text-caption text-fg-subtle">
                 A execução termina em “Atenção” quando não houver nada para mover, um sinal de que o sistema
                 não gerou o backup.
               </p>

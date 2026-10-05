@@ -84,7 +84,7 @@ export function RetentionStep({
                   onChange={(days) => set({ days })}
                 />
               </div>
-              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Atalhos de dias">
+              <div className="flex flex-wrap gap-[6px]" role="group" aria-label="Atalhos de dias">
                 {QUICK.map((d) => (
                   <button
                     key={d}
@@ -92,7 +92,7 @@ export function RetentionStep({
                     aria-pressed={r.days === d}
                     onClick={() => set({ days: d })}
                     className={cn(
-                      'h-7 rounded-sm border px-2.5 text-caption font-medium transition-colors duration-[120ms]',
+                      'h-[24px] rounded-sm border px-[10px] text-caption font-medium transition-colors duration-[120ms]',
                       r.days === d
                         ? 'border-accent-edge bg-accent-soft text-accent-text'
                         : 'border-border-strong bg-surface-raised text-fg-muted hover:text-fg'

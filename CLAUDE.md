@@ -33,4 +33,6 @@ Windows primeiro (também macOS/Linux). Interface e textos em **português do Br
 - O renderer só fala com o main via `window.bc` (contextIsolation + sandbox). Nada de `nodeIntegration`.
 - Mudou um tipo em `src/shared/types.ts`? Campos novos opcionais ou migração em `src/main/store.ts`.
 - Senha SMTP nunca volta para o renderer (`hasPassword` apenas); guardada com `safeStorage`.
+- A raiz da interface é 14 px: classes rem do Tailwind saem com 87,5 % (`h-8` = 28 px). Em controles (Switch, Checkbox,
+  Segmented, chips, steppers) use **px** (`h-[20px]`, `translate-x-[20px]`) e tamanhos pares — ver §8 do design system.
 - Rode `npm run typecheck`, `npm run lint` e `npm test` antes de commitar.

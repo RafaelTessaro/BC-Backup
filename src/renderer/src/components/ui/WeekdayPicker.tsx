@@ -11,7 +11,7 @@ const ALL = [0, 1, 2, 3, 4, 5, 6]
 const same = (a: number[], b: number[]): boolean =>
   a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i])
 
-/** WeekdayPicker (§8): 7 chips 32 × 32 D S T Q Q S S + atalhos. Semana começa no domingo. */
+/** WeekdayPicker (§8): 7 chips 28 × 28 (px) D S T Q Q S S + atalhos. Semana começa no domingo. */
 export function WeekdayPicker({
   value,
   onChange,
@@ -28,7 +28,7 @@ export function WeekdayPicker({
         type="button"
         onClick={() => onChange(days)}
         className={cn(
-          'rounded-sm px-1.5 py-0.5 text-caption font-medium transition-colors duration-[120ms]',
+          'rounded-sm px-[6px] py-[2px] text-caption font-medium transition-colors duration-[120ms]',
           active ? 'text-accent-text' : 'text-fg-subtle hover:text-fg'
         )}
         aria-pressed={active}
@@ -38,13 +38,13 @@ export function WeekdayPicker({
     )
   }
   return (
-    <div className={cn('flex flex-col gap-2', className)}>
+    <div className={cn('flex flex-col gap-[8px]', className)}>
       <ToggleGroup.Root
         type="multiple"
         value={value.map(String)}
         onValueChange={(v) => onChange(v.map(Number).sort((a, b) => a - b))}
         aria-label="Dias da semana"
-        className="flex gap-1.5"
+        className="flex gap-[6px]"
       >
         {LETTERS.map((letter, day) => (
           <Tooltip key={day} label={WEEKDAY_LONG[day]}>
@@ -52,7 +52,7 @@ export function WeekdayPicker({
               value={String(day)}
               aria-label={WEEKDAY_LONG[day]}
               className={cn(
-                'flex size-8 items-center justify-center rounded-sm border text-small font-medium transition-[background-color,border-color,color] duration-[120ms]',
+                'flex size-[28px] items-center justify-center rounded-sm border text-small font-medium transition-[background-color,border-color,color] duration-[120ms]',
                 'border-border-strong bg-surface-raised text-fg-muted shadow-xs hover:text-fg',
                 'aria-pressed:border-accent-edge aria-pressed:bg-accent aria-pressed:text-accent-foreground aria-pressed:hover:text-accent-foreground'
               )}
@@ -62,7 +62,7 @@ export function WeekdayPicker({
           </Tooltip>
         ))}
       </ToggleGroup.Root>
-      <div className="-ml-1.5 flex items-center gap-1">
+      <div className="-ml-[6px] flex items-center gap-[4px]">
         {shortcut('Dias úteis', WORKDAYS)}
         <span className="text-fg-subtle/60" aria-hidden>
           ·

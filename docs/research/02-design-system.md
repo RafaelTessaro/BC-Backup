@@ -332,14 +332,19 @@ Tooltip do ícone: "BC Backup — Tudo protegido · próximo às 22:00". Itens:
 
 ## 8. Inventário de componentes
 
+> **Medidas em px nos controles.** A raiz da interface é 14 px (`html { font-size: 14px }`), então as classes do
+> Tailwind em rem saem com 87,5 % do nome (`h-8` = 28 px, `h-5` = 17,5 px, `p-0.5` = 1,75 px). Em seletores, trilhos,
+> bolinhas e indicadores use **valores em px** (`h-[20px]`, `translate-x-[20px]`, `p-[2px]`) e tamanhos pares: misturar
+> rem com deslocamentos em px desalinha a peça (a bolinha do Switch chegou a sair do trilho) e frações borram a 125/150 %.
+
 | Componente | Especificação |
 |---|---|
 | **Button** | Alturas sm 28 / md 32 / lg 40; px 10/12/16; `radius-sm` (sm) ou `radius-md`; `caption`→`small` 500; ícone 16 px gap 6. **primary** `accent`/`accent-foreground` (texto preto, 600), hover `accent-hover`, `shadow-primary`. **secondary** `surface-raised` + 1 px `border-strong` + `sh-xs`, hover `surface-hover`. **ghost** transparente, hover `surface-hover`, texto `text-secondary`→`text-primary`. **danger** `danger-soft` + texto `danger`, hover borda `danger`/30 %. Disabled 45 % opacidade. Loading: spinner substitui ícone, largura fixa. Só ícone: quadrado + Tooltip obrigatório. |
-| **Input** | 32 px, `surface-raised`, 1 px `border-strong`, `radius-md`, px 10, `body`; placeholder `text-tertiary`; foco: borda `accent` + `ring` 2 px offset 0 (dentro do campo); erro: borda `danger` + mensagem `caption danger` com `CircleAlert`. Prefixo/sufixo ("dias", "horas") em `text-tertiary`. |
-| **Select** | Igual Input + `ChevronDown` 16 px; lista em popover `radius-lg` `sh-pop`, itens 32 px `radius-sm`, selecionado com `Check` `accent-text`. (Radix Select / shadcn.) |
+| **Input** | 28 px, `surface-raised`, 1 px `border-strong`, `radius-md`, px 10, `body`; placeholder `text-tertiary`; foco: borda `accent` + `ring` 2 px offset 0 (dentro do campo); erro: borda `danger` + mensagem `caption danger` com `CircleAlert`. Prefixo/sufixo ("dias", "horas") em `text-tertiary`. |
+| **Select** | Igual Input + `ChevronDown` 16 px; lista em popover `radius-lg` `sh-pop`, itens 28 px `radius-sm`, selecionado com `Check` `accent-text`. (Radix Select / shadcn.) |
 | **Switch** | Geometria do Windows 11, **sempre em px** (a raiz é 14 px; rem desalinhava a bolinha): trilho 40 × 20, contorno 1 px por sombra interna (não borda); bolinha 12 px centrada numa célula 20 × 20 que anda 20 px → 4 px de folga nos quatro lados, ligado ou não. Hover: bolinha 14 px; pressionado: 17 × 14 (folga externa 3 px). Off: trilho `fg`/4 % com contorno `text-tertiary`, bolinha `text-secondary`; on: `accent` + contorno `accent-edge`, bolinha `accent-foreground` (#00140F, ≥ 7:1 — branco sobre o menta tem só 2,2:1). Cor/tamanho 120 ms, deslocamento 180 ms `ease-out`. Alto contraste: cores do sistema. Rótulo à esquerda em linhas de configuração. |
-| **Segmented** | Trilho `surface-hover` (`radius-md`, padding 2); segmento ativo `surface-raised` + `sh-xs` + `text-primary` (light) / `#2A2B31` (dark); inativo `text-secondary`; altura 32; indicador desliza 180 ms. |
-| **Checkbox** | 16 px, `radius-xs`, contorno 1.5 px `text-tertiary`; marcado `accent` + borda `accent-edge` + `Check` `accent-foreground` (preto) 12 px stroke 3. |
+| **Segmented** | Trilho `surface-hover` (`radius-md`, padding 2); segmento ativo `surface-raised` + `sh-xs` + `text-primary` (light) / `#2A2B31` (dark); inativo `text-secondary`; altura 28 (sm 24); indicador `(100% − 4px) / n` desliza 180 ms. |
+| **Checkbox** | 16 px, `radius-xs`, contorno 1 px `text-tertiary` (1,5 px muda de espessura com a escala); marcado `accent` + borda `accent-edge` + `Check` `accent-foreground` (preto) 12 px stroke 3. |
 | **Stepper** (editor) | Itens 36 px; círculo 20 px: pendente contorno `border-strong` + nº `text-tertiary`; atual `accent` + nº `accent-foreground`; concluído `accent-soft` + `Check` `accent-text`; linha vertical 1 px `border` ligando círculos. |
 | **NumberStepper** | Input 72 px centralizado `tabular-nums` + botões `Minus`/`Plus` ghost 28 px. |
 | **Card** | `surface-raised`, 1 px `border`, `radius-lg`, `sh-card`, `p-5`; cabeçalho opcional: `card-title` + ação ghost à direita, divisória opcional. |
@@ -355,7 +360,7 @@ Tooltip do ícone: "BC Backup — Tudo protegido · próximo às 22:00". Itens:
 | **Kbd** | Altura 18, px 5, `mono` 11 px 500, `surface-hover`, 1 px `border`, borda inferior 2 px, `radius-xs`; "Ctrl", "N". |
 | **Badge** | Contador: altura 18, min-w 18, `radius-full`, `caption` 600 `tabular-nums`; neutro `surface-hover`/`text-secondary`; alerta `danger-soft`/`danger`. |
 | **TimePicker** | Input 96 px `mono`/`tabular-nums` com máscara `HH:mm` 24 h + popover com colunas de horas/minutos (passo 5 min); ícone `Clock`. Nada de AM/PM. |
-| **WeekdayPicker** | 7 chips 32 × 32 `radius-sm`: **D S T Q Q S S** (Tooltip "Domingo"…); off: `surface-raised` + `border-strong` + `text-secondary`; on: `accent` + `accent-foreground` + borda `accent-edge`. Atalhos abaixo: "Dias úteis" · "Fim de semana" · "Todos". Semana começa no domingo. |
+| **WeekdayPicker** | 7 chips 28 × 28 `radius-sm`, espaço 6: **D S T Q Q S S** (Tooltip "Domingo"…); off: `surface-raised` + `border-strong` + `text-secondary`; on: `accent` + `accent-foreground` + borda `accent-edge`. Atalhos abaixo: "Dias úteis" · "Fim de semana" · "Todos". Semana começa no domingo. |
 | **PathChip** | Altura 28, px 8, `radius-sm`, `surface-hover`; ícone `Folder`/`File`/`HardDrive`/`Server` (rede) 14 px `text-tertiary`; caminho `mono` truncado no meio (`C:\Clientes\…\NF-e 2026`); Tooltip com caminho completo; hover mostra `Copy` e `X`. |
 | **Callout** | Faixa `*-soft`, `radius-md`, p 12, ícone 16 + `small`; para dicas e avisos dentro de formulários. |
 

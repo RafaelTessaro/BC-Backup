@@ -30,6 +30,7 @@ export function Stepper({
                 <span
                   aria-hidden
                   className={cn(
+                    // Linha entre os círculos: linhas de 36 px, círculo de 20 px a 10 px da borda (tudo em px).
                     'absolute top-[28px] left-[19.5px] h-[16px] w-px',
                     st.status === 'done' ? 'bg-accent/35' : 'bg-border'
                   )}
@@ -41,7 +42,7 @@ export function Stepper({
                 onClick={() => onSelect(step.id)}
                 aria-current={isCurrent ? 'step' : undefined}
                 className={cn(
-                  'group flex h-9 w-full items-center gap-3 rounded-md px-2.5 text-left transition-colors duration-[120ms]',
+                  'group flex h-[36px] w-full items-center gap-[12px] rounded-md px-[10px] text-left transition-colors duration-[120ms]',
                   isCurrent ? 'bg-surface-hover' : st.clickable && 'hover:bg-surface-hover/70',
                   !st.clickable && 'cursor-not-allowed'
                 )}
@@ -50,7 +51,7 @@ export function Stepper({
                 <span
                   aria-hidden
                   className={cn(
-                    'relative flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tnum transition-colors duration-[180ms]',
+                    'relative flex size-[20px] shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tnum transition-colors duration-[180ms]',
                     isCurrent && 'bg-accent text-accent-foreground shadow-[0_0_0_3px_var(--accent-soft)]',
                     !isCurrent && st.status === 'done' && 'bg-accent-soft text-accent-text',
                     !isCurrent &&
@@ -59,7 +60,7 @@ export function Stepper({
                   )}
                 >
                   {!isCurrent && st.status === 'done' ? (
-                    <Check className="size-3" strokeWidth={2.75} />
+                    <Check className="size-[12px]" strokeWidth={2.75} />
                   ) : (
                     i + 1
                   )}
@@ -67,7 +68,7 @@ export function Stepper({
                     <span
                       aria-hidden
                       className={cn(
-                        'absolute -top-0.5 -right-0.5 size-2 rounded-full ring-2 ring-bg',
+                        'absolute -top-[2px] -right-[2px] size-[8px] rounded-full ring-2 ring-bg',
                         st.issue === 'error' ? 'bg-danger' : 'bg-warning-bar'
                       )}
                     />

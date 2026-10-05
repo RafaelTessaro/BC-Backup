@@ -22,7 +22,8 @@ interface SegmentedProps<T extends string> {
 
 /**
  * Segmented (§8): trilho surface-hover, padding 2; ativo surface-raised + sh-xs.
- * Segmentos de largura igual para o indicador deslizar só com CSS (sem medir o DOM).
+ * Segmentos de largura igual para o indicador deslizar só com CSS (sem medir o DOM). Medidas em px: o
+ * indicador é `(100% − 4px) / n` e precisa do mesmo padding de 2 px (com rem, p-0.5 dava 1,75 px).
  */
 export function Segmented<T extends string>({
   value,
@@ -56,8 +57,8 @@ export function Segmented<T extends string>({
         if (next.value !== value) onChange(next.value)
       }}
       className={cn(
-        'relative isolate inline-grid shrink-0 rounded-md bg-surface-hover p-0.5',
-        size === 'sm' ? 'h-7' : 'h-8',
+        'relative isolate inline-grid shrink-0 rounded-md bg-surface-hover p-[2px]',
+        size === 'sm' ? 'h-[24px]' : 'h-[28px]',
         className
       )}
       style={{ gridTemplateColumns: equal ? `repeat(${n}, minmax(0, 1fr))` : `repeat(${n}, auto)` }}
@@ -65,7 +66,7 @@ export function Segmented<T extends string>({
       {equal && (
         <span
           aria-hidden
-          className="absolute inset-y-0.5 left-0.5 -z-10 rounded-[6px] bg-segment-active shadow-xs transition-transform duration-[180ms] ease-out dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.04)]"
+          className="absolute inset-y-[2px] left-[2px] -z-10 rounded-[6px] bg-segment-active shadow-xs transition-transform duration-[180ms] ease-out dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.04)]"
           style={{ width: `calc((100% - 4px) / ${n})`, transform: `translateX(${index * 100}%)` }}
         />
       )}
@@ -77,14 +78,14 @@ export function Segmented<T extends string>({
             key={o.value}
             value={o.value}
             className={cn(
-              'relative flex min-w-0 items-center justify-center gap-1.5 rounded-[6px] font-medium whitespace-nowrap transition-colors duration-[120ms]',
-              size === 'sm' ? 'px-2.5 text-caption' : 'px-3 text-small',
+              'relative flex min-w-0 items-center justify-center gap-[6px] rounded-[6px] font-medium whitespace-nowrap transition-colors duration-[120ms]',
+              size === 'sm' ? 'px-[10px] text-caption' : 'px-[12px] text-small',
               active ? 'text-fg' : 'text-fg-muted hover:text-fg',
               !equal && active && 'bg-segment-active shadow-xs',
               'focus-visible:outline-offset-0'
             )}
           >
-            {Icon && <Icon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />}
+            {Icon && <Icon className="size-[14px] shrink-0" strokeWidth={1.75} aria-hidden />}
             <span className="truncate">{o.label}</span>
             {o.count !== undefined && (
               <span className={cn('tnum text-caption', active ? 'text-fg-muted' : 'text-fg-subtle')}>

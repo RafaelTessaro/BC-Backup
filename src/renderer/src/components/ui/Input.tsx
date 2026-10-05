@@ -3,7 +3,7 @@ import { CircleAlert, type LucideIcon } from 'lucide-react'
 import { cn } from '@renderer/lib/cn'
 
 export const inputBase =
-  'h-8 w-full min-w-0 rounded-md border border-border-strong bg-surface-raised px-2.5 text-body text-fg shadow-xs ' +
+  'h-[28px] w-full min-w-0 rounded-md border border-border-strong bg-surface-raised px-[10px] text-body text-fg shadow-xs ' +
   'transition-[border-color,box-shadow] duration-[120ms] placeholder:text-fg-subtle ' +
   'hover:border-[color-mix(in_srgb,var(--border-strong)_70%,var(--text-tertiary))] ' +
   'focus:border-accent-edge focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_22%,transparent)] focus-visible:outline-none ' +

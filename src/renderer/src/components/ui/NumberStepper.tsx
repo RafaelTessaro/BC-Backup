@@ -39,9 +39,9 @@ export function NumberStepper({
     setDraft(null)
   }
   const btn =
-    'flex size-7 items-center justify-center rounded-sm text-fg-muted transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg disabled:opacity-40 disabled:pointer-events-none'
+    'flex size-[28px] items-center justify-center rounded-sm text-fg-muted transition-colors duration-[120ms] hover:bg-surface-hover hover:text-fg disabled:opacity-40 disabled:pointer-events-none'
   return (
-    <div className={cn('inline-flex items-center gap-1', className)}>
+    <div className={cn('inline-flex items-center gap-[4px]', className)}>
       <button
         type="button"
         className={btn}
@@ -49,13 +49,13 @@ export function NumberStepper({
         disabled={value <= min}
         onClick={() => onChange(clamp(value - step))}
       >
-        <Minus className="size-4" strokeWidth={1.75} />
+        <Minus className="size-[16px]" strokeWidth={1.75} />
       </button>
       <input
         id={id}
         aria-label={label}
         inputMode="numeric"
-        className={cn(inputBase, 'w-[72px] px-1 text-center tnum')}
+        className={cn(inputBase, 'w-[72px] px-[4px] text-center tnum')}
         value={draft ?? String(value)}
         onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, '').slice(0, 5))}
         onBlur={commit}
@@ -78,9 +78,9 @@ export function NumberStepper({
         disabled={value >= max}
         onClick={() => onChange(clamp(value + step))}
       >
-        <Plus className="size-4" strokeWidth={1.75} />
+        <Plus className="size-[16px]" strokeWidth={1.75} />
       </button>
-      {suffix && <span className="ml-1 text-small text-fg-muted">{suffix}</span>}
+      {suffix && <span className="ml-[4px] text-small text-fg-muted">{suffix}</span>}
     </div>
   )
 }
