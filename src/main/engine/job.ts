@@ -50,6 +50,7 @@ import {
   diskSpaceOf,
   errCode,
   errMessage,
+  hideFile,
   pathExists,
   renameRetry,
   sanitizeName,
@@ -99,6 +100,8 @@ export interface JobOptions {
   moveAgeSkewMs?: number
   /** Modo ZIP: limite da leitura para a memória (testes; padrão ZIP_BUFFER_MAX). */
   zipBufferMax?: number
+  /** Esconde o manifesto depois de gravado (padrão: hideFile do fsutil; testes). */
+  hideFile?: (file: string) => Promise<unknown>
 }
 
 /**
@@ -256,6 +259,8 @@ export async function runJob(
 ): Promise<JobResult> {
   const now = opts.now ?? (() => new Date())
   const accessTimeout = opts.accessTimeoutMs ?? 15_000
+  /** Esconde um arquivo nosso no destino (manifesto). Sem efeito se falhar: é só aparência. */
+  const hide = (file: string) => (opts.hideFile ?? hideFile)(file).catch(() => {})
   const routine = spec.routine
   const log: LogEntry[] = []
   let dropped = 0
@@ -724,6 +729,8 @@ export async function runJob(
             true,
             false
           )
+          // Oculto (o cliente vê só o .zip); a retenção e o "Mover" leem do mesmo jeito.
+          await hide(zipSidecarPath(claim.finalPath))
           // A pasta reservada só tem o marcador agora.
           await rm(claim.workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(
             () => {}
@@ -757,6 +764,8 @@ export async function runJob(
             work,
             manifest(c.copied.length, c.bytes, skippedAll.length, verify === 'none' ? undefined : true)
           )
+          // Oculto (o cliente vê só os arquivos dele); nunca mais é regravado depois disto.
+          await hide(join(work, MANIFEST_FILE))
           await rm(markerPath, { force: true, maxRetries: 3, retryDelay: 100 }).catch(() => {})
           res.filesCopied = c.copied.length
           res.bytesCopied = c.bytes

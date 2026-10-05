@@ -14,6 +14,7 @@ import {
   readdirSync,
   writeFileSync
 } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BcApi, RoutineInput } from '../src/shared/api'
@@ -124,6 +125,13 @@ function routine(
 
 const SNAP = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?$/
 
+/** Atributos do arquivo segundo o "attrib" (ex.: "A    H"): o manifesto sai oculto no Explorer. */
+function isHidden(file: string): boolean {
+  const out = execFileSync('attrib', [file], { encoding: 'utf8' })
+  const attrs = out.slice(0, Math.max(0, out.toLowerCase().indexOf(file.slice(0, 3).toLowerCase())))
+  return /H/.test(attrs)
+}
+
 test('backup em pasta datada para dois destinos, com acentos e verificação completa', async () => {
   const source = makeSource()
   // Como o dono usa: cria uma pasta "Backups" e escolhe ela como destino.
@@ -143,6 +151,8 @@ test('backup em pasta datada para dois destinos, com acentos e verificação com
     expect(existsSync(join(dest, snap!, 'Relatórios 2026', 'Ação & Cia', 'balanço çãõ.txt'))).toBe(true)
     expect(existsSync(join(dest, snap!, 'Thumbs.db'))).toBe(false)
     expect(existsSync(join(dest, snap!, MANIFEST_FILE))).toBe(true)
+    expect(isHidden(join(dest, snap!, MANIFEST_FILE)), 'manifesto oculto').toBe(true)
+    expect(isHidden(join(dest, snap!, 'Relatórios 2026', 'Ação & Cia', 'balanço çãõ.txt'))).toBe(false)
     expect(existsSync(join(dest, LEGACY_ROOT_DIR))).toBe(false)
   }
   await page.screenshot({ path: join(shots, '02-painel-depois-do-backup.png') })
@@ -158,6 +168,8 @@ test('backup em ZIP com verificação completa', async () => {
   const zip = names.find((n) => /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?\.zip$/.test(n))
   expect(zip, JSON.stringify(names)).toBeTruthy()
   expect(names.sort()).toEqual([zip!, `${zip}.manifesto.json`].sort())
+  expect(isHidden(join(dest, `${zip}.manifesto.json`)), 'manifesto do ZIP oculto').toBe(true)
+  expect(isHidden(join(dest, zip!))).toBe(false)
 })
 
 test('arquivo aberto com bloqueio vira aviso, não falha', async () => {

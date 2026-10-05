@@ -157,7 +157,7 @@ Tudo fica na pasta de dados do usuário (`userData` do Electron):
 Dentro dela: `config.json` (rotinas, configurações e a senha SMTP cifrada), `state.json` (estado do agendador), `history.ndjson` e
 `runs/` (histórico e detalhes de cada execução) e `logs/bc-backup.log`. Os **backups** em si ficam nos destinos
 escolhidos, direto na pasta de cada destino (`<destino>\<data>\` ou `<destino>\<data>.zip`), cada um com o
-manifesto `bcbackup-manifesto.json`. Desinstalar o programa **não** apaga essa pasta nem os backups.
+manifesto `bcbackup-manifesto.json` (gravado oculto). Desinstalar o programa **não** apaga essa pasta nem os backups.
 
 ## Segurança
 

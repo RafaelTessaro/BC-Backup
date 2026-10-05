@@ -276,12 +276,12 @@ Exemplo: o destino escolhido é a pasta `E:\Backups`. A rotina "Financeiro diár
 ```
 E:\Backups\                                   ← a pasta que você escolheu (pode ter outras coisas)
 ├─ 2026-10-03_18-00-02\                       ← um backup: pasta com dia e hora (AAAA-MM-DD_HH-MM-SS)
-│  ├─ bcbackup-manifesto.json                 ← resumo do backup (rotina, data, arquivos, tamanho, status)
+│  ├─ bcbackup-manifesto.json                 ← (oculto) resumo do backup: rotina, data, arquivos, status
 │  ├─ Contas a pagar.xlsx                     ← uma origem só: o conteúdo dela, direto aqui
 │  └─ Notas fiscais\…
 ├─ 2026-10-04_18-00-05\
 ├─ 2026-10-04_18-00-05_2.zip                  ← outra rotina no mesmo segundo: "_2" (nada é sobrescrito)
-├─ 2026-10-04_18-00-05_2.zip.manifesto.json   …com o manifesto ao lado (dentro do ZIP: Documentos\, Planilhas\)
+├─ 2026-10-04_18-00-05_2.zip.manifesto.json   …com o manifesto (oculto) ao lado (no ZIP: Documentos\, Planilhas\)
 ├─ 2026-10-06_18-00-03.em-andamento\          ← backup sendo feito agora (ou interrompido)
 │  └─ bcbackup-em-andamento.json              ← de qual rotina e de qual computador é a cópia
 └─ Minhas coisas\                             ← seus arquivos: o BC Backup nunca mexe
@@ -291,7 +291,10 @@ E:\Backups\                                   ← a pasta que você escolheu (po
   de origem → o próprio arquivo); com **várias**, uma subpasta por origem.
 - **`bcbackup-manifesto.json`** diz que aquela pasta é um backup completo e válido, e de qual rotina. É por ele que a
   retenção sabe o que pode apagar: só backups com o manifesto **da própria rotina**. Pastas de outras rotinas, de
-  outro computador ou suas nunca são apagadas.
+  outro computador ou suas nunca são apagadas. Ele também registra quantos arquivos foram copiados e conferidos
+  (sha256) e é o que o "Mover" usa para saber que a cópia está completa. Por isso ele é gravado **oculto** (no
+  Explorer só aparece com "Mostrar itens ocultos"): não apague nem mova esse arquivo — sem ele a retenção deixa
+  aquele backup para sempre. Para restaurar, copie os seus arquivos normalmente; o manifesto pode ficar para trás.
 - **`.em-andamento`**: o backup ainda não terminou. Só quando tudo foi copiado e verificado a pasta recebe o nome
   final. Se o computador desligou no meio, a sobra é limpa no próximo backup **dessa rotina neste computador**
   (de outro computador, só depois de 12 horas parada; sem o `bcbackup-em-andamento.json`, nunca). **Não use**

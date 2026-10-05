@@ -1,8 +1,9 @@
 // Utilitários de sistema de arquivos usados pelo motor de backup e pela persistência.
 // Node puro (sem electron) — testável com vitest.
 
+import { execFile } from 'node:child_process'
 import { mkdir, open, readFile, rename, rm, stat, statfs } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, win32 } from 'node:path'
 
 /** Códigos que o Windows devolve quando antivírus/indexador seguram o arquivo por instantes. */
 const RENAME_RETRY_CODES = new Set(['EPERM', 'EACCES', 'EBUSY'])
@@ -115,6 +116,32 @@ export async function writeJsonAtomic(
     await rm(tmp, { force: true }).catch(() => {})
     throw e
   }
+}
+
+/**
+ * Marca um arquivo como oculto, sem nunca lançar (devolve false se não deu): Windows `attrib +H`
+ * (o Explorer não mostra), macOS `chflags hidden` (o Finder não mostra). Linux: nada a fazer.
+ * Atenção (Windows): um arquivo oculto não pode ser regravado com a flag 'w' (CREATE_ALWAYS dá EPERM)
+ * — só esconda depois da última gravação.
+ */
+export function hideFile(file: string, platform: NodeJS.Platform = process.platform): Promise<boolean> {
+  let cmd: string
+  let args: string[]
+  if (platform === 'win32') {
+    // Caminho completo: nunca um "attrib.exe" que esteja na pasta atual ou no PATH.
+    cmd = win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'attrib.exe')
+    args = ['+H', file]
+  } else if (platform === 'darwin') {
+    cmd = '/usr/bin/chflags'
+    args = ['hidden', file]
+  } else return Promise.resolve(false)
+  return new Promise((resolve) => {
+    try {
+      execFile(cmd, args, { windowsHide: true, timeout: 15_000 }, (err) => resolve(!err))
+    } catch {
+      resolve(false)
+    }
+  })
 }
 
 export async function pathExists(p: string): Promise<boolean> {
