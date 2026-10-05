@@ -160,7 +160,7 @@ export function MoveCard({
             </p>
           </div>
           <Switch
-            className="mt-1"
+            className="mt-[4px]"
             label={TITLE}
             checked={enabled}
             onCheckedChange={(v) => (v ? setConfirming(true) : set({ enabled: false }))}
